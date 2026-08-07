@@ -62,9 +62,10 @@ irm https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/install.ps1
 Если терминал вам не нужен, возьмите со страницы [релизов](../../releases) один архив
 для своей системы, распакуйте — и запустите установку из папки:
 
-| Система | Архив | Что запустить внутри |
+| Система | Что скачать | Что сделать |
 |---|---|---|
-| Windows | `CehoProxy-…-windows.zip` | `Установить CehoProxy.cmd` — двойной щелчок |
+| Windows | `CehoProxy-Setup-….exe` | Запустить — обычный установщик с окном |
+| Windows | `CehoProxy-…-windows.zip` | Или архивом: распаковать, двойной щелчок по `Установить CehoProxy.cmd` |
 | macOS, Apple silicon | `CehoProxy-…-macos-apple.zip` | `Установить CehoProxy.command` — правая кнопка → «Открыть» |
 | macOS, Intel | `CehoProxy-…-macos-intel.zip` | то же |
 | Linux | `CehoProxy-…-linux-x64.zip` или `-arm64` | `sudo ./install.sh ./cehoproxy` |
