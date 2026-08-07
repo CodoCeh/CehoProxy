@@ -6,7 +6,7 @@
 ; Программа предложит скачать его с сайта автора сама, уже после установки.
 
 #define AppName "CehoProxy"
-#define AppVersion "1.1.0"
+#define AppVersion "1.1.1"
 #define AppPublisher "КодоЦех"
 #define AppUrl "https://codoceh.ru"
 #define RepoUrl "https://github.com/CodoCeh/CehoProxy"

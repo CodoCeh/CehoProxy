@@ -388,12 +388,15 @@ public static class SingBoxConfigGenerator
         var servers = new JsonArray();
         var system = Os.SystemDnsServers(tunAddress);
 
+        // detour здесь НЕ ставим: движок отвергает «detour к пустому direct» и вовсе
+        // не стартует — «detour to an empty direct outbound makes no sense». Поймано
+        // живьём. Без detour запрос и так идёт мимо туннеля: правил на него нет,
+        // а final у маршрутизации — direct.
         if (system.Count == 0)
         {
             servers.Add(new JsonObject
             {
-                ["type"] = "udp", ["tag"] = "dns-direct",
-                ["server"] = "1.1.1.1", ["detour"] = DirectTag,
+                ["type"] = "udp", ["tag"] = "dns-direct", ["server"] = Os.PublicResolver,
             });
             return servers;
         }
@@ -404,7 +407,6 @@ public static class SingBoxConfigGenerator
                 ["type"] = "udp",
                 ["tag"] = i == 0 ? "dns-direct" : $"dns-direct-{i + 1}",
                 ["server"] = system[i],
-                ["detour"] = DirectTag,
             });
         return servers;
     }
