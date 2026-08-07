@@ -4,7 +4,7 @@
        Раньше она стояла только в ProxyCage.Cli, а «chp version» читает сборку Core,
        поэтому продукт после выпуска показывал старый номер и не видел обновления. -->
   <PropertyGroup>
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
   </PropertyGroup>
 
 </Project>

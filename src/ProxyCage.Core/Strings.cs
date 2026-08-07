@@ -78,11 +78,11 @@ public static class Strings
             "Искали в {0}, рядом с программой и в PATH.",
             "Looked in {0}, next to the program and in PATH."),
         ["pf_engine_fix_win"] = new(
-            "Положите {0} рядом с программой. Он идёт в комплекте поставки.",
-            "Put {0} next to the program. It ships with the package."),
+            "Скачайте движок командой: chp install --with-engine. В комплект он не входит — у него своя лицензия. Можно и вручную: положите {0} в папку настроек.",
+            "Download the engine with: chp install --with-engine. It is not part of the package — it has its own licence. You can also do it by hand: put {0} into the settings folder."),
         ["pf_engine_fix_unix"] = new(
-            "Поставьте sing-box пакетным менеджером системы или положите файл в {0}.",
-            "Install sing-box with your package manager or put the file into {0}."),
+            "Скачайте движок командой: sudo chp install --with-engine. Либо поставьте sing-box пакетным менеджером системы, либо положите файл в {0}.",
+            "Download the engine with: sudo chp install --with-engine. Or install sing-box with your package manager, or put the file into {0}."),
         ["pf_curl_ok"] = new("Проверка выхода доступна", "Exit check available"),
         ["pf_curl_missing"] = new("Не найден curl", "curl not found"),
         ["pf_curl_detail"] = new(
@@ -120,6 +120,9 @@ public static class Strings
             "Run with sudo or point CEHOPROXY_HOME to another folder."),
         ["pf_port_ok"] = new("Порт панели {0} свободен", "Panel port {0} is free"),
         ["pf_port_busy"] = new("Порт {0} уже занят", "Port {0} is already taken"),
+        ["pf_port_ours"] = new(
+            "Порт {0} занят нашей же панелью — так и должно быть",
+            "Port {0} is held by our own panel — that is expected"),
         ["pf_port_detail"] = new(
             "На нём открывается панель управления.", "The control panel is served on it."),
         ["pf_port_fix"] = new(

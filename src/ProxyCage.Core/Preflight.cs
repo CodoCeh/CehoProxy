@@ -54,7 +54,7 @@ public static class Preflight
             checks.Add(new Check(Level.Blocker, S("pf_ip_missing"), S("pf_ip_detail"), S("pf_ip_fix")));
 
         checks.Add(CheckWritable(root, l));
-        checks.Add(CheckPort(cfg.WebPort, l));
+        checks.Add(CheckPort(cfg.WebPort, l, root));
 
         if (cfg.Subscriptions.Count == 0)
             checks.Add(new Check(Level.Blocker, S("pf_no_subs"), S("pf_no_subs_detail"), S("pf_no_subs_fix")));
@@ -89,13 +89,20 @@ public static class Preflight
         }
     }
 
-    private static Check CheckPort(int port, string lang)
+    private static Check CheckPort(int port, string lang, string root)
     {
         try
         {
             var busy = IPGlobalProperties.GetIPGlobalProperties()
                 .GetActiveTcpListeners()
                 .Any(e => e.Port == port);
+
+            // порт держит НАША ЖЕ панель — это не беда, а признак работающей защиты.
+            // Поймано живьём: «chp doctor» при поднятой службе показывал «стоп: порт занят»
+            // и человек шёл менять порт на ровном месте
+            if (busy && DaemonControl.IsRunning(root))
+                return new Check(Level.Ok, Strings.T(lang, "pf_port_ours", port), null, null);
+
             return busy
                 ? new Check(Level.Blocker,
                     Strings.T(lang, "pf_port_busy", port),
