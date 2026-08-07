@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "servers": [
+    { "id": "1", "remarks": "🇯🇵 Япония-1", "server": "node8.example.com", "server_port": 8388,
+      "password": "sip008-secret", "method": "aes-256-gcm" }
+  ]
+}

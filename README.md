@@ -220,11 +220,24 @@ chp doctor
 пишет, что с ней делать. Если это не помогло, откройте
 [обсуждение](../../issues) и приложите вывод `chp doctor` и `chp status`.
 
-## Лицензия
+## Лицензия и участие
 
-Программа бесплатна для личного и рабочего использования. Исходный код закрыт, распространяется
-только собранная программа — условия в [LICENSE](LICENSE). Сторонние компоненты и их лицензии
-перечислены в [THIRD-PARTY.md](THIRD-PARTY.md).
+[Apache License 2.0](LICENSE) — пользуйтесь, правьте, распространяйте. Раздел 6 лицензии
+прав на названия и знаки не передаёт: «CehoProxy» и «КодоЦех» остаются за нами.
+Сторонние компоненты и их лицензии — в [THIRD-PARTY.md](THIRD-PARTY.md).
+
+Нашли ошибку или хотите что-то добавить — [заводите обсуждение](../../issues) или присылайте
+изменения. Собрать и прогнать тесты:
+
+```bash
+dotnet test tests/ProxyCage.Core.Tests/ProxyCage.Core.Tests.csproj
+dotnet publish src/ProxyCage.Cli/ProxyCage.Cli.csproj -c Release \
+  -r osx-arm64 --self-contained true -p:PublishSingleFile=true -o out
+```
+
+Система собирается ключом `-r`: `win-x64`, `linux-x64`, `linux-arm64`, `osx-arm64`, `osx-x64`.
+Платформенные различия собраны в пяти файлах и больше нигде: `Os`, `SingBoxProcess`,
+`TunCleanup`, `Autostart`, `AppDetector`.
 
 ## Связь
 

@@ -1,0 +1,50 @@
+[
+  {
+    "remarks": "🇩🇪 Германия-1",
+    "outbounds": [
+      {
+        "tag": "proxy",
+        "protocol": "vless",
+        "settings": { "vnext": [ { "address": "node1.example.com", "port": 8444,
+          "users": [ { "id": "00000000-0000-4000-8000-000000000001", "encryption": "none", "flow": "" } ] } ] },
+        "streamSettings": {
+          "network": "grpc",
+          "grpcSettings": { "serviceName": "GunService" },
+          "security": "reality",
+          "realitySettings": { "serverName": "example.com", "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "fingerprint": "chrome" }
+        }
+      },
+      { "tag": "direct", "protocol": "freedom" },
+      { "tag": "block", "protocol": "blackhole" }
+    ]
+  },
+  {
+    "remarks": "Нидерланды-2",
+    "outbounds": [
+      {
+        "tag": "proxy",
+        "protocol": "vmess",
+        "settings": { "vnext": [ { "address": "node2.example.com", "port": 443,
+          "users": [ { "id": "00000000-0000-4000-8000-000000000002", "alterId": 0, "security": "auto" } ] } ] },
+        "streamSettings": {
+          "network": "ws",
+          "wsSettings": { "path": "/ws", "headers": { "Host": "cdn.example.com" } },
+          "security": "tls",
+          "tlsSettings": { "serverName": "cdn.example.com" }
+        }
+      }
+    ]
+  },
+  {
+    "remarks": "↔️ Автовыбор",
+    "outbounds": [
+      {
+        "tag": "proxy",
+        "protocol": "vless",
+        "settings": { "vnext": [ { "address": "node1.example.com", "port": 8444,
+          "users": [ { "id": "00000000-0000-4000-8000-000000000001" } ] } ] },
+        "streamSettings": { "network": "tcp", "security": "none" }
+      }
+    ]
+  }
+]

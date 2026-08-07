@@ -1,0 +1,18 @@
+port: 7890
+proxies:
+  - {name: "🇵🇱 Польша-1", type: vless, server: node5.example.com, port: 8443, uuid: 00000000-0000-4000-8000-000000000005, tls: true, servername: example.com, network: grpc, grpc-service-name: GunService, client-fingerprint: chrome, public-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA, short-id: 0123456789abcdef}
+  - name: "США-1"
+    type: trojan
+    server: node6.example.com
+    port: 443
+    password: trojan-secret
+    sni: example.com
+    skip-cert-verify: false
+  - name: "Сингапур-1"
+    type: ss
+    server: node7.example.com
+    port: 8388
+    cipher: chacha20-ietf-poly1305
+    password: ss-secret
+proxy-groups:
+  - {name: auto, type: url-test, proxies: ["🇵🇱 Польша-1", "США-1"]}

@@ -1,0 +1,6 @@
+vless://00000000-0000-4000-8000-000000000002@vless.example.com:443?encryption=none&type=ws&path=%2Fws&host=vless.example.com&security=tls&sni=vless.example.com#%F0%9F%87%A9%F0%9F%87%AA%20vless-ws
+vmess://eyJ2IjogIjIiLCAicHMiOiAi8J+Hs/Cfh7Egdm1lc3MtdGNwIiwgImFkZCI6ICJ2bWVzcy5leGFtcGxlLmNvbSIsICJwb3J0IjogIjQ0MyIsICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDIiLCAiYWlkIjogIjAiLCAibmV0IjogInRjcCIsICJ0eXBlIjogIm5vbmUiLCAiaG9zdCI6ICIiLCAicGF0aCI6ICIiLCAidGxzIjogInRscyIsICJzbmkiOiAidm1lc3MuZXhhbXBsZS5jb20ifQ==
+trojan://trojan-password@trojan.example.com:443?security=tls&sni=trojan.example.com&type=tcp#%F0%9F%87%BA%F0%9F%87%B8%20trojan
+ss://YWVzLTI1Ni1nY206c3MtcGFzc3dvcmQ@ss.example.com:8388#%F0%9F%87%AB%F0%9F%87%AE%20shadowsocks
+hysteria2://hy2-password@hy2.example.com:443?sni=hy2.example.com&insecure=1&obfs=salamander&obfs-password=obfs-secret#%F0%9F%87%B9%F0%9F%87%B7%20hysteria2
+tuic://00000000-0000-4000-8000-000000000002:tuic-password@tuic.example.com:443?sni=tuic.example.com&congestion_control=bbr&alpn=h3#%F0%9F%87%B5%F0%9F%87%B1%20tuic

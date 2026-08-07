@@ -1,0 +1,28 @@
+{
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "🇫🇮 Финляндия-1",
+      "server": "node3.example.com",
+      "server_port": 8444,
+      "uuid": "00000000-0000-4000-8000-000000000003",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "example.com",
+        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "reality": { "enabled": true, "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "short_id": "0123456789abcdef" }
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "Турция",
+      "server": "node4.example.com",
+      "server_port": 443,
+      "password": "hy2-secret",
+      "obfs": { "type": "salamander", "password": "obfs-secret" },
+      "tls": { "enabled": true, "server_name": "example.com", "insecure": true }
+    },
+    { "type": "direct", "tag": "direct" }
+  ]
+}
