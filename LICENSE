@@ -1,0 +1,95 @@
+Лицензионное соглашение CehoProxy
+Copyright © 2026 КодоЦех (CodoCeh). Все права защищены.
+
+Русский текст — основной. English translation follows below.
+
+────────────────────────────────────────────────────────────────────────
+
+1. ЧТО РАЗРЕШЕНО
+
+Вы вправе бесплатно устанавливать и использовать CehoProxy — в личных целях
+и в работе, на любом количестве своих компьютеров и серверов, без ограничения
+срока. Платить за это не нужно и регистрироваться тоже.
+
+2. ЧТО НЕ РАЗРЕШЕНО БЕЗ ПИСЬМЕННОГО СОГЛАСИЯ ПРАВООБЛАДАТЕЛЯ
+
+  • продавать программу, сдавать её в аренду или включать в платные пакеты;
+  • распространять её со своими изменениями или под другим именем;
+  • выдавать её за свою разработку;
+  • использовать название «CehoProxy», «КодоЦех», «CodoCeh» и наши знаки
+    в своих продуктах и рекламе.
+
+Передать программу коллеге или поставить её на компьютеры своей организации
+можно и без согласия — это остаётся использованием, а не распространением.
+
+3. ИСХОДНЫЙ КОД
+
+Исходный код не публикуется и в поставку не входит. Изучение, декомпиляция
+и модификация программы не разрешаются, за исключением случаев, прямо
+разрешённых применимым законом.
+
+4. ЧУЖИЕ КОМПОНЕНТЫ
+
+Программе для работы нужен движок sing-box. Он лицензирован отдельно, нами
+не распространяется и устанавливается пользователем самостоятельно. Условия
+использования сторонних компонентов перечислены в файле THIRD-PARTY.md,
+и настоящее соглашение их не заменяет.
+
+5. ЧЕГО ПРОГРАММА НЕ ДЕЛАЕТ
+
+CehoProxy не предоставляет доступ в сеть и не поставляется с подписками.
+Это инструмент маршрутизации: он направляет трафик выбранных вами программ
+в туннель, который вы указали сами. Ответственность за выбор поставщика
+такого туннеля и за соблюдение применимого законодательства несёт
+пользователь.
+
+6. ОТСУТСТВИЕ ГАРАНТИЙ
+
+Программа предоставляется «как есть». Правообладатель не гарантирует её
+бесперебойной работы и пригодности для конкретной задачи и не отвечает
+за убытки, возникшие в связи с её использованием, — насколько это допускает
+применимое право.
+
+7. ПРЕКРАЩЕНИЕ
+
+Нарушение условий раздела 2 или 3 прекращает действие разрешения из раздела 1.
+
+────────────────────────────────────────────────────────────────────────
+
+CehoProxy License Agreement
+Copyright © 2026 CodoCeh. All rights reserved.
+
+The Russian text above prevails in case of any discrepancy.
+
+1. PERMITTED. You may install and use CehoProxy free of charge, for personal
+   and commercial purposes, on any number of your own computers and servers,
+   with no time limit. No payment or registration is required.
+
+2. NOT PERMITTED without the copyright holder's written consent: selling,
+   renting or bundling the program into paid offerings; distributing modified
+   versions or versions under a different name; presenting it as your own work;
+   using the names "CehoProxy", "CodoCeh" or our marks in your own products
+   or advertising. Passing the program to a colleague or deploying it across
+   your own organisation's machines remains use, not distribution, and needs
+   no consent.
+
+3. SOURCE CODE is not published and is not part of the distribution.
+   Reverse engineering, decompilation and modification are not permitted,
+   except where expressly allowed by applicable law.
+
+4. THIRD-PARTY COMPONENTS. The program requires the sing-box engine, which is
+   licensed separately, is not distributed by us and is installed by the user.
+   Third-party terms are listed in THIRD-PARTY.md and are not superseded by
+   this agreement.
+
+5. WHAT THE PROGRAM IS NOT. CehoProxy provides no network access and ships
+   with no subscriptions. It is a routing tool: it directs the traffic of the
+   programs you select into a tunnel you specify yourself. Choosing that tunnel
+   provider and complying with applicable law is the user's responsibility.
+
+6. NO WARRANTY. The program is provided "as is", without warranty of any kind.
+   To the extent permitted by applicable law, the copyright holder is not
+   liable for any damages arising from its use.
+
+7. TERMINATION. Breaching section 2 or 3 ends the permission granted
+   in section 1.
