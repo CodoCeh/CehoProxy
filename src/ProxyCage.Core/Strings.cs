@@ -29,9 +29,13 @@ public static class Strings
             "CehoProxy — выбранные программы выходят в интернет только через туннель.",
             "CehoProxy — selected apps reach the internet only through the tunnel."),
         ["panel_at"] = new("Панель управления: {0}", "Control panel: {0}"),
-        ["rules_rebuilt"] = new(
-            "Правила пересобраны. Если защита включена, перезапустите её, чтобы применить.",
-            "Rules rebuilt. If protection is on, restart it to apply."),
+        ["rules_rebuilt"] = new("Правила пересобраны.", "Rules rebuilt."),
+        ["rules_applied"] = new(
+            "Защита перезапущена — новые правила уже действуют.",
+            "Protection restarted — the new rules are already in effect."),
+        ["rules_restart_needed"] = new(
+            "Защита работает по прежним правилам. Перезапустите её, чтобы применить новые: {0}chp stop, затем {0}chp daemon",
+            "Protection is still running under the old rules. Restart it to apply the new ones: {0}chp stop, then {0}chp daemon"),
         ["cancelled"] = new("Отменено.", "Cancelled."),
 
         // ── состояние ────────────────────────────────────────────────
@@ -630,6 +634,9 @@ public static class Strings
         ["ask_lang"] = new("Язык интерфейса / interface language", "Язык интерфейса / interface language"),
         ["ask_nothing_to_pick"] = new("Выбирать не из чего.", "There is nothing to pick."),
         ["state_more"] = new("Все команды: chp help", "All commands: chp help"),
+        ["hint_ask_me"] = new(
+            "Наберите chp — программа спросит, чего не хватает, и всё настроит.",
+            "Type chp — the program will ask what is missing and set it up."),
         ["state_first_run"] = new(
             "Первый запуск. Пройдём настройку — это пять вопросов.",
             "First run. Let us go through the setup — five questions."),

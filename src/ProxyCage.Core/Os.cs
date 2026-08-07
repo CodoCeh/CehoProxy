@@ -69,7 +69,8 @@ public static class Os
 
         var found = Kind switch
         {
-            OsKind.Windows => FromWindowsDns(),
+            // ветка выполняется только на Windows, но анализатор этого не выводит
+            OsKind.Windows => OperatingSystem.IsWindows() ? FromWindowsDns() : Array.Empty<string>(),
             OsKind.Mac => FromMacDns(),
             _ => FromResolvConf(),
         };
@@ -243,7 +244,9 @@ public static class Os
             if (!File.Exists(target)) return false;          // ссылка в никуда
             if (IsWindows) return true;
 
-            var mode = File.GetUnixFileMode(target);
+    #pragma warning disable CA1416   // сюда не попадаем на Windows: выше стоит ранний выход
+        var mode = File.GetUnixFileMode(target);
+#pragma warning restore CA1416
             return (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
         }
         catch

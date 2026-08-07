@@ -606,7 +606,27 @@ public static class Cli
     public static async Task RebuildQuietlyAsync(CehoConfig cfg)
     {
         try { Console.WriteLine(await Ceho.ApplyAsync()); }
-        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        catch (Exception ex) { Stuck(cfg, ex.Message); return; }
+
+        // Пересобрать правила мало: работающая защита продолжает жить по старым.
+        // Просить человека «перезапустите» — значит оставить ловушку: он добавил
+        // программу, увидел «готово» и уверен, что она в туннеле. Перезапускаем сами.
+        if (!DaemonControl.IsRunning(Ceho.Root)) return;
+        if (!Os.IsElevated()) { Console.WriteLine(S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo ")); return; }
+
+        Autostart.Restart();
+        Console.WriteLine(S(cfg, "rules_applied"));
+    }
+
+    /// <summary>
+    /// Отказ, после которого человеку надо что-то сделать. Одного «не добавлено ни одной
+    /// подписки» мало: из него не следует, что делать дальше. Подсказываем самый короткий путь.
+    /// </summary>
+    public static void Stuck(CehoConfig cfg, string message)
+    {
+        Console.Error.WriteLine(message);
+        if (cfg.Subscriptions.Count == 0 || cfg.Apps.Count == 0)
+            Console.Error.WriteLine(S(cfg, "hint_ask_me"));
     }
 
     public static bool CountryEnabled(CehoConfig cfg, string code) =>

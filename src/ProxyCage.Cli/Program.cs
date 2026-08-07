@@ -343,7 +343,7 @@ switch (cmd)
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
         IReadOnlyList<ProxyNode> nodes;
         try { nodes = await Ceho.LoadAllNodesAsync(cfg); }
-        catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
+        catch (Exception ex) { Cli.Stuck(cfg, ex.Message); return 1; }
 
         Cli.PrintCountries(cfg, nodes);
         Console.WriteLine();
@@ -723,8 +723,11 @@ switch (cmd)
     }
 
     case "apply":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
         try { Console.WriteLine(await Ceho.ApplyAsync()); return 0; }
-        catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
+        catch (Exception ex) { Cli.Stuck(cfg, ex.Message); return 1; }
+    }
 
     case "status":
     {
@@ -772,7 +775,7 @@ switch (cmd)
     case "verify":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
-        if (cfg.Apps.Count == 0) { Console.Error.WriteLine(Cli.S(cfg, "pf_no_apps")); return 1; }
+        if (cfg.Apps.Count == 0) { Cli.Stuck(cfg, Cli.S(cfg, "pf_no_apps")); return 1; }
 
         var allOk = true;
         foreach (var app in cfg.Apps.Where(a => a.Enabled))
