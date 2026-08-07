@@ -581,8 +581,8 @@ public static class Strings
             "По этой ссылке нод нет. Проверьте её в браузере: должен открыться список или блок base64.",
             "This link returns no nodes. Open it in a browser: you should see a list or a base64 blob."),
         ["diag_server_down"] = new(
-            "Сервер подписки ответил {0} — это сбой на его стороне, ссылка ни при чём. Попробуйте позже или возьмите другую ссылку у VPN-сервиса.",
-            "The subscription server answered {0} — that is a failure on its side, not a problem with your link. Try later or ask your VPN service for another link."),
+            "Сервер подписки трижды ответил {0} — это сбой на его стороне, ссылка ни при чём. Такое проходит само; попробуйте через несколько минут.",
+            "The subscription server answered {0} three times — that is a failure on its side, not a problem with your link. It usually passes; try again in a few minutes."),
         ["diag_http_error"] = new(
             "Сервер подписки ответил {0}. Обычно так бывает, когда ссылка устарела или в ней опечатка.",
             "The subscription server answered {0}. That usually means the link has expired or has a typo."),

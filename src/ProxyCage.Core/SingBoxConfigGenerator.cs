@@ -66,7 +66,7 @@ public static class SingBoxConfigGenerator
                     ["external_controller"] = $"127.0.0.1:{settings.ClashApiPort}",
                 },
             },
-            ["dns"] = BuildDns(folderRegex),
+            ["dns"] = BuildDns(folderRegex, settings.TunAddress),
             ["inbounds"] = new JsonArray
             {
                 new JsonObject
@@ -133,11 +133,7 @@ public static class SingBoxConfigGenerator
             ["log"] = new JsonObject { ["level"] = settings.LogLevel, ["timestamp"] = true },
             ["dns"] = new JsonObject
             {
-                ["servers"] = new JsonArray
-                {
-                    new JsonObject { ["type"] = "https", ["tag"] = "dns-proxy", ["server"] = "1.1.1.1", ["detour"] = ProxyTag },
-                    new JsonObject { ["type"] = "local", ["tag"] = "dns-direct" },
-                },
+                ["servers"] = DnsServersWithDirect(settings.TunAddress),
                 ["rules"] = new JsonArray
                 {
                     new JsonObject { ["inbound"] = new JsonArray { "mixed-in" }, ["server"] = "dns-proxy" },
@@ -215,11 +211,7 @@ public static class SingBoxConfigGenerator
             ["log"] = new JsonObject { ["level"] = "warn", ["timestamp"] = true },
             ["dns"] = new JsonObject
             {
-                ["servers"] = new JsonArray
-                {
-                    new JsonObject { ["type"] = "https", ["tag"] = "dns-proxy", ["server"] = "1.1.1.1", ["detour"] = ProxyTag },
-                    new JsonObject { ["type"] = "local", ["tag"] = "dns-direct" },
-                },
+                ["servers"] = DnsServersWithDirect(cfg.TunAddress),
                 // DNS изолированных приложений — через туннель, иначе резолвинг течёт мимо
                 ["rules"] = new JsonArray
                 {
@@ -336,22 +328,24 @@ public static class SingBoxConfigGenerator
         return tun;
     }
 
-    private static JsonObject BuildDns(string folderRegex)
+    private static JsonObject BuildDns(string folderRegex, string tunAddress)
     {
         // DNS приложений из папки — через прокси (нет утечки резолвинга), остальное — локально.
+        var servers = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "https",
+                ["tag"] = "dns-proxy",
+                ["server"] = "1.1.1.1",
+                ["detour"] = ProxyTag,
+            },
+        };
+        foreach (var direct in DirectDnsServers(tunAddress)) servers.Add(direct!.DeepClone());
+
         return new JsonObject
         {
-            ["servers"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["type"] = "https",
-                    ["tag"] = "dns-proxy",
-                    ["server"] = "1.1.1.1",
-                    ["detour"] = ProxyTag,
-                },
-                new JsonObject { ["type"] = "local", ["tag"] = "dns-direct" },
-            },
+            ["servers"] = servers,
             ["rules"] = new JsonArray
             {
                 new JsonObject
@@ -363,6 +357,56 @@ public static class SingBoxConfigGenerator
             ["final"] = "dns-direct",
             ["strategy"] = "prefer_ipv4",
         };
+    }
+
+    /// <summary>Резолвер для туннеля плюс настоящие DNS машины для всего остального.</summary>
+    private static JsonArray DnsServersWithDirect(string tunAddress)
+    {
+        var servers = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "https", ["tag"] = "dns-proxy",
+                ["server"] = "1.1.1.1", ["detour"] = ProxyTag,
+            },
+        };
+        foreach (var direct in DirectDnsServers(tunAddress)) servers.Add(direct!.DeepClone());
+        return servers;
+    }
+
+    /// <summary>
+    /// Куда спрашивать имена для ВСЕГО, что мимо туннеля.
+    ///
+    /// Нельзя писать «спрашивай систему» (type: local): с поднятым TUN система спрашивает
+    /// наш же туннель, и получается петля — машина перестаёт резолвить что угодно.
+    /// Поймано живьём на Windows. Поэтому берём настоящие адреса DNS машины и ходим
+    /// в них НАПРЯМУЮ, мимо туннеля. Не нашлись — публичный резолвер, тоже напрямую:
+    /// пусть лучше имена резолвятся не тем сервером, чем не резолвятся вовсе.
+    /// </summary>
+    private static JsonArray DirectDnsServers(string tunAddress)
+    {
+        var servers = new JsonArray();
+        var system = Os.SystemDnsServers(tunAddress);
+
+        if (system.Count == 0)
+        {
+            servers.Add(new JsonObject
+            {
+                ["type"] = "udp", ["tag"] = "dns-direct",
+                ["server"] = "1.1.1.1", ["detour"] = DirectTag,
+            });
+            return servers;
+        }
+
+        for (var i = 0; i < system.Count; i++)
+            servers.Add(new JsonObject
+            {
+                ["type"] = "udp",
+                ["tag"] = i == 0 ? "dns-direct" : $"dns-direct-{i + 1}",
+                ["server"] = system[i],
+                ["detour"] = DirectTag,
+            });
+        return servers;
     }
 
     private static JsonObject BuildRoute(string folderRegex, ProxyCageSettings settings)

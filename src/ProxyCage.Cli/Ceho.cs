@@ -88,10 +88,9 @@ public static class Ceho
         // Кэш обновляем ТОЛЬКО годным ответом. Иначе страница-заглушка провайдера
         // (у неё бывает и код 200) затрёт последнюю рабочую копию, и продукт
         // останется вообще без нод — отказ там, где его можно было пережить.
-        try
+        var (fresh, failure) = await FetchWithRetriesAsync(sub.Url);
+        if (fresh is not null)
         {
-            using var http = MakeClient();
-            var fresh = await http.GetStringAsync(sub.Url);
             var freshNodes = SubscriptionParser.Parse(fresh, lang);
             if (freshNodes.Count > 0)
             {
@@ -102,10 +101,7 @@ public static class Ceho
             }
             if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» ответила, но нод в ответе нет");
         }
-        catch (Exception ex)
-        {
-            if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» не скачалась: {ex.Message}");
-        }
+        else if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» не скачалась: {failure}");
 
         if (File.Exists(cache))
         {
@@ -119,6 +115,44 @@ public static class Ceho
 
         Mark(sub, false);
         return Array.Empty<ProxyNode>();
+    }
+
+    /// <summary>
+    /// Сколько раз пробовать скачать подписку, прежде чем считать её недоступной.
+    ///
+    /// Одной попытки мало: сервис подписки может отвечать 502 минуту-другую и тут же
+    /// работать. Поймано живьём — владелец видел рабочую ссылку в браузере, а продукт
+    /// сдавался с первого отказа и говорил «нод нет». Браузер в такой ситуации человек
+    /// просто перезагружает; делаем то же самое, только сами.
+    /// </summary>
+    private const int FetchAttempts = 3;
+
+    /// <summary>Текст подписки, либо null и человеческая причина последней неудачи.</summary>
+    private static async Task<(string? Body, string? Failure)> FetchWithRetriesAsync(string url)
+    {
+        string? failure = null;
+        for (var attempt = 1; attempt <= FetchAttempts; attempt++)
+        {
+            try
+            {
+                using var http = MakeClient();
+                using var response = await http.GetAsync(url);
+                if (response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    if (body.Trim().Length > 0) return (body, null);
+                    failure = $"пустой ответ (попытка {attempt})";
+                }
+                else failure = $"HTTP {(int)response.StatusCode} (попытка {attempt})";
+            }
+            catch (Exception ex)
+            {
+                failure = $"{ex.Message} (попытка {attempt})";
+            }
+
+            if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+        return (null, failure);
     }
 
     /// <summary>Ноды из того, что уже есть под рукой: ссылка на ноду или файл. Иначе null.</summary>
@@ -291,8 +325,17 @@ public static class Ceho
 
         try
         {
+            // пробуем несколько раз: мигающий сервис не повод объявлять ссылку мёртвой
             using var http = MakeClient();
-            using var response = await http.GetAsync(uri);
+            HttpResponseMessage response = null!;
+            for (var attempt = 1; attempt <= FetchAttempts; attempt++)
+            {
+                response?.Dispose();
+                response = await http.GetAsync(uri);
+                if (response.IsSuccessStatusCode) break;
+                if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+            using var _ = response;
             var code = (int)response.StatusCode;
 
             if (!response.IsSuccessStatusCode)

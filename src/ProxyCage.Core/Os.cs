@@ -54,6 +54,150 @@ public static class Os
         return FindOnPath(SingBoxFileName);
     }
 
+    /// <summary>
+    /// Настоящие DNS-серверы машины — те, которыми она пользуется БЕЗ нашего туннеля.
+    ///
+    /// Нужны, чтобы не устроить петлю: с поднятым TUN система спрашивает наш туннель,
+    /// а туннель, если сказать ему «спрашивай систему», спрашивает её же. Поймано живьём
+    /// на Windows: при включённой защите машина переставала резолвить вообще всё.
+    /// Адреса из подсети нашего туннеля отбрасываются — это и есть петля.
+    /// </summary>
+    public static IReadOnlyList<string> SystemDnsServers(string tunAddress)
+    {
+        var ours = tunAddress.Split('/')[0];
+        var oursPrefix = ours[..(ours.LastIndexOf('.') + 1)];
+
+        var found = Kind switch
+        {
+            OsKind.Windows => FromWindowsDns(),
+            OsKind.Mac => FromMacDns(),
+            _ => FromResolvConf(),
+        };
+
+        var candidates = found
+            // четыре октета через точку: «53» тоже разбирается как адрес, и такой
+            // мусор уезжал в конфиг движка
+            .Where(a => a.Count(c => c == '.') == 3
+                        && System.Net.IPAddress.TryParse(a, out var ip)
+                        && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            .Where(a => a != "0.0.0.0" && !a.StartsWith("127.") && !a.StartsWith(oursPrefix, StringComparison.Ordinal))
+            .Distinct()
+            .ToList();
+
+        // Порядок важнее самого списка.
+        //
+        // 1. DNS физической сетевой карты, если он отвечает, — он переживёт наш туннель.
+        // 2. Публичный резолвер напрямую — работает всегда, пока есть интернет.
+        // 3. Всё остальное — только если ничего лучше нет.
+        //
+        // Почему не берём просто «тот, что отвечает»: на машине владельца отвечал только
+        // DNS ЧУЖОГО туннеля (happ-tun, 172.18.0.2). Наш TUN перекраивает маршруты, чужой
+        // туннель ломается — и его резолвер пропадает вместе с ним. Машина остаётся без
+        // имён целиком. Поймано живьём на Windows.
+        var physical = candidates.Where(a => !LooksLikeTunnelAddress(a)).Where(Answers).ToList();
+        if (physical.Count > 0) return physical.Take(2).ToList();
+
+        return new List<string> { PublicResolver };
+    }
+
+    /// <summary>Публичный резолвер: к нему ходим напрямую, когда своего рабочего нет.</summary>
+    public const string PublicResolver = "1.1.1.1";
+
+    /// <summary>
+    /// Похоже на адрес внутри туннеля, а не на настоящий шлюз сети.
+    /// Туннельные клиенты живут в 10/8 и 172.16/12; домашние сети — почти всегда 192.168/16.
+    /// Правило грубое, поэтому оно только определяет ПОРЯДОК: если такой адрес окажется
+    /// единственным рабочим, мы всё равно предпочтём ему публичный резолвер.
+    /// </summary>
+    private static bool LooksLikeTunnelAddress(string address)
+    {
+        if (address.StartsWith("10.", StringComparison.Ordinal)) return true;
+        if (!address.StartsWith("172.", StringComparison.Ordinal)) return false;
+        var second = address.Split('.').ElementAtOrDefault(1);
+        return int.TryParse(second, out var octet) && octet is >= 16 and <= 31;
+    }
+
+    /// <summary>Отвечает ли этот DNS-сервер на настоящий запрос. Две секунды на ответ.</summary>
+    private static bool Answers(string server)
+    {
+        try
+        {
+            using var udp = new System.Net.Sockets.UdpClient();
+            udp.Client.ReceiveTimeout = 2000;
+            udp.Connect(server, 53);
+
+            // минимальный запрос A-записи для example.com
+            var query = new byte[] {
+                0x2a, 0x2a, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                7, (byte)'e', (byte)'x', (byte)'a', (byte)'m', (byte)'p', (byte)'l', (byte)'e',
+                3, (byte)'c', (byte)'o', (byte)'m', 0x00, 0x00, 0x01, 0x00, 0x01,
+            };
+            udp.Send(query, query.Length);
+
+            var from = new System.Net.IPEndPoint(System.Net.IPAddress.Any, 0);
+            var answer = udp.Receive(ref from);
+            if (answer.Length < 12 || answer[0] != 0x2a || answer[1] != 0x2a) return false;
+            if ((answer[2] & 0x80) == 0) return false;              // это не ответ
+            if ((answer[3] & 0x0F) != 0) return false;              // ответ с ошибкой
+
+            // Мало «ответил» — нужен настоящий адрес в ответе. Виртуальные сетевые карты
+            // (Docker, WSL) держат свой DNS, который откликается, но публичных имён не знает.
+            // Поймано живьём: такой сервер уехал в конфиг, и машина осталась без имён.
+            var answers = (answer[6] << 8) | answer[7];
+            return answers > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static IEnumerable<string> FromWindowsDns()
+    {
+        // Сначала DNS того интерфейса, через который машина реально выходит в интернет.
+        // У Windows таких интерфейсов много: Docker, WSL, виртуальные сети — у каждого
+        // свой DNS, и он даже отвечает, но публичные имена знает не всякий. Поймано живьём:
+        // в конфиг уезжал DNS докеровского моста, и с поднятой защитой имена не резолвились.
+        // Сначала DNS ФИЗИЧЕСКИХ сетевых карт. На машине запросто работает ещё один VPN
+        // (у владельца это был happ-tun), и его DNS живёт только пока жив тот туннель.
+        // Наш TUN перекраивает маршруты — чужой резолвер становится недостижим, и машина
+        // остаётся без имён. Поймано живьём на Windows.
+        const string script =
+            "Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | " +
+            "ForEach-Object { (Get-DnsClientServerAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4 " +
+            "-ErrorAction SilentlyContinue).ServerAddresses }; " +
+            "Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses } | " +
+            "ForEach-Object { $_.ServerAddresses }";
+
+        var (code, output) = Run("powershell", $"-NoProfile -Command \"{script}\"", 20000);
+        return code == 0 ? output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim())
+                         : Array.Empty<string>();
+    }
+
+    private static IEnumerable<string> FromMacDns()
+    {
+        var (code, output) = Run("scutil", "--dns", 15000);
+        if (code != 0) return Array.Empty<string>();
+        return output.Split('\n')
+            .Where(l => l.Contains("nameserver[", StringComparison.Ordinal))
+            // берём всё ПОСЛЕ первого двоеточия: у IPv6 адрес сам полон двоеточий,
+            // и деление по последнему превращало «fd7a::53» в «53» — а .NET считает
+            // «53» адресом 0.0.0.53 и молча пропускает его дальше
+            .Select(l => l[(l.IndexOf(':') + 1)..].Trim());
+    }
+
+    private static IEnumerable<string> FromResolvConf()
+    {
+        try
+        {
+            return File.ReadAllLines("/etc/resolv.conf")
+                .Where(l => l.StartsWith("nameserver", StringComparison.Ordinal))
+                .Select(l => l.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "");
+        }
+        catch { return Array.Empty<string>(); }
+    }
+
     /// <summary>curl нужен для проб выхода — HttpClient через локальный вход sing-box глухо таймаутит.</summary>
     public static string? ResolveCurl()
     {
