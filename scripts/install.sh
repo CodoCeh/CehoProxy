@@ -59,6 +59,7 @@ chmod 755 "$ROOT"
 # короткая команда: симлинк, а не алиас оболочки — алиас не виден скриптам и службам
 ln -sf "$BIN" /usr/local/bin/chp
 
+echo "Страница продукта: https://github.com/$REPO"
 echo "Программа: $BIN"
 echo "Короткая команда: chp"
 echo "Настройки: $ROOT"

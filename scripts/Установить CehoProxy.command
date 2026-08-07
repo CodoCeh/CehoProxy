@@ -22,6 +22,9 @@ echo "Для установки нужен пароль администрато
 echo "Он вводится в это окно, мы его не видим и никуда не отправляем."
 echo
 
+echo "Страница продукта: https://github.com/CodoCeh/CehoProxy"
+echo
+
 sudo "$BIN" install
 
 echo

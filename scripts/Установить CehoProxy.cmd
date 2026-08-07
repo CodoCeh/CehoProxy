@@ -26,6 +26,8 @@ if errorlevel 1 (
   exit /b 0
 )
 
+echo Страница продукта: https://github.com/CodoCeh/CehoProxy
+echo.
 "%EXE%" install
 echo.
 pause

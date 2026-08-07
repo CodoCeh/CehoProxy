@@ -50,6 +50,8 @@ if (-not (Test-Path $Source)) { Write-Host "Не найден файл прог�
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 Copy-Item -Path $Source -Destination $exe -Force
 
+Write-Host "Страница продукта: https://github.com/$Repo"
+
 # всё остальное — папка, короткая команда chp, PATH — делает сама программа,
 # чтобы установка из скрипта и установка двойным щелчком не разъезжались
 & $exe install
