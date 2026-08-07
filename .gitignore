@@ -8,7 +8,6 @@ out/
 sing-box
 sing-box.exe
 wintun.dll
-src/ProxyCage.App/runtime/
 
 # подписки, настройки и рабочие файлы — никогда в репозиторий
 config.json
