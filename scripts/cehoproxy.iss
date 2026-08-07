@@ -18,6 +18,11 @@ AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppUrl}
 ; страница продукта — она же в «Программах и компонентах» Windows
+; без этого свойства файла в Проводнике пустые: у установщика не видно ни версии, ни имени
+VersionInfoVersion={#AppVersion}
+VersionInfoProductName={#AppName}
+VersionInfoDescription={#AppName} — установка
+VersionInfoCompany={#AppPublisher}
 AppSupportURL={#RepoUrl}
 AppUpdatesURL={#RepoUrl}
 DefaultDirName={commonappdata}\CehoProxy
