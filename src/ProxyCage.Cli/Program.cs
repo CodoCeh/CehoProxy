@@ -50,7 +50,7 @@ if (cmd == "install")
     Console.WriteLine();
 
     string installed;
-    try { installed = Installer.Install(Ceho.Root, m => Console.WriteLine("  " + m)); }
+    try { installed = Installer.Install(Ceho.Root, m => Console.WriteLine("  " + m), cfg0.Language); }
     catch (Exception ex) { Console.Error.WriteLine("  " + ex.Message); return 1; }
 
     // Спрашивать про движок можно только там, где есть кому отвечать.
@@ -63,7 +63,7 @@ if (cmd == "install")
         && (args.Contains("--with-engine")
             || (mayAskAboutEngine && Cli.AskYes(Strings.T(cfg0.Language, "inst_engine_ask"), true))))
     {
-        try { await Installer.DownloadEngineAsync(Ceho.Root, m => Console.WriteLine("  " + m)); }
+        try { await Installer.DownloadEngineAsync(Ceho.Root, m => Console.WriteLine("  " + m), cfg0.Language); }
         catch (Exception ex)
         {
             Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_engine_failed", ex.Message));
@@ -695,7 +695,7 @@ switch (cmd)
         }
         catch { }
 
-        Installer.Remove(Ceho.Root, Console.WriteLine);
+        Installer.Remove(Ceho.Root, Console.WriteLine, cfg.Language);
 
         // движок убираем, только если он лежит в НАШЕЙ папке: туда его кладём мы сами,
         // а системный из пакетного менеджера трогать нельзя — он не наш
@@ -748,8 +748,9 @@ switch (cmd)
         Console.WriteLine(Cli.S(cfg, "countries_title") + ": " +
             (cfg.PreferredCountries.Count > 0
                 ? string.Join(", ", cfg.PreferredCountries)
-                : Cli.S(cfg, "country_any") +
-                  (cfg.ExcludedCountries.Count > 0 ? $" (−{string.Join(", ", cfg.ExcludedCountries)})" : "")));
+                : cfg.ExcludedCountries.Count > 0
+                    ? Cli.S(cfg, "country_any_but", string.Join(", ", cfg.ExcludedCountries))
+                    : Cli.S(cfg, "country_any")));
         if (!Auth.HasPassword(cfg)) Console.WriteLine(Cli.S(cfg, "auth_no_password"));
         if (running)
         {
@@ -849,7 +850,9 @@ if (cmd is "daemon" or "web")
         try
         {
             var c = CehoConfig.Load(Ceho.ConfigPath);
-            var nodes = await Ceho.LoadAllNodesAsync(c);
+            // на запуске поднимаемся на сохранённой копии подписок, если она есть:
+            // ждать медленного провайдера с выключенной защитой — худшее из положений
+            var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: true);
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 
@@ -965,7 +968,8 @@ if (cmd is "daemon" or "web")
             Console.Error.WriteLine($"  {b.Title}");
             if (b.Fix is not null) Console.Error.WriteLine($"    {b.Fix}");
         }
-        lastError = string.Join(" · ", startupBlockers.Select(b => b.Title));
+        // в панель это не кладём: она показывает те же помехи отдельным блоком,
+        // с объяснением и командой — дублировать их красной строкой незачем
     }
 
     try { web.Start(cfg.WebPort); }
@@ -987,7 +991,9 @@ if (cmd is "daemon" or "web")
         else
         {
             var err = await StartTunnel();
-            if (err is not null) Console.Error.WriteLine($"{Strings.T(cfg.Language, "start_failed")}: {err}");
+            Console.Error.WriteLine(err is null
+                ? Strings.T(cfg.Language, "state_on")
+                : $"{Strings.T(cfg.Language, "start_failed")}: {err}");
         }
     }
 
@@ -1002,6 +1008,19 @@ if (cmd is "daemon" or "web")
     {
         while (!cts.IsCancellationRequested)
         {
+            // движок может уйти и после успешного старта. Без этой проверки демон
+            // продолжал бы жить, панель показывала бы «включено», а изоляции бы не было
+            if (proc is not null && !proc.IsRunning)
+            {
+                var reason = proc.LastLog ?? Strings.T(cfg.Language, "engine_died");
+                Console.Error.WriteLine($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
+                StopTunnel();
+                var again = await StartTunnel();
+                Console.Error.WriteLine(again is null
+                    ? Strings.T(cfg.Language, "state_on")
+                    : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
+            }
+
             if (proc is not null)
             {
                 var port = CehoConfig.Load(Ceho.ConfigPath).MixedPort;

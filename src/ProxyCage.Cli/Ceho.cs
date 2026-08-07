@@ -45,8 +45,17 @@ public static class Ceho
         }
     }
 
-    /// <summary>Браузерные заголовки: без них Cloudflare отдаёт 403 независимо от блокировки.</summary>
-    private static HttpClient MakeClient(string? proxy = null)
+    /// <summary>
+    /// Два разных собеседника, поэтому и представляемся по-разному.
+    ///
+    /// Панели подписок (Marzban, Remnawave, 3x-ui и подобные) смотрят на User-Agent:
+    /// браузеру они отдают человеческую страницу со ссылками и QR-кодом, а клиенту —
+    /// сам список нод. Поймано живьём на рабочей ссылке владельца: под видом Chrome
+    /// приходило 118 КБ разметки, и продукт честно говорил «нод нет», хотя ссылка живая.
+    /// Файловые хостинги за Cloudflare, наоборот, без браузерных заголовков дают 403.
+    /// Поэтому сначала спрашиваем как клиент, и только если не вышло — как браузер.
+    /// </summary>
+    private static HttpClient MakeClient(string? proxy = null, bool asBrowser = true)
     {
         var handler = new HttpClientHandler();
         if (proxy is not null)
@@ -55,12 +64,29 @@ public static class Ceho
             handler.UseProxy = true;
         }
         var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
-        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36");
-        c.DefaultRequestHeaders.TryAddWithoutValidation("Accept",
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
-        c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+        if (asBrowser)
+        {
+            c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36");
+            c.DefaultRequestHeaders.TryAddWithoutValidation("Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+            c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+        }
+        else
+        {
+            c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                "CehoProxy/" + Updater.CurrentVersion);
+            c.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "text/plain,*/*");
+        }
         return c;
+    }
+
+    /// <summary>Ответ похож на веб-страницу, а не на подписку.</summary>
+    private static bool LooksLikeWebPage(string body)
+    {
+        var head = body.TrimStart();
+        return head.StartsWith('<')
+            || head.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class WebProxyStub : IWebProxy
@@ -72,8 +98,15 @@ public static class Ceho
         public bool IsBypassed(Uri host) => host.IsLoopback;
     }
 
-    /// <summary>Ноды одной подписки; при сбое сети берётся последняя удачная копия с диска.</summary>
-    private static async Task<IReadOnlyList<ProxyNode>> LoadOneAsync(SubscriptionEntry sub, string lang)
+    /// <summary>
+    /// Ноды одной подписки; при сбое сети берётся последняя удачная копия с диска.
+    ///
+    /// preferCache — режим для запуска защиты: если копия уже есть, поднимаемся на ней
+    /// сразу, а свежесть догоняет фоновая проверка. Поймано живьём: провайдер отвечал
+    /// по минуте, и всё это время защита была выключена, а машина молчала о причине.
+    /// </summary>
+    private static async Task<IReadOnlyList<ProxyNode>> LoadOneAsync(
+        SubscriptionEntry sub, string lang, bool preferCache = false)
     {
         // ссылка может и не быть ссылкой: одна нода целиком или файл на диске.
         // Тогда качать нечего — разбираем на месте
@@ -84,6 +117,12 @@ public static class Ceho
         }
 
         var cache = SubCachePath(sub.Name);
+
+        if (preferCache && File.Exists(cache))
+        {
+            var saved = SubscriptionParser.Parse(await File.ReadAllTextAsync(cache), lang);
+            if (saved.Count > 0) return Tag(saved, sub.Name);
+        }
 
         // Кэш обновляем ТОЛЬКО годным ответом. Иначе страница-заглушка провайдера
         // (у неё бывает и код 200) затрёт последнюю рабочую копию, и продукт
@@ -131,17 +170,23 @@ public static class Ceho
     private static async Task<(string? Body, string? Failure)> FetchWithRetriesAsync(string url)
     {
         string? failure = null;
+        string? webPage = null;          // страница вместо подписки: пригодится, если ничего лучше не пришло
         for (var attempt = 1; attempt <= FetchAttempts; attempt++)
         {
+            // первый заход — как клиент подписки: панели отдают ему список нод.
+            // дальше — как браузер: так отвечают файловые хостинги за Cloudflare.
+            // числа попыток это не увеличивает, ждать дольше человеку не приходится
+            var asBrowser = attempt > 1;
             try
             {
-                using var http = MakeClient();
+                using var http = MakeClient(null, asBrowser);
                 using var response = await http.GetAsync(url);
                 if (response.IsSuccessStatusCode)
                 {
                     var body = await response.Content.ReadAsStringAsync();
-                    if (body.Trim().Length > 0) return (body, null);
-                    failure = $"пустой ответ (попытка {attempt})";
+                    if (body.Trim().Length == 0) failure = $"пустой ответ (попытка {attempt})";
+                    else if (LooksLikeWebPage(body)) webPage ??= body;
+                    else return (body, null);
                 }
                 else failure = $"HTTP {(int)response.StatusCode} (попытка {attempt})";
             }
@@ -152,7 +197,8 @@ public static class Ceho
 
             if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(2));
         }
-        return (null, failure);
+        // подписки не дождались: отдаём страницу, чтобы разбор назвал причину человеку
+        return webPage is not null ? (webPage, null) : (null, failure);
     }
 
     /// <summary>Ноды из того, что уже есть под рукой: ссылка на ноду или файл. Иначе null.</summary>
@@ -204,12 +250,14 @@ public static class Ceho
     /// в один пул, а выбор живой оставляем urltest внутри движка — он и есть ротация.
     /// Дедупликация по адресу и логину: один и тот же сервер часто встречается в двух подписках.
     /// </summary>
-    public static async Task<IReadOnlyList<ProxyNode>> LoadAllNodesAsync(CehoConfig cfg)
+    public static async Task<IReadOnlyList<ProxyNode>> LoadAllNodesAsync(
+        CehoConfig cfg, bool preferCache = false)
     {
         if (cfg.Subscriptions.Count == 0)
             throw new InvalidOperationException(Strings.T(cfg.Language, "pf_no_subs"));
 
-        var lists = await Task.WhenAll(cfg.Subscriptions.Select(s => LoadOneAsync(s, cfg.Language)));
+        var lists = await Task.WhenAll(
+            cfg.Subscriptions.Select(s => LoadOneAsync(s, cfg.Language, preferCache)));
 
         var pool = new List<ProxyNode>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -325,8 +373,9 @@ public static class Ceho
 
         try
         {
-            // пробуем несколько раз: мигающий сервис не повод объявлять ссылку мёртвой
-            using var http = MakeClient();
+            // диагностика должна видеть ровно то же, что и обычная загрузка: там мы
+            // сначала представляемся клиентом подписки, иначе панель отдаёт свою страницу
+            using var http = MakeClient(null, asBrowser: false);
             HttpResponseMessage response = null!;
             for (var attempt = 1; attempt <= FetchAttempts; attempt++)
             {
@@ -344,7 +393,7 @@ public static class Ceho
             var body = await response.Content.ReadAsStringAsync();
             if (body.Trim().Length == 0) return Strings.T(lang, "diag_empty");
 
-            var looksHtml = body.TrimStart().StartsWith('<');
+            var looksHtml = LooksLikeWebPage(body);
             return Strings.T(lang, looksHtml ? "diag_html" : "diag_unknown_format",
                 body.Trim().Length);
         }

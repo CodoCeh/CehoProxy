@@ -109,8 +109,9 @@ public static class Assistant
 
         var countries = cfg.PreferredCountries.Count > 0
             ? string.Join(", ", cfg.PreferredCountries)
-            : Cli.S(cfg, "country_any") +
-              (cfg.ExcludedCountries.Count > 0 ? $" (−{string.Join(", ", cfg.ExcludedCountries)})" : "");
+            : cfg.ExcludedCountries.Count > 0
+                ? Cli.S(cfg, "country_any_but", string.Join(", ", cfg.ExcludedCountries))
+                : Cli.S(cfg, "country_any");
 
         Row(Cli.S(cfg, "nav_subs"), subs);
         Row(Cli.S(cfg, "nav_apps"), apps);

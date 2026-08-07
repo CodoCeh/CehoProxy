@@ -66,6 +66,7 @@ public static class WebUi
     nav.tabs a.on{background:var(--brand-ink);color:#f4fbf7;font-weight:600}
 
     h2{font-size:16px;font-weight:660;margin:0 0 10px;letter-spacing:-.01em}
+    *+h2{margin-top:26px}
     section{margin:0 0 30px}
     p{margin:0 0 12px}
     .lede{color:var(--subtext);max-width:66ch}
@@ -112,6 +113,13 @@ public static class WebUi
     button.ghost:hover{background:var(--panel2)}
     button.danger{background:transparent;color:var(--danger-ink);border-color:var(--line);font-weight:500}
     button.danger:hover{background:rgba(179,58,49,.09)}
+    form.stack{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:12px 0}
+    form.stack .field{width:100%;max-width:560px}
+    form.stack .hint{margin:0}
+    button[disabled]{background:transparent;color:var(--muted);border-color:var(--line);
+      font-weight:500;cursor:not-allowed}
+    button[disabled]:hover{background:transparent}
+    button[disabled]:active{transform:none}
     label.check{display:inline-flex;align-items:center;gap:8px;min-height:40px;cursor:pointer}
     label.field{display:inline-flex;align-items:center;gap:8px;min-height:40px}
     label.field span{color:var(--muted);font-size:13px;white-space:nowrap}

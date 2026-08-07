@@ -59,12 +59,13 @@ public static class Strings
         ["exit_is"] = new("выход: {0} · {1}", "exit: {0} · {1}"),
         ["apps_isolated"] = new("Программ в изоляции: {0}", "Apps isolated: {0}"),
         ["subs_count"] = new("Подписок: {0}", "Subscriptions: {0}"),
+        ["country_any_but"] = new("любая, кроме {0}", "any except {0}"),
         ["country_any"] = new("любая", "any"),
 
         // ── предстартовая проверка ───────────────────────────────────
         ["pf_rights_ok"] = new("Прав достаточно", "Sufficient privileges"),
         ["pf_rights_need_win"] = new("Нужны права администратора", "Administrator rights required"),
-        ["pf_rights_need_unix"] = new("Нужен запуск от root", "Must be run as root"),
+        ["pf_rights_need_unix"] = new("Нужны права администратора", "Administrator rights required"),
         ["pf_rights_detail"] = new(
             "Без этого нельзя создать сетевой интерфейс, через который идёт изоляция.",
             "Without them the network interface used for isolation cannot be created."),
@@ -74,8 +75,8 @@ public static class Strings
             "Close the app, right-click its icon and choose \"Run as administrator\". " +
             "To avoid doing this every time, enable autostart — it starts with the right privileges by itself."),
         ["pf_rights_fix_unix"] = new(
-            "Запустите через sudo: sudo chp daemon. Чтобы не вводить пароль каждый раз, включите автозапуск: sudo chp autostart on.",
-            "Run it with sudo: sudo chp daemon. To avoid typing the password every time, enable autostart: sudo chp autostart on."),
+            "Наберите в терминале: sudo chp daemon. Чтобы не вводить пароль каждый раз, включите автозапуск: sudo chp autostart on.",
+            "Type in a terminal: sudo chp daemon. To avoid typing the password every time, enable autostart: sudo chp autostart on."),
         ["pf_engine_ok"] = new("Движок на месте", "Engine found"),
         ["pf_engine_missing"] = new("Не найден {0}", "{0} not found"),
         ["pf_engine_detail"] = new(
@@ -194,14 +195,17 @@ public static class Strings
         ["auth_hint"] = new(
             "Панель доступна всем, кто вошёл на этот компьютер, поэтому она закрыта паролем.",
             "The panel is reachable by anyone logged into this machine, so it is password-protected."),
+        ["auth_hint_set"] = new(
+            "Панель и команды спрашивают пароль. Компьютер общий — так и оставьте.",
+            "The panel and the commands ask for the password. Keep it that way on a shared machine."),
         ["auth_needed_cli"] = new(
             "Нужен пароль. Укажите его ключом --password или переменной CEHOPROXY_PASSWORD.",
             "A password is required. Pass it with --password or via CEHOPROXY_PASSWORD."),
         ["auth_set_ok"] = new("Пароль установлен.", "Password set."),
         ["auth_cleared"] = new("Пароль снят.", "Password removed."),
         ["auth_no_password"] = new(
-            "Пароль не задан: панелью и командами может пользоваться любой, кто вошёл на эту машину.",
-            "No password set: anyone logged into this machine can use the panel and the commands."),
+            "Панелью и командами может пользоваться любой, кто вошёл на этот компьютер. Пароль это закроет.",
+            "Anyone logged into this machine can use the panel and the commands. A password closes that."),
 
         // ── страны ───────────────────────────────────────────────────
         ["countries_title"] = new("Страны выхода", "Exit countries"),
@@ -211,9 +215,11 @@ public static class Strings
             "An unchecked country means its nodes are excluded from the pool. " +
             "If no node passes the filter, the tunnel will not start."),
         ["countries_none_left"] = new(
-            "После фильтра по странам не осталось ни одной ноды: {0}. " +
-            "Верните хотя бы одну страну.",
-            "No nodes left after the country filter: {0}. Turn at least one country back on."),
+            "Вы выключили {0}, а других стран в подписках нет. Верните хотя бы одну галочку.",
+            "You turned {0} off, and the subscriptions have no other countries. Turn at least one back on."),
+        ["countries_only_left"] = new(
+            "Оставлено только {0}, но нод этих стран в подписках нет. Верните другие страны или добавьте подписку.",
+            "Only {0} is allowed, but the subscriptions have no nodes there. Allow other countries or add a subscription."),
         ["col_country"] = new("Страна", "Country"),
         ["col_nodes"] = new("Нод", "Nodes"),
         ["col_alive"] = new("Отвечают", "Responding"),
@@ -227,7 +233,6 @@ public static class Strings
             "Latency cannot be measured while protection is on: the tunnel answers for every address " +
             "itself, so every node looks alive. Turn protection off, measure, then turn it back on."),
         ["measure_done"] = new("Замерено стран: {0}.", "Countries measured: {0}."),
-        ["speed_title"] = new("Отсев медленных нод", "Dropping slow nodes"),
         ["speed_row"] = new("Медленные ноды", "Slow nodes"),
         ["speed_row_off"] = new("не отсеиваются", "kept"),
         ["speed_ask"] = new(
@@ -255,8 +260,8 @@ public static class Strings
             "После отсева медленнее {0} мс в пуле не осталось ни одной ноды. Поднимите порог или выключите отсев: chp speed off",
             "No node is left in the pool after dropping everything slower than {0} ms. Raise the threshold or turn the filter off: chp speed off"),
         ["speed_unmeasured_note"] = new(
-            "Ноды hysteria2 и tuic по скорости не отсеиваются: они поверх UDP, и TCP-замер соврал бы.",
-            "hysteria2 and tuic nodes are never dropped by speed: they run over UDP and a TCP probe would lie."),
+            "Ноды hysteria2 и tuic порог не отсеивает — по причине выше.",
+            "The threshold never drops hysteria2 and tuic nodes, for the reason above."),
         ["speed_usage"] = new(
             "Нужно: chp speed <мс> · chp speed off",
             "Usage: chp speed <ms> · chp speed off"),
@@ -295,7 +300,7 @@ public static class Strings
             "what the rule will cover: the whole folder is isolated, because programs often start " +
             "helper processes under different names."),
         ["apps_hint_mac"] = new(
-            "Для программы из /Applications укажите сам пакет .app.",
+            "Для программы из /Applications укажите сам пакет — папку с расширением .app.",
             "For an app from /Applications point to the .app bundle itself."),
         ["apps_hint_sysdir"] = new(
             "Программу из системного каталога изолируем по одному файлу: весь каталог трогать нельзя.",
@@ -343,27 +348,27 @@ public static class Strings
             "Прокси работает, только пока защита включена.",
             "The proxy works only while protection is on."),
 
+        ["check_title"] = new("Проверка и переключение", "Checking and switching"),
+        ["checkurl_label"] = new("Адрес для проверки", "Address to check"),
         ["rotation_label"] = new(
             "Переключаться на живую ноду автоматически",
             "Switch to a working node automatically"),
         ["checkurl_hint"] = new(
-            "По этому адресу проверяется, работает ли туннель, и по нему же принимается решение " +
-            "о переключении. Укажите то, ради чего туннель вам нужен: нода может отвечать и при этом " +
-            "не пускать на нужный сайт, поэтому проверка идёт настоящим запросом, а не пингом.",
-            "This address is used to check whether the tunnel works and to decide about switching. " +
-            "Point it at what you actually need: a node can respond and still not let you reach the site, " +
+            "Укажите то, ради чего туннель вам нужен. Нода может отвечать и при этом не пускать " +
+            "на нужный сайт, поэтому проверка идёт настоящим запросом, а не пингом.",
+            "Point it at what you actually need. A node can respond and still not let you reach the site, " +
             "so the check is a real request, not a ping."),
         ["remote_no_panel"] = new(
-            "Настройки открыты только администратору, а панель сейчас не запущена. Попросите администратора запустить службу: sudo chp daemon",
-            "Settings are readable by the administrator only, and the panel is not running. Ask the administrator to start the service: sudo chp daemon"),
+            "Настройки открыты только администратору, а панель сейчас не запущена. Попросите администратора запустить службу: {0}chp daemon",
+            "Settings are readable by the administrator only, and the panel is not running. Ask the administrator to start the service: {0}chp daemon"),
         ["remote_failed"] = new(
             "Не удалось обратиться к панели: {0}", "Could not reach the panel: {0}"),
         ["remote_not_allowed"] = new(
             "Команду «{0}» может выполнить только администратор на этой машине.",
             "The \"{0}\" command can only be run by an administrator on this machine."),
         ["pool_empty"] = new(
-            "Ни одна подписка не отдала нод, и рабочих копий на диске нет. Проверьте ссылки в разделе «Подписки».",
-            "No subscription returned any node and there are no working copies on disk. Check the links in \"Subscriptions\"."),
+            "Ни одна подписка не отдала нод, и сохранённых копий нет. Проверьте ссылки: chp subs",
+            "No subscription returned any node and there are no saved copies. Check the links: chp subs"),
         ["ai_title"] = new("Найдено на этом компьютере", "Found on this machine"),
         ["ai_lede"] = new(
             "Известные ИИ-инструменты найдены в обычных местах установки. Отправьте в туннель те, которым он нужен: остальные продолжат работать напрямую.",
@@ -397,6 +402,10 @@ public static class Strings
         ["run_lede"] = new(
             "Часть помощников запускается не значком, а командой в терминале, и своей папки на диске у них нет. Такая команда — файл, который выполняет чужая программа-исполнитель, одна на десятки разных команд. Компьютер видит её, а не вашего помощника, и отправить её в туннель нельзя: туда уедут все команды подряд. Для таких есть отдельная кнопка:",
             "Some helpers are started by a command in a terminal rather than by an icon, and have no folder of their own. Such a command is a file executed by a shared runner program that serves dozens of different commands. The computer sees the runner, not your helper, so sending it through the tunnel is not an option: every command would go with it. There is a separate button for these:"),
+        ["run_sample_name"] = new("имя-команды", "command-name"),
+        ["run_sample_hint"] = new(
+            "Вместо «имя-команды» подставьте свою. Не знаете какую — наберите chp wrap без ничего: программа покажет, что нашла на компьютере.",
+            "Replace \"command-name\" with yours. Not sure which — type chp wrap with no arguments: the program will show what it found on this machine."),
         ["run_once"] = new("Разово", "Once"),
         ["run_always"] = new("Навсегда", "Permanently"),
         ["run_undo"] = new("Вернуть обратно", "Undo"),
@@ -449,18 +458,29 @@ public static class Strings
             "All right. Install sing-box yourself, otherwise the tunnel will not start."),
         ["inst_engine_failed"] = new(
             "Движок скачать не удалось: {0}", "Could not download the engine: {0}"),
-        ["inst_done"] = new(
-            "Установлено. Дальше — настройка.", "Installed. Next comes the setup."),
+        ["inst_binary_at"] = new("программа: {0}", "program: {0}"),
+        ["inst_alias_ok"] = new(
+            "Дальше всё делается командой chp", "From here on everything is done with the chp command"),
+        ["inst_alias_reopen"] = new(
+            "В уже открытых окнах терминала она появится после их перезапуска.",
+            "Terminal windows that are already open will see it after a restart."),
+        ["inst_alias_failed"] = new(
+            "короткую команду chp создать не удалось: {0}", "could not create the short chp command: {0}"),
+        ["inst_alias_fallback"] = new(
+            "тогда вызывайте программу полным путём: {0}", "call the program by its full path instead: {0}"),
+        ["inst_path_failed"] = new("PATH изменить не удалось: {0}", "could not change PATH: {0}"),
+        ["inst_path_cleaned"] = new("папка убрана из PATH", "the folder is out of PATH"),
+        ["inst_path_clean_failed"] = new("PATH почистить не удалось: {0}", "could not clean PATH: {0}"),
+        ["inst_rm_reboot"] = new(
+            "будет убран при следующей перезагрузке: {0}", "will be removed on the next reboot: {0}"),
+        ["inst_engine_downloading"] = new("скачиваю движок sing-box {0}", "downloading the sing-box engine {0}"),
+        ["inst_engine_at"] = new("движок: {0}", "engine: {0}"),
+        ["inst_done"] = new("Установлено.", "Installed."),
         ["inst_removed"] = new(
             "Программа удалена из системы.", "The program has been removed from the system."),
-        ["uninstall_full"] = new(
-            "Удалить и сами файлы программы?", "Remove the program files as well?"),
         ["change_reverted"] = new(
             "Изменение отменено, прежние настройки на месте.",
             "The change was reverted, the previous settings are intact."),
-        ["btn_save_check"] = new(
-            "Сохранить адрес проверки",
-            "Save the check address"),
         ["summary_title"] = new("Кратко", "At a glance"),
         ["auth_is_set"] = new("Пароль установлен", "Password is set"),
         ["auth_not_set"] = new("Пароль не установлен", "No password set"),
@@ -515,6 +535,8 @@ public static class Strings
         ["engine_died"] = new(
             "Движок завершился сразу после запуска.", "The engine exited right after start."),
         ["start_failed"] = new("Защита не включилась", "Protection did not start"),
+        ["engine_gone"] = new(
+            "Движок остановился сам, поднимаю заново", "The engine stopped on its own, starting it again"),
         ["startup_blockers"] = new("Что мешает запуску:", "What blocks the start:"),
         ["panel_only"] = new(
             "Защита не включена; панель открыта: http://127.0.0.1:{0}",
@@ -581,9 +603,6 @@ public static class Strings
             "Your VPN service gives you the link. Without it the tunnel has nowhere to connect."),
         ["ask_sub_checking"] = new("Проверяю ссылку…", "Checking the link…"),
         ["ask_sub_nodes"] = new("Нод получено: {0}", "Nodes received: {0}"),
-        ["ask_sub_empty"] = new(
-            "По этой ссылке нод нет. Проверьте её в браузере: должен открыться список или блок base64.",
-            "This link returns no nodes. Open it in a browser: you should see a list or a base64 blob."),
         ["diag_server_down"] = new(
             "Сервер подписки трижды ответил {0} — это сбой на его стороне, ссылка ни при чём. Такое проходит само; попробуйте через несколько минут.",
             "The subscription server answered {0} three times — that is a failure on its side, not a problem with your link. It usually passes; try again in a few minutes."),
@@ -659,14 +678,15 @@ public static class Strings
         ["setup_password_mismatch"] = new("Пароли не совпали.", "Passwords do not match."),
         ["setup_autostart"] = new(
             "Запускать при старте системы?", "Start with the system?"),
-        ["setup_done"] = new(
-            "Готово.", "Done."),
+        ["setup_done"] = new("Готово.", "Done."),
+        ["setup_unfinished"] = new(
+            "Настройка не закончена: без пунктов выше защиту включить не получится.",
+            "The setup is not finished: protection will not start until the items above are dealt with."),
         ["setup_open_hint"] = new(
             "Открыть её командой: chp open. Если защита ещё не включена — {0}chp daemon",
             "Open it with: chp open. If protection is not on yet — {0}chp daemon"),
         ["setup_hint"] = new(
-            "Первый запуск: пройдите настройку командой chp setup",
-            "First run: go through the wizard with chp setup"),
+            "Начните с команды: chp setup", "Start with: chp setup"),
         ["autostart_state_on"] = new("автозапуск включён", "autostart enabled"),
         ["on_word"] = new("включён", "enabled"),
         ["off_word"] = new("выключен", "disabled"),

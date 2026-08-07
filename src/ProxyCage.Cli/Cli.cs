@@ -18,76 +18,92 @@ public static class Cli
     public static void PrintHelp(CehoConfig cfg)
     {
         var sudo = Os.IsWindows ? "" : "sudo ";
+        var en = Lang(cfg) == "en";
+
+        // колонки считаем, а не подбираем пробелами руками: на Windows префикса sudo нет,
+        // и захардкоженные отступы разъезжались ровно там, где он был
+        (string Title, (string Cmd, string What)[] Rows)[] groups = en
+        ? [
+            ("Every day", [
+                ("chp", "state and what to do next"),
+                ("chp status", "state and the real exit IP"),
+                ("chp verify", "prove isolation by live connections"),
+                ("chp open", "open the panel in a browser"),
+            ]),
+            ("Setup", [
+                ("chp setup", "go through the setup again"),
+                ("chp add-app [path]", "isolate a program (no path — pick from a list)"),
+                ("chp apps · chp remove-app", "list and remove"),
+                ("chp sub-add [name link]", "add a subscription (no arguments — I will ask)"),
+                ("chp subs · chp sub-remove", "list and remove"),
+                ("chp countries · chp country", "exit countries"),
+                ("chp speed <ms> · speed off", "drop nodes slower than this"),
+                ("chp passwd · lang · set-port", "password, language, panel port"),
+                (sudo + "chp autostart on|off", "start with the system"),
+            ]),
+            ("Tunnel", [
+                (sudo + "chp daemon", "turn protection and the panel on"),
+                (sudo + "chp stop", "turn protection off"),
+                ("chp run <command>", "run a command through the tunnel once"),
+                ("chp wrap · unwrap · wrapped", "route a command permanently"),
+                ("chp browser", "proxy settings for a browser"),
+            ]),
+            ("Other", [
+                ("chp doctor", "check what is missing before start"),
+                ("chp detect", "find installed AI tools"),
+                ("chp apply", "rebuild the rules"),
+                ("chp update · version", "update and version"),
+                (sudo + "chp uninstall", "remove everything"),
+            ]),
+        ]
+        : [
+            ("Каждый день", [
+                ("chp", "состояние и что делать дальше"),
+                ("chp status", "состояние и реальный IP выхода"),
+                ("chp verify", "доказать изоляцию по живым соединениям"),
+                ("chp open", "открыть панель в браузере"),
+            ]),
+            ("Настройка", [
+                ("chp setup", "пройти настройку заново"),
+                ("chp add-app [путь]", "изолировать программу (без пути — выбор из списка)"),
+                ("chp apps · chp remove-app", "список и удаление"),
+                ("chp sub-add [имя ссылка]", "добавить подписку (без аргументов — спрошу)"),
+                ("chp subs · chp sub-remove", "список и удаление"),
+                ("chp countries · chp country", "страны выхода"),
+                ("chp speed <мс> · speed off", "отсеять ноды медленнее порога"),
+                ("chp passwd · lang · set-port", "пароль, язык, порт панели"),
+                (sudo + "chp autostart on|off", "запуск при старте системы"),
+            ]),
+            ("Туннель", [
+                (sudo + "chp daemon", "включить защиту и панель"),
+                (sudo + "chp stop", "выключить защиту"),
+                ("chp run <команда>", "разово запустить команду через туннель"),
+                ("chp wrap · unwrap · wrapped", "перевести команду на туннель насовсем"),
+                ("chp browser", "настройки прокси для браузера"),
+            ]),
+            ("Прочее", [
+                ("chp doctor", "проверить, всё ли готово к запуску"),
+                ("chp detect", "найти установленные ИИ-инструменты"),
+                ("chp apply", "пересобрать правила"),
+                ("chp update · version", "обновление и версия"),
+                (sudo + "chp uninstall", "удалить всё"),
+            ]),
+        ];
+
+        var width = groups.SelectMany(g => g.Rows).Max(r => r.Cmd.Length) + 2;
         Console.WriteLine();
         Console.WriteLine("  " + S(cfg, "tagline"));
+        foreach (var g in groups)
+        {
+            Console.WriteLine();
+            Console.WriteLine("  " + g.Title);
+            foreach (var (cmd, what) in g.Rows)
+                Console.WriteLine("    " + cmd.PadRight(width) + what);
+        }
         Console.WriteLine();
-        Console.WriteLine(Lang(cfg) == "en" ? $"""
-              Every day
-                chp                          state and what to do next
-                chp status                   state and the real exit IP
-                chp verify                   prove isolation by live connections
-                chp open                     open the panel in a browser
-
-              Setup
-                chp setup                    go through the setup again
-                chp add-app [path]           isolate a program (no path — pick from a list)
-                chp apps · chp remove-app    list and remove
-                chp sub-add [name link]      add a subscription (no arguments — I will ask)
-                chp subs · chp sub-remove    list and remove
-                chp countries · chp country  exit countries
-                chp speed <ms> · speed off   drop nodes slower than this
-                chp passwd · lang · set-port password, language, panel port
-                {sudo}chp autostart on|off     start with the system
-
-              Tunnel
-                {sudo}chp daemon               turn protection and the panel on
-                {sudo}chp stop                 turn protection off
-                chp run <command>            run a command through the tunnel once
-                chp wrap · unwrap · wrapped  route a command permanently
-                chp browser                  proxy settings for a browser
-
-              Other
-                chp doctor                   check what is missing before start
-                chp detect                   find installed AI tools
-                chp apply                    rebuild the rules
-                chp update · version         update and version
-                {sudo}chp uninstall            remove everything
-
-            Add --password "secret" to any command if a password is set and you are not an administrator.
-            """ : $"""
-              Каждый день
-                chp                          состояние и что делать дальше
-                chp status                   состояние и реальный IP выхода
-                chp verify                   доказать изоляцию по живым соединениям
-                chp open                     открыть панель в браузере
-
-              Настройка
-                chp setup                    пройти настройку заново
-                chp add-app [путь]           изолировать программу (без пути — выбор из списка)
-                chp apps · chp remove-app    список и удаление
-                chp sub-add [имя ссылка]     добавить подписку (без аргументов — спрошу)
-                chp subs · chp sub-remove    список и удаление
-                chp countries · chp country  страны выхода
-                chp speed <мс> · speed off   отсеять ноды медленнее порога
-                chp passwd · lang · set-port пароль, язык, порт панели
-                {sudo}chp autostart on|off     запуск при старте системы
-
-              Туннель
-                {sudo}chp daemon               включить защиту и панель
-                {sudo}chp stop                 выключить защиту
-                chp run <команда>            разово запустить команду через туннель
-                chp wrap · unwrap · wrapped  перевести команду на туннель насовсем
-                chp browser                  настройки прокси для браузера
-
-              Прочее
-                chp doctor                   проверить, всё ли готово к запуску
-                chp detect                   найти установленные ИИ-инструменты
-                chp apply                    пересобрать правила
-                chp update · version         обновление и версия
-                {sudo}chp uninstall            удалить всё
-
-            Если пароль задан, а вы не администратор, добавляйте к команде --password «пароль».
-            """);
+        Console.WriteLine("  " + (en
+            ? "Add --password \"secret\" to any command if a password is set and you are not an administrator."
+            : "Если пароль задан, а вы не администратор, добавляйте к команде --password «пароль»."));
         Console.WriteLine();
         Console.WriteLine("  " + S(cfg, "product_page_at", Brand.RepoUrl(cfg.UpdateRepo)));
     }
@@ -234,7 +250,7 @@ public static class Cli
         var port = Auth.ReadPanelPointer(root);
         if (port is null)
         {
-            Console.Error.WriteLine(Strings.T(lang, "remote_no_panel"));
+            Console.Error.WriteLine(Strings.T(lang, "remote_no_panel", Os.IsWindows ? "" : "sudo "));
             return 1;
         }
 
@@ -283,7 +299,7 @@ public static class Cli
         }
         catch (HttpRequestException)
         {
-            return (0, Strings.T(lang, "remote_no_panel"));
+            return (0, Strings.T(lang, "remote_no_panel", Os.IsWindows ? "" : "sudo "));
         }
         catch (Exception ex)
         {
@@ -713,7 +729,7 @@ public static class Cli
         if (Os.ResolveSingBox(Ceho.Root) is null && Os.IsElevated()
             && AskYes("  " + S(cfg, "inst_engine_ask"), true))
         {
-            try { await Installer.DownloadEngineAsync(Ceho.Root, m => Console.WriteLine("  " + m)); }
+            try { await Installer.DownloadEngineAsync(Ceho.Root, m => Console.WriteLine("  " + m), cfg.Language); }
             catch (Exception ex)
             {
                 Console.WriteLine("  " + S(cfg, "inst_engine_failed", ex.Message));
@@ -764,7 +780,9 @@ public static class Cli
         }
 
         Console.WriteLine();
-        Console.WriteLine("  " + S(cfg, "setup_done", cfg.WebPort, Os.IsWindows ? "" : "sudo "));
+        // «Готово» сразу после двух [стоп] — враньё: настройка не закончена, и человек
+        // должен уйти отсюда с понятным следующим шагом, а не с ложным успехом
+        Console.WriteLine("  " + S(cfg, blockers.Count > 0 ? "setup_unfinished" : "setup_done"));
         Console.WriteLine();
         Console.WriteLine("  " + Strings.T(cfg.Language, "panel_at", $"http://127.0.0.1:{cfg.WebPort}"));
         Console.WriteLine("  " + S(cfg, "setup_open_hint", Os.IsWindows ? "" : "sudo "));

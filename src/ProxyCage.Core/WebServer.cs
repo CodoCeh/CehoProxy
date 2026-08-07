@@ -244,7 +244,7 @@ public sealed class WebServer
                     });
                     Save(cfg);
                     var applied = OnApply is null ? null : await OnApply();
-                    return ($"{S("added_name", d.Name)} {d.Explanation}" +
+                    return ($"{S("added_name", d.Name)}. {d.Explanation}" +
                             (applied is null ? "" : $" {applied}"), false);
                 }
 
@@ -266,7 +266,7 @@ public sealed class WebServer
                     });
                     Save(cfg);
                     var applied = OnApply is null ? null : await OnApply();
-                    return ($"{S("added_name", f.GetValueOrDefault("name", d.Name))} {d.Explanation}" +
+                    return ($"{S("added_name", f.GetValueOrDefault("name", d.Name))}. {d.Explanation}" +
                             (applied is null ? "" : $" {applied}"), false);
                 }
 
@@ -592,20 +592,18 @@ public sealed class WebServer
         else if (!st.Running) sb.Append(E(S("state_direct", [])));
         sb.Append("</span></div>");
 
-        if (st.LastError is not null)
-            sb.Append("<div class=\"flash err\">").Append(E(st.LastError)).Append("</div>");
-
-        sb.Append("<form class=row method=post action=\"")
-          .Append(st.Running ? "/control/stop" : "/control/start").Append("\">")
-          .Append("<input type=hidden name=tab value=state>")
-          .Append("<button>").Append(E(st.Running ? S("btn_off", []) : S("btn_on", [])))
-          .Append("</button></form>");
-
         var checks = Preflight.Run(cfg, Root);
         var problems = checks.Where(c => c.Level != Preflight.Level.Ok)
             .Where(c => !c.Title.Contains("орт ", StringComparison.OrdinalIgnoreCase)
                      && !c.Title.Contains("ort ", StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+        // причину показываем до кнопки: сначала человек читает, почему включить нельзя,
+        // и только потом видит саму кнопку. Ошибку запуска не повторяем, если она слово
+        // в слово совпадает с уже показанной помехой
+        if (st.LastError is not null && !problems.Any(c => st.LastError.Contains(c.Title, StringComparison.Ordinal)))
+            sb.Append("<div class=\"flash err\">").Append(E(st.LastError)).Append("</div>");
+
         foreach (var c in problems)
         {
             sb.Append("<div class=\"flash").Append(c.Level == Preflight.Level.Blocker ? " err" : "").Append("\"><b>")
@@ -614,6 +612,16 @@ public sealed class WebServer
             if (c.Fix is not null) sb.Append(E(c.Fix));
             sb.Append("</div>");
         }
+
+        // без прав кнопка «Включить» гарантированно не сработает: панель запускает движок
+        // от себя же. Живая кнопка, которая всегда падает, обманывает — гасим её
+        var canStart = st.Running || Os.IsElevated();
+        sb.Append("<form class=row method=post action=\"")
+          .Append(st.Running ? "/control/stop" : "/control/start").Append("\">")
+          .Append("<input type=hidden name=tab value=state>")
+          .Append("<button").Append(canStart ? "" : " disabled").Append('>')
+          .Append(E(st.Running ? S("btn_off", []) : S("btn_on", [])))
+          .Append("</button></form>");
         sb.Append("</section>");
 
         sb.Append("<section><h2>").Append(E(S("summary_title", []))).Append("</h2><dl class=kv>");
@@ -624,8 +632,9 @@ public sealed class WebServer
         sb.Append("<dt>").Append(E(S("nav_exit", []))).Append("</dt><dd>")
           .Append(E(cfg.PreferredCountries.Count > 0
               ? string.Join(", ", cfg.PreferredCountries)
-              : S("country_any", []) + (cfg.ExcludedCountries.Count > 0
-                  ? " (\u2212" + string.Join(", ", cfg.ExcludedCountries) + ")" : "")))
+              : cfg.ExcludedCountries.Count > 0
+                  ? S("country_any_but", [string.Join(", ", cfg.ExcludedCountries)])
+                  : S("country_any", [])))
           .Append("</dd>");
         sb.Append("<dt>").Append(E(S("nav_browser", []))).Append("</dt><dd>127.0.0.1:")
           .Append(cfg.MixedPort).Append("</dd>");
@@ -638,7 +647,7 @@ public sealed class WebServer
           .Append("<button class=ghost>").Append(E(S("upd_check", []))).Append("</button></form>");
         sb.Append("<form class=row method=post action=/update><input type=hidden name=tab value=state>")
           .Append("<input type=hidden name=install value=1>")
-          .Append("<button>").Append(E(S("upd_apply", []))).Append("</button></form></section>");
+          .Append("<button class=ghost>").Append(E(S("upd_apply", []))).Append("</button></form></section>");
 
         sb.Append("<section><h2>").Append(E(S("autostart_title", []))).Append("</h2>");
         var auto = Autostart.IsEnabled();
@@ -721,12 +730,19 @@ public sealed class WebServer
         // пример строим по найденному инструменту, а не шаблоном: команду из панели
         // человек копирует целиком, и «<команда>» в ней выполниться не может
         var sample = found.FirstOrDefault(t => t.Kind == AiTools.ToolKind.Script)?.Path;
-        var name = sample is not null ? Path.GetFileNameWithoutExtension(sample) : "gemini";
+        // Нашли такую команду — показываем её, она копируется и работает. Не нашли —
+        // ставим не чужое имя, а слово «имя-команды»: пример с посторонним названием
+        // человек копирует буквально и получает отказ. Поправлено по замечанию владельца
+        var name = sample is not null
+            ? Path.GetFileNameWithoutExtension(sample)
+            : S("run_sample_name", []);
         sb.Append("<dl class=kv>");
         sb.Append("<dt>").Append(E(S("run_once", []))).Append("</dt><dd>chp run ").Append(E(name)).Append("</dd>");
         sb.Append("<dt>").Append(E(S("run_always", []))).Append("</dt><dd>chp wrap ").Append(E(name)).Append("</dd>");
         sb.Append("<dt>").Append(E(S("run_undo", []))).Append("</dt><dd>chp unwrap ").Append(E(name)).Append("</dd>");
         sb.Append("</dl>");
+        if (sample is null)
+            sb.Append("<p class=hint>").Append(E(S("run_sample_hint", []))).Append("</p>");
 
         var wrapped = WrappedNames?.Invoke() ?? Array.Empty<string>();
         if (wrapped.Count > 0)
@@ -887,17 +903,21 @@ public sealed class WebServer
           .Append("<button class=ghost>").Append(E(S("btn_measure", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("udp_not_measured", []))).Append("</p>");
 
-        sb.Append("<form class=row method=post action=/settings><input type=hidden name=tab value=exit>");
+        // три разные настройки стояли одной строкой под кнопкой «Сохранить адрес проверки»,
+        // и поле с адресом было вообще без подписи — непонятно, что это за ссылка
+        sb.Append("<h2>").Append(E(S("check_title", []))).Append("</h2>");
+        sb.Append("<form class=stack method=post action=/settings><input type=hidden name=tab value=exit>");
         sb.Append("<label class=check><input type=checkbox name=rotation")
           .Append(cfg.RotationEnabled ? " checked" : "").Append("> ")
           .Append(E(S("rotation_label", []))).Append("</label>");
-        sb.Append("<input type=text name=checkurl value=\"").Append(E(cfg.CheckUrl)).Append("\">");
+        sb.Append("<label class=field><span>").Append(E(S("checkurl_label", []))).Append("</span>")
+          .Append("<input type=text name=checkurl value=\"").Append(E(cfg.CheckUrl)).Append("\"></label>");
+        sb.Append("<p class=hint>").Append(E(S("checkurl_hint", []))).Append("</p>");
         sb.Append("<label class=field><span>").Append(E(S("speed_limit", []))).Append("</span>")
           .Append("<input type=text name=speed inputmode=numeric value=\"")
           .Append(cfg.MaxLatencyMs?.ToString() ?? "").Append("\" placeholder=\"500\"></label>");
-        sb.Append("<button class=ghost>").Append(E(S("btn_save_check", []))).Append("</button></form>");
-        sb.Append("<p class=hint>").Append(E(S("checkurl_hint", []))).Append("</p>");
-        sb.Append("<p class=hint>").Append(E(S("speed_unmeasured_note", []))).Append("</p></section>");
+        sb.Append("<p class=hint>").Append(E(S("speed_unmeasured_note", []))).Append("</p>");
+        sb.Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></section>");
     }
 
     private static void RenderBrowser(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
@@ -915,12 +935,13 @@ public sealed class WebServer
     private static void RenderAccess(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
         sb.Append("<section><h2>").Append(E(S("nav_access", []))).Append("</h2>");
-        sb.Append("<p class=lede>").Append(E(S("auth_hint", []))).Append("</p>");
+        // раньше вступление утверждало «панель закрыта паролем» даже тогда, когда пароля нет,
+        // и то же самое повторялось строкой ниже: одно состояние — одна фраза
         var hasPassword = Auth.HasPassword(cfg);
+        sb.Append("<p class=lede>")
+          .Append(E(S(hasPassword ? "auth_hint_set" : "auth_no_password", []))).Append("</p>");
         sb.Append("<div class=\"status ").Append(hasPassword ? "on" : "bad").Append("\"><span class=dot></span><b>")
           .Append(E(S(hasPassword ? "auth_is_set" : "auth_not_set", []))).Append("</b></div>");
-        if (!hasPassword)
-            sb.Append("<p class=hint>").Append(E(S("auth_no_password", []))).Append("</p>");
 
         sb.Append("<form class=row method=post action=/password><input type=hidden name=tab value=access>");
         sb.Append("<input type=password name=password placeholder=\"").Append(E(S("auth_password", []))).Append("\">");

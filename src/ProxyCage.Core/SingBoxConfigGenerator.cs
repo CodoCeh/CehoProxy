@@ -281,10 +281,13 @@ public static class SingBoxConfigGenerator
 
         if (pool.Count == 0)
         {
+            // «не осталось ни одной ноды: US» читалось как «в US нет нод». Разделили два случая:
+            // человек либо оставил только эти страны, либо, наоборот, выключил их
+            var key = cfg.PreferredCountries.Count > 0 ? "countries_only_left" : "countries_none_left";
             var reason = cfg.PreferredCountries.Count > 0
                 ? string.Join(", ", cfg.PreferredCountries)
                 : string.Join(", ", cfg.ExcludedCountries);
-            throw new PoolEmptyException(Strings.T(cfg.Language, "countries_none_left", reason));
+            throw new PoolEmptyException(Strings.T(cfg.Language, key, reason));
         }
 
         return pool;

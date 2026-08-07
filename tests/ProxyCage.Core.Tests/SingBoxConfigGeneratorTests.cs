@@ -113,4 +113,38 @@ public class SingBoxConfigGeneratorTests
         Assert.Null(grpc!["flow"]); // flow недопустим для grpc
         Assert.NotNull(grpc["transport"]!["service_name"]);
     }
+
+    /// <summary>
+    /// Ноды vless+reality из настоящей подписки владельца: движок отказывается
+    /// от рукопожатия, если потерять short_id, serviceName или flow. Разбирали живьём,
+    /// когда владелец сообщил «подписка рабочая, а нод нет» — тогда причина была в другом,
+    /// но проверка полей осталась, чтобы генератор не начал их терять молча.
+    /// </summary>
+    [Fact]
+    public void Keeps_reality_short_id_grpc_and_flow()
+    {
+        const string sub =
+            "vless://11111111-2222-3333-4444-555555555555@grpc.example:8444?encryption=none&type=grpc" +
+            "&serviceName=GunService&mode=gun&security=reality&sni=github.com&fp=chrome" +
+            "&pbk=FWitre1jinQR7qz5HQ0q2Q4Gg9xA9B0SyizCziN7Ch0&sid=457fab2ac885dbe0#\U0001F1E9\U0001F1EA Германия\n" +
+            "vless://11111111-2222-3333-4444-555555555555@vision.example:443?encryption=none" +
+            "&flow=xtls-rprx-vision&type=tcp&security=reality&sni=github.com&fp=chrome" +
+            "&pbk=FWitre1jinQR7qz5HQ0q2Q4Gg9xA9B0SyizCziN7Ch0&sid=457fab2ac885dbe0#\U0001F1FA\U0001F1F8 США";
+
+        var json = SingBoxConfigGenerator.Generate(SubscriptionParser.Parse(sub), new ProxyCageSettings
+        {
+            FolderPath = @"C:\Games\MyApp",
+            RuleSetDir = "rulesets",
+        });
+        var outbounds = JsonNode.Parse(json)!["outbounds"]!.AsArray();
+
+        var grpc = outbounds.First(o => (string?)o!["server"] == "grpc.example")!;
+        Assert.Equal("457fab2ac885dbe0", (string?)grpc["tls"]!["reality"]!["short_id"]);
+        Assert.Equal("GunService", (string?)grpc["transport"]!["service_name"]);
+        Assert.Equal("chrome", (string?)grpc["tls"]!["utls"]!["fingerprint"]);
+
+        var vision = outbounds.First(o => (string?)o!["server"] == "vision.example")!;
+        Assert.Equal("xtls-rprx-vision", (string?)vision["flow"]);
+        Assert.Equal("457fab2ac885dbe0", (string?)vision["tls"]!["reality"]!["short_id"]);
+    }
 }

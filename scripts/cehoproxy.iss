@@ -6,7 +6,7 @@
 ; Программа предложит скачать его с сайта автора сама, уже после установки.
 
 #define AppName "CehoProxy"
-#define AppVersion "1.1.2"
+#define AppVersion "1.1.3"
 #define AppPublisher "КодоЦех"
 #define AppUrl "https://codoceh.ru"
 #define RepoUrl "https://github.com/CodoCeh/CehoProxy"
@@ -83,3 +83,16 @@ Type: files; Name: "{app}\cehoproxy.pid"
 Type: files; Name: "{app}\sub-*.txt"
 Type: files; Name: "{app}\*.log"
 Type: dirifempty; Name: "{app}"
+
+[Code]
+// Сам деинсталлятор удалить себя не может: он в этот момент работает. Windows умеет
+// удалить файл при следующей перезагрузке — просим её об этом, иначе после «полного
+// удаления» в папке навсегда остаётся четырёхмегабайтный файл. Поймано живьём.
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    RestartReplace(ExpandConstant('{uninstallexe}'), '');
+    RestartReplace(ExpandConstant('{app}'), '');
+  end;
+end;

@@ -16,7 +16,7 @@ public static class Installer
         Path.Combine(root, Os.IsWindows ? "cehoproxy.exe" : "cehoproxy");
 
     /// <summary>Копирует программу в папку продукта, делает короткую команду и правит PATH.</summary>
-    public static string Install(string root, Action<string> log)
+    public static string Install(string root, Action<string> log, string lang = "ru")
     {
         Directory.CreateDirectory(root);
 
@@ -31,17 +31,17 @@ public static class Installer
             try { if (File.Exists(backup)) File.Delete(backup); } catch { }
             if (File.Exists(target)) File.Move(target, backup, overwrite: true);
             File.Copy(self, target, overwrite: true);
-            log($"программа: {target}");
+            log(Strings.T(lang, "inst_binary_at", target));
         }
 
         if (!Os.IsWindows) Os.Run("chmod", $"755 {target}", 5000);
 
-        MakeShortcut(root, target, log);
-        AddToPath(root, log);
+        MakeShortcut(root, target, log, lang);
+        AddToPath(root, log, lang);
         return target;
     }
 
-    private static void MakeShortcut(string root, string target, Action<string> log)
+    private static void MakeShortcut(string root, string target, Action<string> log, string lang)
     {
         try
         {
@@ -58,7 +58,7 @@ public static class Installer
         }
         catch (Exception ex)
         {
-            log($"короткую команду создать не удалось: {ex.Message}");
+            log(Strings.T(lang, "inst_alias_failed", ex.Message));
         }
     }
 
@@ -66,7 +66,7 @@ public static class Installer
     /// Без записи в PATH человек вынужден каждый раз печатать полный путь,
     /// а команда chp из панели и из документации просто не работает.
     /// </summary>
-    private static void AddToPath(string root, Action<string> log)
+    private static void AddToPath(string root, Action<string> log, string lang)
     {
         if (Os.IsWindows)
         {
@@ -78,12 +78,12 @@ public static class Installer
             {
                 Environment.SetEnvironmentVariable("Path",
                     current.TrimEnd(';') + ";" + root, EnvironmentVariableTarget.Machine);
-                log("Дальше всё делается командой  chp");
-                log("В уже открытых окнах терминала она появится после их перезапуска.");
+                log(Strings.T(lang, "inst_alias_ok"));
+                log(Strings.T(lang, "inst_alias_reopen"));
             }
             catch (Exception ex)
             {
-                log($"PATH изменить не удалось: {ex.Message}");
+                log(Strings.T(lang, "inst_path_failed", ex.Message));
             }
             return;
         }
@@ -94,20 +94,51 @@ public static class Installer
             var link = "/usr/local/bin/chp";
             if (File.Exists(link)) File.Delete(link);
             File.CreateSymbolicLink(link, BinaryPath(root));
-            log("Дальше всё делается командой  chp");
+            log(Strings.T(lang, "inst_alias_ok"));
         }
         catch (Exception ex)
         {
-            log($"короткую команду chp создать не удалось: {ex.Message}");
-            log($"тогда вызывайте программу полным путём: {BinaryPath(root)}");
+            log(Strings.T(lang, "inst_alias_failed", ex.Message));
+            log(Strings.T(lang, "inst_alias_fallback", BinaryPath(root)));
         }
     }
 
     /// <summary>Убирает всё, что положил Install. Файлы настроек чистит команда uninstall.</summary>
-    public static void Remove(string root, Action<string> log)
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern bool MoveFileEx(string existing, string? newName, int flags);
+
+    private const int DelayUntilReboot = 0x4;
+
+    /// <summary>
+    /// Просит Windows удалить файл при следующей перезагрузке.
+    ///
+    /// Нужно ровно для одного: деинсталлятор не может стереть сам себя, пока работает,
+    /// и после «полного удаления» в папке навсегда оставался четырёхмегабайтный файл.
+    /// Поймано живьём. Своими файлами это не занимается — их мы удаляем сразу.
+    /// </summary>
+    private static void DeleteAtReboot(string path, Action<string> log, string lang)
+    {
+        try
+        {
+            if (MoveFileEx(path, null, DelayUntilReboot))
+                log(Strings.T(lang, "inst_rm_reboot", Path.GetFileName(path)));
+        }
+        catch { }
+    }
+
+    public static void Remove(string root, Action<string> log, string lang = "ru")
     {
         if (Os.IsWindows)
         {
+            // остатки установщика: сам себя он стереть не может
+            try
+            {
+                foreach (var leftover in Directory.GetFiles(root, "unins*.*"))
+                    DeleteAtReboot(leftover, log, lang);
+                DeleteAtReboot(root, log, lang);
+            }
+            catch { }
+
             try
             {
                 var current = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.Machine) ?? "";
@@ -117,12 +148,12 @@ public static class Installer
                 if (cleaned != current)
                 {
                     Environment.SetEnvironmentVariable("Path", cleaned, EnvironmentVariableTarget.Machine);
-                    log("папка убрана из PATH");
+                    log(Strings.T(lang, "inst_path_cleaned"));
                 }
             }
             catch (Exception ex)
             {
-                log($"PATH почистить не удалось: {ex.Message}");
+                log(Strings.T(lang, "inst_path_clean_failed", ex.Message));
             }
         }
         else
@@ -144,7 +175,7 @@ public static class Installer
     /// Скачивает движок с сайта автора в папку продукта. Раздачей с нашей стороны это не является:
     /// файл берётся напрямую из релизов sing-box по явной просьбе пользователя.
     /// </summary>
-    public static async Task<string> DownloadEngineAsync(string root, Action<string> log)
+    public static async Task<string> DownloadEngineAsync(string root, Action<string> log, string lang = "ru")
     {
         var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
             == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "amd64";
@@ -167,7 +198,7 @@ public static class Installer
             throw new InvalidOperationException($"в релизе sing-box {tag} нет файла {wanted}");
 
         var url = asset.GetProperty("browser_download_url").GetString()!;
-        log($"скачиваю движок sing-box {tag}");
+        log(Strings.T(lang, "inst_engine_downloading", tag));
 
         var archive = Path.Combine(root, wanted);
         await using (var stream = await http.GetStreamAsync(url))
@@ -182,7 +213,7 @@ public static class Installer
             throw new InvalidOperationException("движок скачался, но распаковать его не удалось");
 
         if (!Os.IsWindows) Os.Run("chmod", $"755 {engine}", 5000);
-        log($"движок: {engine}");
+        log(Strings.T(lang, "inst_engine_at", engine));
         return engine;
     }
 
