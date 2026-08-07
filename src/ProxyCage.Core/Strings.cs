@@ -577,6 +577,36 @@ public static class Strings
         ["ask_sub_empty"] = new(
             "По этой ссылке нод нет. Проверьте её в браузере: должен открыться список или блок base64.",
             "This link returns no nodes. Open it in a browser: you should see a list or a base64 blob."),
+        ["diag_server_down"] = new(
+            "Сервер подписки ответил {0} — это сбой на его стороне, ссылка ни при чём. Попробуйте позже или возьмите другую ссылку у VPN-сервиса.",
+            "The subscription server answered {0} — that is a failure on its side, not a problem with your link. Try later or ask your VPN service for another link."),
+        ["diag_http_error"] = new(
+            "Сервер подписки ответил {0}. Обычно так бывает, когда ссылка устарела или в ней опечатка.",
+            "The subscription server answered {0}. That usually means the link has expired or has a typo."),
+        ["diag_empty"] = new(
+            "Ссылка открывается, но ответ пустой. Похоже, подписка отключена на стороне сервиса.",
+            "The link opens but the answer is empty. The subscription looks disabled on the service side."),
+        ["diag_html"] = new(
+            "По ссылке пришла веб-страница, а не подписка ({0} знаков). Обычно это страница входа или ошибки: откройте ссылку в браузере и посмотрите, что там.",
+            "The link returned a web page, not a subscription ({0} characters). Usually that is a login or error page: open it in a browser and see."),
+        ["diag_unknown_format"] = new(
+            "Ответ получен ({0} знаков), но ноды в нём не распознались. Пришлите этот ответ нам — разберём формат.",
+            "The answer arrived ({0} characters), but no nodes were recognised in it. Send it to us and we will add the format."),
+        ["diag_timeout"] = new(
+            "Сервер подписки не ответил за 20 секунд. Либо он лежит, либо до него не доходит с этого компьютера.",
+            "The subscription server did not answer within 20 seconds. Either it is down or it is unreachable from this computer."),
+        ["diag_no_answer"] = new(
+            "До сервера подписки не достучались: {0}",
+            "Could not reach the subscription server: {0}"),
+        ["diag_not_a_link"] = new(
+            "Это не похоже ни на ссылку, ни на путь к файлу. Нужен адрес вида https://… либо ссылка на ноду (vless://, hy2://), либо путь к файлу с конфигурацией.",
+            "This looks like neither a link nor a file path. Use an https://… address, a node link (vless://, hy2://), or a path to a configuration file."),
+        ["diag_file_bad"] = new(
+            "Файл открылся, но нод в нём не нашлось. Проверьте, что это конфигурация или список ссылок, а не что-то другое.",
+            "The file opened but no nodes were found in it. Check that it is a configuration or a list of links."),
+        ["diag_node_uri_bad"] = new(
+            "Ссылка на ноду разобралась, но нод в ней не оказалось — похоже, она обрезана.",
+            "The node link was parsed but contained no node — it looks truncated."),
         ["ask_sub_retry"] = new("Ввести другую ссылку?", "Enter a different link?"),
         ["ask_apps_none_found"] = new(
             "Знакомых программ не нашлось. Впишите путь к той, которой нужен туннель.",

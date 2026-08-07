@@ -149,7 +149,9 @@ public static class Assistant
             cfg.ActiveSubscription ??= name;
 
             Console.WriteLine("  " + Cli.S(cfg, "ask_sub_checking"));
-            var count = await DescribePoolAsync(cfg);
+            Ceho.Quiet = true;                       // причину скажем сами, разборчиво
+            var count = await DescribePoolAsync(cfg, quiet: true);
+            Ceho.Quiet = false;
             var entry = cfg.Subscriptions.First(s => s.Name == name);
             entry.LastCheckOk = count > 0;
             entry.LastCheckedUtc = DateTime.UtcNow.ToString("u");
@@ -161,19 +163,19 @@ public static class Assistant
 
             cfg.Subscriptions.RemoveAll(s => s.Name == name);
             if (cfg.ActiveSubscription == name) cfg.ActiveSubscription = cfg.Subscriptions.FirstOrDefault()?.Name;
-            Console.WriteLine("  " + Cli.S(cfg, "ask_sub_empty"));
+            Console.WriteLine("  " + await Ceho.DiagnoseSubscriptionAsync(url, cfg.Language));
             if (!Cli.AskYes("  " + Cli.S(cfg, "ask_sub_retry"), true)) return false;
         }
     }
 
     /// <summary>Сколько нод и каких стран отдали подписки. Ноль означает, что пул пуст.</summary>
-    public static async Task<int> DescribePoolAsync(CehoConfig cfg)
+    public static async Task<int> DescribePoolAsync(CehoConfig cfg, bool quiet = false)
     {
         IReadOnlyList<ProxyNode> nodes;
         try { nodes = await Ceho.LoadAllNodesAsync(cfg); }
         catch (Exception ex)
         {
-            Console.WriteLine("  " + ex.Message);
+            if (!quiet) Console.WriteLine("  " + ex.Message);
             return 0;
         }
 

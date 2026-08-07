@@ -9,6 +9,13 @@ namespace ProxyCage.Cli;
 /// </summary>
 public static class Ceho
 {
+    /// <summary>
+    /// Тихий режим: сообщения о неудачной загрузке подписки не печатаются.
+    /// Нужен там, где причину мы всё равно объясним разборчиво, — иначе человек
+    /// сначала читает системную ошибку по-английски, а потом объяснение по-русски.
+    /// </summary>
+    public static bool Quiet { get; set; }
+
     public static string Root =>
         Environment.GetEnvironmentVariable("CEHOPROXY_HOME") ?? Os.DefaultRoot;
 
@@ -93,11 +100,11 @@ public static class Ceho
                 Mark(sub, true);
                 return Tag(freshNodes, sub.Name);
             }
-            Console.Error.WriteLine($"подписка «{sub.Name}» ответила, но нод в ответе нет");
+            if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» ответила, но нод в ответе нет");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"подписка «{sub.Name}» не скачалась: {ex.Message}");
+            if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» не скачалась: {ex.Message}");
         }
 
         if (File.Exists(cache))
@@ -261,6 +268,55 @@ public static class Ceho
         catch
         {
             return "";
+        }
+    }
+
+    /// <summary>
+    /// Почему по ссылке не нашлось нод. Отвечать «нод нет» и молчать о причине нельзя:
+    /// человек видит одинаковый текст и когда ссылка мертва, и когда опечатался,
+    /// и когда провайдер лежит. Поймано живьём: подписка отдавала 502, а продукт
+    /// говорил только «нод нет», и владелец искал ошибку у себя.
+    /// </summary>
+    public static async Task<string> DiagnoseSubscriptionAsync(string url, string lang)
+    {
+        var text = url.Trim();
+
+        if (SubscriptionParser.LooksLikeNodeUri(text))
+            return Strings.T(lang, "diag_node_uri_bad");
+
+        if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+            return File.Exists(text)
+                ? Strings.T(lang, "diag_file_bad")
+                : Strings.T(lang, "diag_not_a_link");
+
+        try
+        {
+            using var http = MakeClient();
+            using var response = await http.GetAsync(uri);
+            var code = (int)response.StatusCode;
+
+            if (!response.IsSuccessStatusCode)
+                return Strings.T(lang, code >= 500 ? "diag_server_down" : "diag_http_error", code);
+
+            var body = await response.Content.ReadAsStringAsync();
+            if (body.Trim().Length == 0) return Strings.T(lang, "diag_empty");
+
+            var looksHtml = body.TrimStart().StartsWith('<');
+            return Strings.T(lang, looksHtml ? "diag_html" : "diag_unknown_format",
+                body.Trim().Length);
+        }
+        catch (TaskCanceledException)
+        {
+            // .NET называет таймаут «запрос отменён» — человеку это ничего не говорит
+            return Strings.T(lang, "diag_timeout");
+        }
+        catch (HttpRequestException ex)
+        {
+            return Strings.T(lang, "diag_no_answer", ex.InnerException?.Message ?? ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return Strings.T(lang, "diag_no_answer", ex.Message);
         }
     }
 
