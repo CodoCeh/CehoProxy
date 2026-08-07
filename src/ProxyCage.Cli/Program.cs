@@ -992,7 +992,7 @@ if (cmd is "daemon" or "web")
     catch (Exception ex)
     {
         Console.Error.WriteLine($"{Strings.T(cfg.Language, "pf_port_busy", cfg.WebPort)}: {ex.Message}");
-        Console.Error.WriteLine(Strings.T(cfg.Language, "pf_port_fix", cfg.WebPort + 1));
+        Console.Error.WriteLine(Strings.T(cfg.Language, "pf_port_fix", Preflight.NextFreePort(cfg.WebPort)));
         return 1;
     }
 

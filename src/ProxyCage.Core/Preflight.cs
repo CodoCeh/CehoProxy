@@ -93,6 +93,26 @@ public static class Preflight
         }
     }
 
+    /// <summary>
+    /// Первый действительно свободный порт после занятого. Раньше предлагали просто +1,
+    /// и на машине, где рядом стоит другой клиент, следующий порт оказывался занят тоже:
+    /// человек выполнял подсказку и получал ту же ошибку.
+    /// </summary>
+    public static int NextFreePort(int from)
+    {
+        try
+        {
+            var busy = IPGlobalProperties.GetIPGlobalProperties()
+                .GetActiveTcpListeners()
+                .Select(e => e.Port)
+                .ToHashSet();
+            for (var p = from + 1; p < 65535; p++)
+                if (!busy.Contains(p)) return p;
+        }
+        catch { }
+        return from + 1;
+    }
+
     private static Check CheckPort(int port, string lang, string root, bool panel)
     {
         try
@@ -114,7 +134,7 @@ public static class Preflight
             return new Check(Level.Blocker,
                 Strings.T(lang, panel ? "pf_port_busy" : "pf_proxy_port_busy", port),
                 Strings.T(lang, panel ? "pf_port_detail" : "pf_proxy_port_detail"),
-                Strings.T(lang, panel ? "pf_port_fix" : "pf_proxy_port_fix", port + 1));
+                Strings.T(lang, panel ? "pf_port_fix" : "pf_proxy_port_fix", NextFreePort(port)));
         }
         catch
         {
