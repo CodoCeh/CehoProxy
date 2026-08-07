@@ -53,8 +53,15 @@ if (cmd == "install")
     try { installed = Installer.Install(Ceho.Root, m => Console.WriteLine("  " + m)); }
     catch (Exception ex) { Console.Error.WriteLine("  " + ex.Message); return 1; }
 
+    // Спрашивать про движок можно только там, где есть кому отвечать.
+    // Поймано живьём: графический установщик запускает эту команду в СКРЫТОМ окне
+    // и ждёт её завершения — вопрос повисал невидимым, установка не заканчивалась,
+    // а файл программы оставался занятым и не удалялся при следующем удалении.
+    var mayAskAboutEngine = Assistant.Interactive && !args.Contains("--no-setup");
+
     if (Os.ResolveSingBox(Ceho.Root) is null
-        && (args.Contains("--with-engine") || Cli.AskYes(Strings.T(cfg0.Language, "inst_engine_ask"), true)))
+        && (args.Contains("--with-engine")
+            || (mayAskAboutEngine && Cli.AskYes(Strings.T(cfg0.Language, "inst_engine_ask"), true))))
     {
         try { await Installer.DownloadEngineAsync(Ceho.Root, m => Console.WriteLine("  " + m)); }
         catch (Exception ex)
@@ -71,6 +78,9 @@ if (cmd == "install")
     // сразу за установкой — мастер: иначе человек остаётся один на один с пустым конфигом
     if (!args.Contains("--no-setup")) return await Cli.SetupAsync(Ceho.ConfigPath);
 
+    // движок без вопроса не качали — скажем об этом, чтобы человек не искал причину потом
+    if (Os.ResolveSingBox(Ceho.Root) is null)
+        Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_engine_later"));
     Console.WriteLine("  " + Strings.T(cfg0.Language, "setup_hint"));
     return 0;
 }

@@ -434,6 +434,9 @@ public static class Strings
             "Installation changes machine-wide settings, so administrator rights are required. {0}"),
         ["inst_engine_ask"] = new(
             "Скачать движок sing-box с сайта автора?", "Download the sing-box engine from its author's site?"),
+        ["inst_engine_later"] = new(
+            "Движок sing-box ещё не установлен — настройка предложит скачать его.",
+            "The sing-box engine is not installed yet — the setup will offer to download it."),
         ["inst_engine_skip"] = new(
             "Хорошо. Поставьте sing-box сами, иначе туннель не поднимется.",
             "All right. Install sing-box yourself, otherwise the tunnel will not start."),

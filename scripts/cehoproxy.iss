@@ -6,7 +6,7 @@
 ; Программа предложит скачать его с сайта автора сама, уже после установки.
 
 #define AppName "CehoProxy"
-#define AppVersion "1.0.5"
+#define AppVersion "1.0.6"
 #define AppPublisher "КодоЦех"
 #define AppUrl "https://codoceh.ru"
 #define RepoUrl "https://github.com/CodoCeh/CehoProxy"
@@ -70,3 +70,16 @@ Filename: "{cmd}"; Parameters: "/k ""{app}\cehoproxy.exe"" setup"; \
 ; снять автозапуск, защиту и следы в системе до удаления файлов
 Filename: "{app}\cehoproxy.exe"; Parameters: "uninstall --yes"; \
   Flags: runhidden waituntilterminated; RunOnceId: "cehoproxy_cleanup"
+
+[UninstallDelete]
+; наша команда uninstall создаёт эти файлы сама, установщик о них не знает —
+; без этих строк после удаления в папке оставался мусор. Поймано живьём
+Type: files; Name: "{app}\chp.cmd"
+Type: files; Name: "{app}\sing-box.exe"
+Type: files; Name: "{app}\singbox.json"
+Type: files; Name: "{app}\config.json"
+Type: files; Name: "{app}\panel.port"
+Type: files; Name: "{app}\cehoproxy.pid"
+Type: files; Name: "{app}\sub-*.txt"
+Type: files; Name: "{app}\*.log"
+Type: dirifempty; Name: "{app}"
