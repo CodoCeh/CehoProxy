@@ -54,7 +54,11 @@ public static class Preflight
             checks.Add(new Check(Level.Blocker, S("pf_ip_missing"), S("pf_ip_detail"), S("pf_ip_fix")));
 
         checks.Add(CheckWritable(root, l));
-        checks.Add(CheckPort(cfg.WebPort, l, root));
+        checks.Add(CheckPort(cfg.WebPort, l, root, panel: true));
+        // порт прокси проверяем отдельно: на машине уже может стоять другой клиент
+        // (xray, sing-box, обычный VPN-клиент), и тогда движок не поднимется вовсе,
+        // а человек увидит только невнятную ошибку от движка
+        checks.Add(CheckPort(cfg.MixedPort, l, root, panel: false));
 
         if (cfg.Subscriptions.Count == 0)
             checks.Add(new Check(Level.Blocker, S("pf_no_subs"), S("pf_no_subs_detail"), S("pf_no_subs_fix")));
@@ -89,7 +93,7 @@ public static class Preflight
         }
     }
 
-    private static Check CheckPort(int port, string lang, string root)
+    private static Check CheckPort(int port, string lang, string root, bool panel)
     {
         try
         {
@@ -103,12 +107,14 @@ public static class Preflight
             if (busy && DaemonControl.IsRunning(root))
                 return new Check(Level.Ok, Strings.T(lang, "pf_port_ours", port), null, null);
 
-            return busy
-                ? new Check(Level.Blocker,
-                    Strings.T(lang, "pf_port_busy", port),
-                    Strings.T(lang, "pf_port_detail"),
-                    Strings.T(lang, "pf_port_fix", port + 1))
-                : new Check(Level.Ok, Strings.T(lang, "pf_port_ok", port), null, null);
+            if (!busy)
+                return new Check(Level.Ok,
+                    Strings.T(lang, panel ? "pf_port_ok" : "pf_proxy_port_ok", port), null, null);
+
+            return new Check(Level.Blocker,
+                Strings.T(lang, panel ? "pf_port_busy" : "pf_proxy_port_busy", port),
+                Strings.T(lang, panel ? "pf_port_detail" : "pf_proxy_port_detail"),
+                Strings.T(lang, panel ? "pf_port_fix" : "pf_proxy_port_fix", port + 1));
         }
         catch
         {

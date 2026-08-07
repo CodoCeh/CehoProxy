@@ -559,6 +559,22 @@ switch (cmd)
         return 0;
     }
 
+    // порт прокси меняется отдельно от порта панели: на машине уже может стоять
+    // другой клиент, и без этой команды человеку некуда деться
+    case "set-proxy-port":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        var portText = args.Length >= 2 ? args[1]
+            : Assistant.Interactive ? Cli.Ask("  " + Cli.S(cfg, "ask_proxy_port"), cfg.MixedPort.ToString()) : "";
+        if (!int.TryParse(portText, out var mp) || mp is < 1 or > 65535)
+        { Console.Error.WriteLine(Cli.S(cfg, "err_need_port")); return 1; }
+        cfg.MixedPort = mp;
+        cfg.Save(Ceho.ConfigPath);
+        Console.WriteLine(Cli.S(cfg, "proxy_port_set", mp));
+        await Cli.RebuildQuietlyAsync(cfg);
+        return 0;
+    }
+
     case "nodes":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);

@@ -134,6 +134,17 @@ public static class Strings
             "Выберите свободный порт: chp set-port {0}",
             "Pick a free port: chp set-port {0}"),
         ["pf_port_unknown"] = new("Не удалось проверить порт {0}", "Could not check port {0}"),
+        ["pf_proxy_port_ok"] = new("Порт прокси {0} свободен", "Proxy port {0} is free"),
+        ["pf_proxy_port_busy"] = new(
+            "Порт прокси {0} уже занят", "Proxy port {0} is already taken"),
+        ["pf_proxy_port_detail"] = new(
+            "На нём мы отдаём прокси для браузера и проверяем выход. Обычно порт держит другой " +
+            "клиент — xray, sing-box или программа вашего VPN-сервиса.",
+            "We serve the browser proxy and check the exit on it. Usually the port is held by another " +
+            "client — xray, sing-box or your VPN provider's app."),
+        ["pf_proxy_port_fix"] = new(
+            "Выберите свободный порт: chp set-proxy-port {0}",
+            "Pick a free port: chp set-proxy-port {0}"),
         ["pf_no_subs"] = new("Не добавлено ни одной подписки", "No subscriptions added"),
         ["pf_no_subs_detail"] = new(
             "Программа поставляется без подписок: ссылку выдаёт ваш VPN-сервис.",
@@ -650,6 +661,10 @@ public static class Strings
             "Номер строки переключает страну, Enter — выйти",
             "A row number toggles the country, Enter exits"),
         ["ask_port"] = new("Порт панели управления", "Control panel port"),
+        ["ask_proxy_port"] = new("Порт прокси для браузера", "Browser proxy port"),
+        ["proxy_port_set"] = new(
+            "Прокси для браузера: 127.0.0.1:{0}. Если защита включена, перезапустите её.",
+            "Browser proxy: 127.0.0.1:{0}. Restart protection if it is on."),
         ["ask_lang"] = new("Язык интерфейса / interface language", "Язык интерфейса / interface language"),
         ["ask_nothing_to_pick"] = new("Выбирать не из чего.", "There is nothing to pick."),
         ["state_more"] = new("Все команды: chp help", "All commands: chp help"),

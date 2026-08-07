@@ -39,6 +39,7 @@ public static class Cli
                 ("chp countries · chp country", "exit countries"),
                 ("chp speed <ms> · speed off", "drop nodes slower than this"),
                 ("chp passwd · lang · set-port", "password, language, panel port"),
+                ("chp set-proxy-port <port>", "move the browser proxy off a busy port"),
                 (sudo + "chp autostart on|off", "start with the system"),
             ]),
             ("Tunnel", [
@@ -72,6 +73,7 @@ public static class Cli
                 ("chp countries · chp country", "страны выхода"),
                 ("chp speed <мс> · speed off", "отсеять ноды медленнее порога"),
                 ("chp passwd · lang · set-port", "пароль, язык, порт панели"),
+                ("chp set-proxy-port <порт>", "перенести прокси, если порт занят"),
                 (sudo + "chp autostart on|off", "запуск при старте системы"),
             ]),
             ("Туннель", [
