@@ -27,11 +27,8 @@ public class SingBoxConfigGeneratorTests
             .First(o => (string?)o!["tag"] == "proxy")!;
         var poolTags = proxy["outbounds"]!.AsArray().Select(x => (string)x!).ToList();
 
-        // из 13 реальных нод убираем 5 NL + 1 RU = 7 остаётся
-        // (в их числе нода без распознанной страны — она не исключена)
         Assert.Equal(7, poolTags.Count);
 
-        // ни одна из нод пула не должна быть NL или RU
         var nodesByTag = Nodes().ToDictionary(n => n.Tag);
         foreach (var tag in poolTags)
         {
@@ -47,10 +44,8 @@ public class SingBoxConfigGeneratorTests
         var root = JsonNode.Parse(json)!;
         var rules = root["route"]!["rules"]!.AsArray();
 
-        // финальный маршрут — direct (остальная система не затрагивается)
         Assert.Equal("direct", (string?)root["route"]!["final"]);
 
-        // есть правило: процессы папки → outbound proxy
         Assert.Contains(rules, r =>
             (string?)r?["outbound"] == "proxy" &&
             r["process_path_regex"] is JsonArray);
@@ -86,8 +81,6 @@ public class SingBoxConfigGeneratorTests
         s.ExcludedExitCountries = new(StringComparer.OrdinalIgnoreCase)
             { "RU", "NL", "DE", "PL", "FI", "US", "TR" };
 
-        // все известные страны сняты, но нода с нераспознанной страной остаётся:
-        // выбрасывать её не за что, и туннель поднимется
         var json = SingBoxConfigGenerator.Generate(Nodes(), s);
         var proxy = JsonNode.Parse(json)!["outbounds"]!.AsArray()
             .First(o => (string?)o!["tag"] == "proxy")!;
@@ -110,16 +103,10 @@ public class SingBoxConfigGeneratorTests
         var grpc = root["outbounds"]!.AsArray()
             .FirstOrDefault(o => o?["transport"]?["type"]?.GetValue<string>() == "grpc");
         Assert.NotNull(grpc);
-        Assert.Null(grpc!["flow"]); // flow недопустим для grpc
+        Assert.Null(grpc!["flow"]);
         Assert.NotNull(grpc["transport"]!["service_name"]);
     }
 
-    /// <summary>
-    /// Ноды vless+reality из настоящей подписки владельца: движок отказывается
-    /// от рукопожатия, если потерять short_id, serviceName или flow. Разбирали живьём,
-    /// когда владелец сообщил «подписка рабочая, а нод нет» — тогда причина была в другом,
-    /// но проверка полей осталась, чтобы генератор не начал их терять молча.
-    /// </summary>
     [Fact]
     public void Keeps_reality_short_id_grpc_and_flow()
     {

@@ -4,13 +4,6 @@ using System.Text.Json.Nodes;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// «В пуле не осталось нод» — отдельная беда, а не любая ошибка сборки правил.
-///
-/// По ней откатываются настройки, которыми человек только что сузил пул: страны, порог
-/// скорости. Без своего типа откатывалось бы и то, что к пулу отношения не имеет —
-/// например «не выбрано ни одной программы», и человек терял бы верную настройку.
-/// </summary>
 public sealed class PoolEmptyException : InvalidOperationException
 {
     public PoolEmptyException(string message) : base(message) { }
@@ -97,7 +90,6 @@ public static class SingBoxConfigGenerator
         });
     }
 
-    /// <summary>Локальный SOCKS/HTTP-прокси без TUN.</summary>
     public static string GenerateLocalProxy(IReadOnlyList<ProxyNode> allNodes, ProxyCageSettings settings)
     {
         var pool = allNodes
@@ -172,11 +164,6 @@ public static class SingBoxConfigGenerator
         });
     }
 
-    /// <summary>
-    /// Боевой конфиг CehoProxy: TUN + правила по КАЖДОМУ включённому приложению из конфига.
-    /// Fail-closed: трафик приложений идёт только в пул нод, на direct не откатывается —
-    /// если ни одна нода не жива, соединение рвётся, а не утекает мимо туннеля.
-    /// </summary>
     public static string GenerateForConfig(IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg)
     {
         var apps = cfg.Apps.Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)).ToList();
@@ -212,7 +199,6 @@ public static class SingBoxConfigGenerator
             ["dns"] = new JsonObject
             {
                 ["servers"] = DnsServersWithDirect(cfg.TunAddress),
-                // DNS изолированных приложений — через туннель, иначе резолвинг течёт мимо
                 ["rules"] = new JsonArray
                 {
                     new JsonObject { ["process_path_regex"] = appRegexes.DeepClone(), ["server"] = "dns-proxy" },
@@ -237,12 +223,11 @@ public static class SingBoxConfigGenerator
                 ["rules"] = new JsonArray
                 {
                     new JsonObject { ["action"] = "sniff" },
-                    // без этого DNS всей системы уходит в никуда (адрес внутри TUN-подсети)
                     new JsonObject { ["protocol"] = "dns", ["action"] = "hijack-dns" },
                     new JsonObject { ["inbound"] = new JsonArray { "mixed-in" }, ["outbound"] = ProxyTag },
                     new JsonObject { ["process_path_regex"] = appRegexes.DeepClone(), ["outbound"] = ProxyTag },
                 },
-                ["final"] = DirectTag,          // всё прочее — мимо туннеля, система не затронута
+                ["final"] = DirectTag,
                 ["auto_detect_interface"] = true,
                 ["default_domain_resolver"] = new JsonObject { ["server"] = "dns-direct" },
             },
@@ -255,18 +240,10 @@ public static class SingBoxConfigGenerator
         });
     }
 
-
-    /// <summary>
-    /// Пул нод после фильтра по странам. Пустой пул — это не «упало», а понятное сообщение
-    /// с перечислением снятых стран: пользователь сам их снял и должен видеть, что именно вернуть.
-    /// </summary>
     public static List<ProxyNode> FilterByCountries(IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg)
     {
         var pool = allNodes
             .Where(n => !n.IsMeta)
-            // нода без распознанной страны попадает в группу «??»: её видно в списке стран
-            // и её можно выключить, как любую другую. Молча выбрасывать такие ноды нельзя —
-            // так подписка с непривычными подписями теряла весь пул
             .Where(n => !cfg.ExcludedCountries.Contains(n.CountryCode ?? CountryResolver.Unknown,
                                                         StringComparer.OrdinalIgnoreCase))
             .Where(n => cfg.PreferredCountries.Count == 0
@@ -281,8 +258,6 @@ public static class SingBoxConfigGenerator
 
         if (pool.Count == 0)
         {
-            // «не осталось ни одной ноды: US» читалось как «в US нет нод». Разделили два случая:
-            // человек либо оставил только эти страны, либо, наоборот, выключил их
             var key = cfg.PreferredCountries.Count > 0 ? "countries_only_left" : "countries_none_left";
             var reason = cfg.PreferredCountries.Count > 0
                 ? string.Join(", ", cfg.PreferredCountries)
@@ -293,21 +268,11 @@ public static class SingBoxConfigGenerator
         return pool;
     }
 
-    /// <summary>
-    /// Нода отсеивается по скорости, только если её ДЕЙСТВИТЕЛЬНО мерили и она не уложилась.
-    /// Без замера нода остаётся в пуле: «не измеряли» и «медленная» — разные вещи.
-    /// </summary>
     public static bool IsTooSlow(ProxyNode node, CehoConfig cfg) =>
         cfg.MaxLatencyMs is { } limit
         && cfg.NodeLatency.TryGetValue(node.Key, out var ms)
         && ms > limit;
 
-    /// <summary>
-    /// TUN-вход. Расхождения между системами тут не косметические:
-    /// strict_route существует только на Linux и Windows; на Linux мы дополнительно
-    /// закрепляем имя интерфейса и СВОИ индексы таблицы и правил iproute2 — иначе после
-    /// аварийного завершения непонятно, чей мусор снимать, и можно снести чужой туннель.
-    /// </summary>
     private static JsonObject BuildTun(CehoConfig cfg)
     {
         var tun = new JsonObject
@@ -333,7 +298,6 @@ public static class SingBoxConfigGenerator
 
     private static JsonObject BuildDns(string folderRegex, string tunAddress)
     {
-        // DNS приложений из папки — через прокси (нет утечки резолвинга), остальное — локально.
         var servers = new JsonArray
         {
             new JsonObject
@@ -362,7 +326,6 @@ public static class SingBoxConfigGenerator
         };
     }
 
-    /// <summary>Резолвер для туннеля плюс настоящие DNS машины для всего остального.</summary>
     private static JsonArray DnsServersWithDirect(string tunAddress)
     {
         var servers = new JsonArray
@@ -377,24 +340,11 @@ public static class SingBoxConfigGenerator
         return servers;
     }
 
-    /// <summary>
-    /// Куда спрашивать имена для ВСЕГО, что мимо туннеля.
-    ///
-    /// Нельзя писать «спрашивай систему» (type: local): с поднятым TUN система спрашивает
-    /// наш же туннель, и получается петля — машина перестаёт резолвить что угодно.
-    /// Поймано живьём на Windows. Поэтому берём настоящие адреса DNS машины и ходим
-    /// в них НАПРЯМУЮ, мимо туннеля. Не нашлись — публичный резолвер, тоже напрямую:
-    /// пусть лучше имена резолвятся не тем сервером, чем не резолвятся вовсе.
-    /// </summary>
     private static JsonArray DirectDnsServers(string tunAddress)
     {
         var servers = new JsonArray();
         var system = Os.SystemDnsServers(tunAddress);
 
-        // detour здесь НЕ ставим: движок отвергает «detour к пустому direct» и вовсе
-        // не стартует — «detour to an empty direct outbound makes no sense». Поймано
-        // живьём. Без detour запрос и так идёт мимо туннеля: правил на него нет,
-        // а final у маршрутизации — direct.
         if (system.Count == 0)
         {
             servers.Add(new JsonObject
@@ -435,14 +385,7 @@ public static class SingBoxConfigGenerator
         var rules = new JsonArray
         {
             new JsonObject { ["action"] = "sniff" },
-            // системные DNS-запросы, захваченные TUN (auto_route переключает DNS
-            // ОС на адрес внутри самой TUN-подсети) — обязаны уйти в свой DNS-модуль
-            // (rules/final из секции dns), а не трактоваться как обычное соединение:
-            // без этого правила sing-box пытается "direct"-ом достучаться до адреса
-            // внутри собственной /30-подсети TUN, это никогда не сработает и рвёт
-            // резолвинг для ВСЕЙ системы, а не только для папки.
             new JsonObject { ["protocol"] = "dns", ["action"] = "hijack-dns" },
-            // локальный вход (проба страны выхода) — всегда через прокси
             new JsonObject
             {
                 ["inbound"] = new JsonArray { "mixed-in" },
@@ -450,7 +393,6 @@ public static class SingBoxConfigGenerator
             },
         };
 
-        // приложения папки → запрещённое назначение → reject
         if (blockedTags.Count > 0)
         {
             rules.Add(new JsonObject
@@ -461,8 +403,6 @@ public static class SingBoxConfigGenerator
             });
         }
 
-        // приложения папки → прокси (kill-switch: сюда попадает весь их трафик,
-        // на direct они не откатываются)
         rules.Add(new JsonObject
         {
             ["process_path_regex"] = new JsonArray { folderRegex },
@@ -473,17 +413,13 @@ public static class SingBoxConfigGenerator
         if (ruleSet.Count > 0)
             route["rule_set"] = ruleSet;
         route["rules"] = rules;
-        route["final"] = DirectTag; // всё прочее — напрямую, не затрагивается
+        route["final"] = DirectTag;
         route["auto_detect_interface"] = true;
-        // адреса нод (домены) резолвим напрямую, иначе замкнутый круг с прокси
+
         route["default_domain_resolver"] = new JsonObject { ["server"] = "dns-direct" };
         return route;
     }
 
-    /// <summary>
-    /// Папка → Go-regex, матчащий любой процесс под ней (вкл. дочерние), регистронезависимо.
-    /// C:\Games\App → (?i)^C:\\Games\\App[\\/]
-    /// </summary>
     internal static string FolderPathToRegex(string folderPath)
     {
         var trimmed = folderPath.TrimEnd('\\', '/');

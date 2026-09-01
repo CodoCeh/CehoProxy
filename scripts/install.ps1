@@ -1,13 +1,3 @@
-# Установка CehoProxy на Windows — одной командой в PowerShell от имени администратора:
-#
-#   irm https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/install.ps1 | iex
-#
-# Локальный файл тоже подойдёт:
-#   .\install.ps1 -Source .\cehoproxy.exe
-#
-# Сразу за установкой открывается настройка. Тем, кто не работает с командной строкой,
-# есть второй путь: «Установить CehoProxy.cmd» рядом с cehoproxy.exe — двойным щелчком.
-
 param(
     [string]$Source = "",
     [string]$Repo = "CodoCeh/CehoProxy"
@@ -52,6 +42,4 @@ Copy-Item -Path $Source -Destination $exe -Force
 
 Write-Host "Страница продукта: https://github.com/$Repo"
 
-# всё остальное — папка, короткая команда chp, PATH — делает сама программа,
-# чтобы установка из скрипта и установка двойным щелчком не разъезжались
 & $exe install

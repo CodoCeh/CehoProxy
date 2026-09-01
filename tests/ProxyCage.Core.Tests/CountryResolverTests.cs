@@ -1,9 +1,5 @@
 namespace ProxyCage.Core.Tests;
 
-/// <summary>
-/// Все примеры взяты из настоящих подписей нод. Каждый случай, помеченный «поймано живьём»,
-/// раньше давал неверную страну или выбрасывал ноду из пула.
-/// </summary>
 public class CountryResolverTests
 {
     [Theory]
@@ -41,15 +37,15 @@ public class CountryResolverTests
         => Assert.Equal(expected, CountryResolver.ResolveCode(remark));
 
     [Theory]
-    [InlineData("Ukraine", "UA")]        // ловилось на подстроку «uk» и давало GB
-    [InlineData("Fukuoka JP-2", "JP")]   // то же самое
-    [InlineData("Nigeria-1", "NG")]      // ловилось на «Niger» и давало NE
+    [InlineData("Ukraine", "UA")]
+    [InlineData("Fukuoka JP-2", "JP")]
+    [InlineData("Nigeria-1", "NG")]
     public void Does_not_match_inside_a_word(string remark, string expected)
         => Assert.Equal(expected, CountryResolver.ResolveCode(remark));
 
     [Theory]
-    [InlineData("node 100 GB трафика")]  // объём трафика, а не Великобритания
-    [InlineData("Smart TV профиль")]     // телевизор, а не Тувалу
+    [InlineData("node 100 GB трафика")]
+    [InlineData("Smart TV профиль")]
     [InlineData("Ключ для роутера 5 Gbit/s")]
     public void Leaves_country_unknown_when_there_is_none(string remark)
         => Assert.Null(CountryResolver.ResolveCode(remark));

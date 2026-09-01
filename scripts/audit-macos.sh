@@ -1,13 +1,7 @@
 #!/bin/bash
-# Проверка CehoProxy на macOS: изоляция, живучесть системы и самолечение.
-# Запускать под root: sudo ./audit-macos.sh /путь/к/программе
-#
-# Скрипт трогает маршрутизацию, поэтому у него есть сторож: что бы ни случилось,
-# через AUDIT_TIMEOUT секунд защита выключается и следы снимаются без участия человека.
 
 set -u
 
-# ищем программу там же, где её мог поставить install.sh, и в PATH
 if [ -z "${CEHO:-}" ]; then
   for c in /usr/local/bin/cehoproxy "$HOME/.local/bin/cehoproxy" \
            "$(eval echo ~${SUDO_USER:-$USER})/.local/bin/cehoproxy" "$(command -v cehoproxy || true)"; do
@@ -33,8 +27,6 @@ FAILED=0
 echo "программа: $CEHO"
 
 if [ -z "$APP" ]; then
-  # копия системного бинарника на macOS убивается ядром: подписанные платформенные
-  # программы не запускаются вне своего места. Поэтому берём что-то не системное.
   for c in /opt/homebrew/opt/curl/bin/curl /usr/local/opt/curl/bin/curl; do
     [ -x "$c" ] && APP="$c" && break
   done

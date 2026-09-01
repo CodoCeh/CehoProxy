@@ -2,42 +2,15 @@ using System.Text.Json;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Самолечение перед стартом.
-///
-/// Штатного завершения может не случиться в принципе: краш, BSOD, потеря питания,
-/// kill -9. После него в системе остаётся мусор, и следующий старт либо падает,
-/// либо — что хуже — оставляет машину без сети. Поэтому чистим ПЕРЕД каждым запуском,
-/// а не надеемся на корректный выход.
-///
-/// Windows: WinTun-адаптер остаётся «призраком», и старт падает на
-/// «configure tun interface: Cannot create a file when that file already exists».
-/// Linux: остаются ip rule и таблица маршрутизации, и часть из них блэкхолит трафик —
-/// сеть машины ложится целиком, а не только у изолированных приложений.
-/// macOS: utun принадлежит процессу и исчезает вместе с ним, маршруты снимает ядро.
-///
-/// Чтобы не задеть ЧУЖОЙ sing-box (у пользователя вполне может работать свой VPN),
-/// имя интерфейса и индексы таблиц у нас собственные и отличаются от умолчаний движка.
-/// </summary>
 public static class TunCleanup
 {
-    /// <summary>Имя нашего TUN на Linux. macOS выдаёт utunN сам, Windows именует адаптер сам.</summary>
     public const string LinuxInterfaceName = "ceho-tun";
 
-    /// <summary>Своя таблица маршрутизации и свой диапазон приоритетов правил — не умолчания sing-box.</summary>
     public const int Iproute2TableIndex = 2122;
     public const int Iproute2RuleIndex = 9100;
 
-    /// <summary>Сколько приоритетов подряд от <see cref="Iproute2RuleIndex"/> занимает движок.</summary>
     private const int RuleSpan = 16;
 
-    /// <summary>
-    /// Принудительно завершает НАШ движок и НАШУ службу, если после мягкой остановки они живы.
-    ///
-    /// Нужно при удалении: иначе на машине остаётся работающий туннель и открытая панель,
-    /// хотя файлов продукта уже нет — поймано живьём. Опознаём строго по пути нашего конфига,
-    /// поэтому чужой sing-box на той же машине не пострадает.
-    /// </summary>
     public static int KillOurProcesses(string runtimeConfigPath, Action<string>? log = null)
     {
         if (Os.IsWindows)
@@ -74,15 +47,12 @@ public static class TunCleanup
         return stopped;
     }
 
-    /// <summary>Убирает следы прошлого запуска. Вызывать только когда движок не работает.</summary>
     public static int RemoveLeftovers(Action<string>? log = null) => Os.Kind switch
     {
         OsKind.Windows => RemoveGhostAdapters(log),
         OsKind.Linux => CleanLinux(log),
         _ => CleanMac(log),
     };
-
-    // ── Windows ───────────────────────────────────────────────────────
 
     public static int RemoveGhostAdapters(Action<string>? log = null)
     {
@@ -101,8 +71,6 @@ public static class TunCleanup
 
     private static IEnumerable<string> FindSingTunInstanceIds(Action<string>? log)
     {
-        // Локаль системы может быть любой, поэтому опираемся не на подписи полей,
-        // а на класс Net и на то, что InstanceId у WinTun всегда начинается с SWD\WINTUN\.
         var (_, output) = Os.Run("pnputil", "/enum-devices /class Net", 15000);
         var ids = new List<string>();
         foreach (var rawLine in output.Split('\n'))
@@ -114,14 +82,12 @@ public static class TunCleanup
         return ids;
     }
 
-    // ── Linux ─────────────────────────────────────────────────────────
-
     private static int CleanLinux(Action<string>? log)
     {
         var removed = 0;
 
         removed += DeleteStaleRules(log, ipv6: false);
-        // ip -6 держит собственный набор правил с теми же приоритетами
+
         removed += DeleteStaleRules(log, ipv6: true);
 
         Os.Run("ip", $"route flush table {Iproute2TableIndex}", 10000);
@@ -142,12 +108,6 @@ public static class TunCleanup
         return removed;
     }
 
-    /// <summary>
-    /// Проверено живьём: движок создаёт по НЕСКОЛЬКУ правил с одним приоритетом, а
-    /// «ip rule del pref N» снимает ровно одно. Одного прохода не хватает, и после каждой
-    /// аварии в системе копился бы новый слой правил маршрутизации. Поэтому по каждому
-    /// приоритету удаляем, пока команда не начнёт возвращать ошибку.
-    /// </summary>
     private static int DeleteStaleRules(Action<string>? log, bool ipv6)
     {
         var family = ipv6 ? "-6 " : "";
@@ -167,11 +127,6 @@ public static class TunCleanup
         return removed;
     }
 
-    /// <summary>
-    /// Наши правила опознаём по своей таблице и по своему диапазону приоритетов.
-    /// Ни то, ни другое не совпадает с умолчаниями sing-box, поэтому чужой туннель не пострадает.
-    /// Приоритеты 0 и 32766/32767 — системные local/main/default, их не трогаем никогда.
-    /// </summary>
     private static IEnumerable<int> StaleRulePriorities(Action<string>? log, bool ipv6 = false)
     {
         var (code, output) = Os.Run("ip", (ipv6 ? "-6 " : "") + "-j rule show", 10000);
@@ -202,13 +157,8 @@ public static class TunCleanup
         return found.Distinct();
     }
 
-    // ── macOS ─────────────────────────────────────────────────────────
-
     private static int CleanMac(Action<string>? log)
     {
-        // utun принадлежит открытому сокету процесса: умирает процесс — исчезает интерфейс,
-        // а вместе с ним ядро снимает и маршруты, которые на него ссылались.
-        // Проверено kill -9: ни интерфейса, ни маршрутов не остаётся, чистить нечего.
         return 0;
     }
 }

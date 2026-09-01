@@ -3,10 +3,6 @@ using ProxyCage.Core;
 
 namespace ProxyCage.Core.Tests;
 
-/// <summary>
-/// Платформенный шов. Тесты идут от текущей системы: правило изоляции и опции TUN
-/// на Windows, Linux и macOS разные, и общего «правильного» ответа тут нет.
-/// </summary>
 public class PlatformTests
 {
     private static string SystemBinDir => Os.Kind switch
@@ -21,7 +17,6 @@ public class PlatformTests
     [Fact]
     public void Isolating_a_whole_system_directory_is_refused()
     {
-        // папка /usr/bin под правилом означала бы «изолировать половину системы»
         Assert.Throws<InvalidOperationException>(() => AppDetector.Detect(SystemBinDir));
     }
 
@@ -48,7 +43,7 @@ public class PlatformTests
 
         Assert.Matches(rx, $"{AppFolder}{sep}app{sep}helper");
         Assert.DoesNotMatch(rx, $"{AppFolder}-other{sep}helper");
-        // сам путь папки без разделителя не считается процессом внутри неё
+
         Assert.DoesNotMatch(rx, AppFolder);
     }
 
@@ -67,10 +62,6 @@ public class PlatformTests
     {
         if (Os.IsWindows) return;
 
-        // Ядро отдаёт движку физический путь. Пример из жизни: /Applications/Safari.app —
-        // символическая ссылка в Cryptex, а /tmp — ссылка на /private/tmp. Правило по
-        // введённому пути не сработало бы МОЛЧА: продукт рапортует «изолировано»,
-        // трафик идёт мимо. Поэтому храним то, что увидит система.
         var d = AppDetector.Detect("/Applications/Safari.app/Contents/MacOS/Safari");
         Assert.Equal(Os.RealPath(d.Folder), d.Folder);
 
@@ -107,8 +98,6 @@ public class PlatformTests
     [Fact]
     public void System_dns_is_hijacked_not_routed()
     {
-        // без этого правила sing-box пытается direct-ом достучаться до адреса внутри
-        // собственной подсети TUN, и резолвинг ложится у ВСЕЙ машины
         var rules = Runtime()["route"]!["rules"]!.AsArray();
         Assert.Contains(rules, r => (string?)r?["action"] == "hijack-dns");
     }
@@ -123,7 +112,7 @@ public class PlatformTests
         Assert.Equal("gvisor", (string?)tun["stack"]);
 
         if (Os.IsMac)
-            Assert.Null(tun["strict_route"]);       // на macOS опции нет
+            Assert.Null(tun["strict_route"]);
         else
             Assert.True((bool?)tun["strict_route"]);
 
@@ -142,8 +131,6 @@ public class PlatformTests
     [Fact]
     public void Our_iproute2_indices_differ_from_sing_box_defaults()
     {
-        // на этом держится самолечение: чистим только СВОЙ мусор и не сносим
-        // чужой туннель, который может работать на той же машине
         Assert.NotEqual(2022, TunCleanup.Iproute2TableIndex);
         Assert.NotEqual(9000, TunCleanup.Iproute2RuleIndex);
     }

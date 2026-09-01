@@ -31,9 +31,7 @@ public class SubscriptionParserTests
     public void Marks_only_aggregate_entries_as_meta()
     {
         var nodes = SubscriptionParser.Parse(Vless());
-        // служебная запись здесь одна — «Автовыбор»: это та же нода под другим именем.
-        // «Ключ для роутера» служебной записью НЕ является: это обычная рабочая нода,
-        // и выкидывать её из пула не за что
+
         Assert.Equal(1, nodes.Count(n => n.IsMeta));
         Assert.Equal(13, nodes.Count(n => !n.IsMeta));
     }
@@ -43,8 +41,7 @@ public class SubscriptionParserTests
     {
         var nodes = SubscriptionParser.Parse(Vless());
         var unknown = nodes.Where(n => n.CountryCode is null && !n.IsMeta).ToList();
-        // нераспознанная страна — не повод выбрасывать ноду: раньше подписка
-        // с непривычными подписями теряла из-за этого весь пул
+
         Assert.NotEmpty(unknown);
     }
 
@@ -77,8 +74,6 @@ public class SubscriptionParserTests
     [Fact]
     public void Tuic_splits_uuid_and_password()
     {
-        // логин у tuic приходит одной строкой uuid:password, и без разделения
-        // sing-box падает на «invalid uuid» — ловили живьём
         var tuic = SubscriptionParser.Parse(Fixture("sub-protocols.txt"))
             .First(n => n.Protocol == ProxyProtocol.Tuic);
         Assert.Equal("00000000-0000-4000-8000-000000000002", tuic.Credential);

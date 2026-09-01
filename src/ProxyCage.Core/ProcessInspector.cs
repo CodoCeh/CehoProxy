@@ -4,11 +4,6 @@ using System.Text.RegularExpressions;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Чем доказывается изоляция: какие процессы принадлежат приложению и с какого локального
-/// адреса они реально соединяются. У завёрнутых в туннель адрес из подсети TUN,
-/// у утекающих мимо — адрес сетевой карты. Способ добыть это у каждой системы свой.
-/// </summary>
 public static class ProcessInspector
 {
     public static IReadOnlySet<int> PidsOf(AppEntry app)
@@ -33,9 +28,6 @@ public static class ProcessInspector
     {
         foreach (var p in Process.GetProcesses())
         {
-            // идентификатор забираем ДО освобождения объекта: после Dispose обращение
-            // к нему падает с «No process is associated with this object», и проверка
-            // изоляции разваливалась целиком. Поймано живьём на Windows
             int id;
             string? path = null;
             try
@@ -43,7 +35,7 @@ public static class ProcessInspector
                 id = p.Id;
                 path = p.MainModule?.FileName;
             }
-            catch { continue; }          // чужие процессы без доступа к модулю — не наши
+            catch { continue; }
             finally { p.Dispose(); }
 
             if (path is not null) yield return (id, path);
@@ -57,8 +49,7 @@ public static class ProcessInspector
             var name = Path.GetFileName(dir);
             if (!int.TryParse(name, out var pid)) continue;
             string? target = null;
-            // /proc/<pid>/exe читается напрямую, без разбора карт памяти:
-            // Process.MainModule на Linux ходит по /proc/<pid>/maps и на чужих процессах падает
+
             try { target = File.ResolveLinkTarget(Path.Combine(dir, "exe"), true)?.FullName; }
             catch { }
             if (target is not null) yield return (pid, target);
@@ -75,13 +66,11 @@ public static class ProcessInspector
             var sp = t.IndexOf(' ');
             if (sp <= 0 || !int.TryParse(t[..sp], out var pid)) continue;
             var path = t[(sp + 1)..].Trim();
-            // ps показывает путь так, как программу запустили; правило же построено
-            // по физическому пути — без приведения проверка изоляции разошлась бы с движком
+
             if (path.Length > 0) yield return (pid, Os.RealPath(path));
         }
     }
 
-    /// <summary>Локальные адреса установленных TCP-соединений указанных процессов.</summary>
     public static IEnumerable<string> LocalAddressesOf(IReadOnlySet<int> pids) => Os.Kind switch
     {
         OsKind.Windows => WindowsLocalAddresses(pids),
@@ -95,14 +84,10 @@ public static class ProcessInspector
         foreach (var line in text.Split('\n'))
         {
             var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            // TCP  <local>  <remote>  ESTABLISHED  <pid>
+
             if (parts.Length < 5 || !parts[0].Equals("TCP", StringComparison.OrdinalIgnoreCase)) continue;
             if (!int.TryParse(parts[^1], out var pid) || !pids.Contains(pid)) continue;
 
-            // Считаем только ЖИВЫЕ соединения. Слушающие сокеты и закрывающиеся хвосты
-            // (FIN_WAIT, TIME_WAIT) идут с прежнего адреса и выглядели как утечка: продукт
-            // показывал «ТЕЧЁТ» при исправной изоляции сразу после включения защиты.
-            // Названия состояний TCP Windows не переводит, опираться на них можно.
             if (!parts[3].Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase)) continue;
 
             yield return StripPort(parts[1]);
@@ -139,19 +124,15 @@ public static class ProcessInspector
             foreach (var line in lines.Skip(1))
             {
                 var f = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                // sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode
+
                 if (f.Length < 10) continue;
-                if (f[3] != "01") continue;                 // 01 = ESTABLISHED
+                if (f[3] != "01") continue;
                 if (!inodes.Contains(f[9])) continue;
                 if (ParseHexAddress(f[1]) is { } addr) yield return addr;
             }
         }
     }
 
-    /// <summary>
-    /// В /proc/net/tcp нет pid, есть inode сокета. Обратную связь даёт /proc/&lt;pid&gt;/fd:
-    /// каждый сокет там — симлинк вида socket:[12345]. Обходим только процессы приложения.
-    /// </summary>
     private static HashSet<string> SocketInodesOf(IReadOnlySet<int> pids)
     {
         var inodes = new HashSet<string>();
@@ -175,7 +156,6 @@ public static class ProcessInspector
         return inodes;
     }
 
-    /// <summary>0100007F:1F90 → 127.0.0.1 (little-endian по 4 байта, и для IPv6 тоже).</summary>
     private static string? ParseHexAddress(string field)
     {
         var colon = field.IndexOf(':');

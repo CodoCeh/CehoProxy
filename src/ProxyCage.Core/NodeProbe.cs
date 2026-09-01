@@ -3,7 +3,6 @@ using System.Net.Sockets;
 
 namespace ProxyCage.Core;
 
-/// <summary>Замер задержки до нод, чтобы можно было выбрать страну осознанно.</summary>
 public static class NodeProbe
 {
     public sealed record Measured(ProxyNode Node, int? LatencyMs);
@@ -11,10 +10,6 @@ public static class NodeProbe
     public sealed record CountryRow(
         string Code, string? Name, int Nodes, int Alive, int? BestMs, IReadOnlyList<Measured> Items);
 
-    /// <summary>
-    /// TCP-хендшейк до server:port. Для QUIC-протоколов (hysteria2, tuic) это UDP,
-    /// и TCP-проба соврёт, поэтому такие ноды помечаются неизмеренными, а не мёртвыми.
-    /// </summary>
     public static async Task<Measured> MeasureAsync(ProxyNode node, int timeoutMs = 2500)
     {
         if (node.Protocol is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic)
@@ -22,9 +17,6 @@ public static class NodeProbe
 
         try
         {
-            // адрес разрешаем ДО секундомера: иначе у нод, записанных именем, в замер
-            // попадает время DNS, а у нод, записанных адресом, — нет, и числа несравнимы.
-            // Поймано живьём: одна и та же подписка давала 0 мс по адресам и 80 мс по именам
             var address = await ResolveAsync(node.Server, timeoutMs);
             if (address is null) return new Measured(node, null);
 
@@ -56,18 +48,6 @@ public static class NodeProbe
         }
     }
 
-    /// <summary>
-    /// Замер принимается локально, а не сетью.
-    ///
-    /// Опознаём по физике: ноды в РАЗНЫХ странах не могут отвечать одинаково быстро —
-    /// расстояние разное, и до Хельсинки с Москвой не бывает по 5 мс до обеих. Если почти
-    /// все замеры уложились в единицы миллисекунд, значит соединение принимает не нода,
-    /// а туннель на этой машине: свой TUN мы ловим по адресу, но у человека может быть
-    /// поднят и чужой VPN. Поймано живьём: 11 нод от Хельсинки до Москвы — 0-6 мс.
-    ///
-    /// Провайдера с нодами в одном городе это не задевает: там мало стран, и правило молчит.
-    /// Отсеивать по таким числам нельзя — они не про скорость нод.
-    /// </summary>
     public static bool LooksLikeLocalAccept(IReadOnlyList<Measured> measured)
     {
         const int ImpossiblyFastMs = 10;
@@ -83,17 +63,6 @@ public static class NodeProbe
         return real.Count(m => m.LatencyMs < ImpossiblyFastMs) * 10 >= real.Count * 7;
     }
 
-    /// <summary>
-    /// При поднятом TUN замер бессмысленен: gvisor принимает TCP-соединение локально и
-    /// рапортует успех, поэтому ЛЮБАЯ нода выглядит живой с задержкой в пару миллисекунд.
-    /// Проверено: мёртвая нода, которую подписка сама помечает «тех. работы», показывалась
-    /// живой. Показывать такие числа нельзя — лучше честно отказаться от замера.
-    /// </summary>
-    /// <summary>
-    /// Ищем интерфейс с НАШИМ адресом, а не по имени. На macOS utun0..utun3 подняты почти
-    /// всегда (iCloud, Handoff), и проверка по имени навсегда запретила бы замер — тупик
-    /// на ровном месте.
-    /// </summary>
     public static bool TunnelIsUp(string tunAddress)
     {
         var ip = tunAddress.Split('/')[0];

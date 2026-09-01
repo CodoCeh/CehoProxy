@@ -1,10 +1,5 @@
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Автозапуск средствами самой системы: планировщик задач, systemd или launchd.
-/// Везде нужны права администратора — TUN без них не поднимется, и запускать
-/// защиту «под пользователем» бессмысленно.
-/// </summary>
 public static class Autostart
 {
     public const string TaskName = "CehoProxy";
@@ -36,7 +31,6 @@ public static class Autostart
         _ => DisableLaunchd(),
     };
 
-    /// <summary>Перезапуск службы после обновления файла программы.</summary>
     public static void Restart()
     {
         switch (Os.Kind)
@@ -54,7 +48,6 @@ public static class Autostart
         }
     }
 
-    /// <summary>Останавливает службу прямо сейчас. Disable только снимает её с автозапуска.</summary>
     public static void StopService()
     {
         switch (Os.Kind)
@@ -65,11 +58,8 @@ public static class Autostart
         }
     }
 
-    /// <summary>Полное удаление: остановить, снять автозапуск и стереть его файлы из системы.</summary>
     public static void Purge()
     {
-        // сначала остановить: снятая с автозапуска служба продолжает работать,
-        // и после удаления на машине оставался живой туннель с открытой панелью
         StopService();
         Disable();
         try
@@ -84,12 +74,8 @@ public static class Autostart
         catch { }
     }
 
-    // ── Windows ───────────────────────────────────────────────────────
-
     private static string? EnableWindows(string exePath, string workingDir)
     {
-        // S4U — задача стартует без интерактивного входа и без хранения пароля,
-        // Highest — TUN требует прав администратора.
         var ps = $$"""
             $ErrorActionPreference='Stop'
             Unregister-ScheduledTask -TaskName '{{TaskName}}' -Confirm:$false -ErrorAction SilentlyContinue
@@ -103,8 +89,6 @@ public static class Autostart
             $"-NoProfile -ExecutionPolicy Bypass -Command \"{ps.Replace("\"", "\\\"").ReplaceLineEndings("; ")}\"");
         return code == 0 ? null : $"не удалось включить автозапуск: {output}";
     }
-
-    // ── Linux ─────────────────────────────────────────────────────────
 
     private static string? EnableSystemd(string exePath, string workingDir)
     {
@@ -151,8 +135,6 @@ public static class Autostart
         return code == 0 ? null : $"не удалось снять автозапуск: {output}";
     }
 
-    // ── macOS ─────────────────────────────────────────────────────────
-
     private static string? EnableLaunchd(string exePath, string workingDir)
     {
         var plist = $"""
@@ -178,7 +160,7 @@ public static class Autostart
         try
         {
             File.WriteAllText(PlistPath, plist);
-            // launchd молча игнорирует plist с неправильными правами
+
             Os.Run("chown", $"root:wheel {PlistPath}");
             Os.Run("chmod", $"644 {PlistPath}");
         }

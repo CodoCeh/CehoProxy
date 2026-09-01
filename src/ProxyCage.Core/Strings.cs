@@ -1,10 +1,5 @@
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Все строки, которые видит человек. Язык выбирается при первой настройке:
-/// у части серверов нет графики, и терминал обязан говорить понятно сразу.
-/// Обращение — на «вы», как во всех продуктах КодоЦеха.
-/// </summary>
 public static class Strings
 {
     public static readonly string[] Languages = { "ru", "en" };
@@ -24,7 +19,6 @@ public static class Strings
 
     private static readonly Dictionary<string, Pair> Table = new(StringComparer.Ordinal)
     {
-        // ── общее ────────────────────────────────────────────────────
         ["tagline"] = new(
             "CehoProxy — выбранные программы выходят в интернет только через туннель.",
             "CehoProxy — selected apps reach the internet only through the tunnel."),
@@ -37,8 +31,6 @@ public static class Strings
             "Защита работает по прежним правилам. Перезапустите её, чтобы применить новые: {0}chp stop, затем {0}chp daemon",
             "Protection is still running under the old rules. Restart it to apply the new ones: {0}chp stop, then {0}chp daemon"),
         ["cancelled"] = new("Отменено.", "Cancelled."),
-
-        // ── состояние ────────────────────────────────────────────────
         ["state_on"] = new("Защита включена", "Protection is on"),
         ["state_off"] = new("Защита выключена", "Protection is off"),
         ["state_leftovers"] = new(
@@ -61,8 +53,6 @@ public static class Strings
         ["subs_count"] = new("Подписок: {0}", "Subscriptions: {0}"),
         ["country_any_but"] = new("любая, кроме {0}", "any except {0}"),
         ["country_any"] = new("любая", "any"),
-
-        // ── предстартовая проверка ───────────────────────────────────
         ["pf_rights_ok"] = new("Прав достаточно", "Sufficient privileges"),
         ["pf_rights_need_win"] = new("Нужны права администратора", "Administrator rights required"),
         ["pf_rights_need_unix"] = new("Нужны права администратора", "Administrator rights required"),
@@ -163,8 +153,6 @@ public static class Strings
         ["pf_blockers"] = new(
             "Мешает запуску: {0}. Исправьте отмеченное «стоп».",
             "Blocking startup: {0}. Fix the items marked \"stop\"."),
-
-        // ── определение программ ─────────────────────────────────────
         ["det_bundle"] = new(
             "Под изоляцию попадёт весь пакет программы целиком, включая вспомогательные процессы внутри него.",
             "The whole application bundle will be isolated, including helper processes inside it."),
@@ -198,8 +186,6 @@ public static class Strings
             "A Microsoft Store app. The path contains a version number that changes on update, so " +
             "the rule uses \"{0}_\" without the version — otherwise the app would silently fall out " +
             "of isolation after an update."),
-
-        // ── пароль и доступ ──────────────────────────────────────────
         ["auth_password"] = new("Пароль", "Password"),
         ["auth_enter"] = new("Войти", "Sign in"),
         ["auth_wrong"] = new("Неверный пароль.", "Wrong password."),
@@ -217,8 +203,6 @@ public static class Strings
         ["auth_no_password"] = new(
             "Панелью и командами может пользоваться любой, кто вошёл на этот компьютер. Пароль это закроет.",
             "Anyone logged into this machine can use the panel and the commands. A password closes that."),
-
-        // ── страны ───────────────────────────────────────────────────
         ["countries_title"] = new("Страны выхода", "Exit countries"),
         ["countries_hint"] = new(
             "Снятая галочка означает, что ноды этой страны в пул не берутся. " +
@@ -281,8 +265,6 @@ public static class Strings
             "а замер идёт TCP-рукопожатием, и он бы соврал.",
             "\"Not measured\" for hysteria2 and tuic is expected: they run over UDP, while the probe " +
             "is a TCP handshake, which would lie."),
-
-        // ── панель: разделы ──────────────────────────────────────────
         ["nav_state"] = new("Состояние", "Status"),
         ["nav_apps"] = new("Программы", "Apps"),
         ["nav_subs"] = new("Подписки", "Subscriptions"),
@@ -340,8 +322,6 @@ public static class Strings
         ["autostart_off"] = new("Запускается только вручную", "Started manually only"),
         ["autostart_add"] = new("Добавить в автозапуск", "Enable autostart"),
         ["autostart_del"] = new("Убрать из автозапуска", "Disable autostart"),
-
-        // ── браузер ──────────────────────────────────────────────────
         ["browser_title"] = new("Прокси для браузера", "Proxy for the browser"),
         ["browser_lede"] = new(
             "Кроме изоляции по программам туннель отдаёт обычный прокси на этом компьютере. " +
@@ -358,7 +338,6 @@ public static class Strings
         ["browser_note"] = new(
             "Прокси работает, только пока защита включена.",
             "The proxy works only while protection is on."),
-
         ["check_title"] = new("Проверка и переключение", "Checking and switching"),
         ["checkurl_label"] = new("Адрес для проверки", "Address to check"),
         ["rotation_label"] = new(
@@ -406,7 +385,6 @@ public static class Strings
         ["upd_check_failed"] = new(
             "Не удалось проверить обновления: {0}", "Could not check for updates: {0}"),
         ["upd_failed"] = new("Обновиться не удалось: {0}", "Update failed: {0}"),
-
         ["run_title"] = new(
             "Помощники, которые запускаются командой",
             "Helpers you start with a command"),
@@ -427,7 +405,6 @@ public static class Strings
         ["run_not_on"] = new(
             "Защита выключена, а команда переведена на туннель. Включите защиту: {0}chp daemon — либо верните команду на прямой выход: chp unwrap ИМЯ",
             "Protection is off while the command is routed through the tunnel. Turn protection on: {0}chp daemon, or send the command back to the direct route: chp unwrap NAME"),
-
         ["alias_made"] = new(
             "Короткая команда chp создана: {0}", "The short command chp is ready: {0}"),
         ["alias_failed"] = new(
@@ -502,8 +479,6 @@ public static class Strings
             "машину, а правило смотрит на путь программы, поэтому оно действует для всех, кто её запускает.",
             "On a multi-user server one installation is enough: there is a single tunnel per machine, " +
             "and the rule matches the program path, so it applies to everyone who runs it."),
-
-        // ── помощь ───────────────────────────────────────────────────
         ["help_title"] = new("Как пользоваться", "How to use"),
         ["help_1"] = new(
             "Добавьте подписку VPN-сервиса.", "Add your VPN service subscription."),
@@ -531,8 +506,6 @@ public static class Strings
         ["product_page"] = new("Страница продукта", "Product page"),
         ["telegram"] = new("Мы в Telegram", "We are on Telegram"),
         ["product_page_at"] = new("Страница продукта: {0}", "Product page: {0}"),
-
-        // ── сообщения команд ─────────────────────────────────────────
         ["empty"] = new("пусто", "empty"),
         ["removed"] = new("Убрано.", "Removed."),
         ["added_name"] = new("Добавлено: {0}", "Added: {0}"),
@@ -598,8 +571,6 @@ public static class Strings
         ["err_unknown_command"] = new(
             "Неизвестная команда: {0}. Запустите chp без аргументов, чтобы увидеть список.",
             "Unknown command: {0}. Run chp with no arguments to see the list."),
-
-        // ── разговор в терминале ─────────────────────────────────────
         ["country_unknown"] = new("страна не определена", "country unknown"),
         ["ask_skip"] = new("Enter — пропустить", "Enter to skip"),
         ["ask_or_path"] = new(
@@ -680,8 +651,6 @@ public static class Strings
         ["hint_after_add"] = new(
             "Программу перезапустите — её соединения пойдут по новым правилам.",
             "Restart the program so its connections follow the new rules."),
-
-        // ── мастер настройки ─────────────────────────────────────────
         ["setup_password_why"] = new(
             "Панель и команды доступны всем, кто вошёл на этот компьютер. Если он общий — поставьте пароль.",
             "The panel and the commands are available to anyone logged into this machine. Set a password if it is shared."),
@@ -706,8 +675,6 @@ public static class Strings
         ["on_word"] = new("включён", "enabled"),
         ["off_word"] = new("выключен", "disabled"),
         ["autostart_state_off"] = new("автозапуск выключен", "autostart disabled"),
-
-        // ── проверка изоляции ────────────────────────────────────────
         ["verify_isolated"] = new(
             "ИЗОЛИРОВАНО: все соединения идут через туннель",
             "ISOLATED: every connection goes through the tunnel"),

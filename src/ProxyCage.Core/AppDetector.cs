@@ -2,22 +2,11 @@ using System.Text.RegularExpressions;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Пользователь указывает исполняемый файл — мы сами определяем, что изолировать.
-/// По ПАПКЕ, а не по файлу: приложения на Electron/Chromium поднимают вспомогательные
-/// процессы с другими именами, и правило по одному файлу их пропустит.
-///
-/// Главная опасность здесь — подняться слишком высоко. Программа из /usr/bin дала бы
-/// папку /usr/bin, и под изоляцию уехала бы половина системы. Поэтому системные каталоги
-/// каждой ОС перечислены явно, и для них правило строится по одному файлу.
-/// </summary>
 public static class AppDetector
 {
-    /// <summary>Служебные подпапки, внутри которых лежит исполняемый файл, а изолировать надо родителя.</summary>
     private static readonly string[] NestedDirs =
         { "app", "bin", "sbin", "lib", "libexec", "resources", "current", "files", "app-*" };
 
-    /// <summary>MSIX/Store: ...\WindowsApps\Publisher.Name_1.2.3.4_x64__hash\ — версия меняется при обновлении.</summary>
     private static readonly Regex MsixVersioned = new(
         @"^(?<prefix>.*\\WindowsApps\\[^\\]+?)_\d+(\.\d+)*(?<suffix>_[^\\]*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -29,7 +18,6 @@ public static class AppDetector
         bool SingleFile,
         string Explanation);
 
-    /// <summary>Каталоги, которые нельзя изолировать целиком ни при каких условиях.</summary>
     private static IEnumerable<string> SystemFolders()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -78,24 +66,17 @@ public static class AppDetector
         return string.Equals(a, b, Os.IsLinux ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// Определяет, что попадёт под изоляцию. Возвращает и человеческое объяснение —
-    /// его показываем до подтверждения, чтобы пользователь видел результат, а не догадывался.
-    /// </summary>
     public static Detection Detect(string exeOrFolderPath, string lang = "ru")
     {
         var entered = Path.GetFullPath(exeOrFolderPath.Trim().Trim('"'));
-        // именно физический путь: по нему движок опознаёт процесс, а не по тому, что ввели
+
         var full = Os.RealPath(entered);
         var isFile = File.Exists(full);
 
-        // путь после ссылок может не совпасть с введённым — объясняем, иначе человек
-        // увидит в списке незнакомый путь и решит, что программа поняла его неправильно
         var resolvedNote = full.Equals(entered, StringComparison.Ordinal)
             ? ""
             : Strings.T(lang, "det_resolved");
 
-        // .app — это и есть граница приложения на macOS: внутри и бинарник, и все хелперы
         if (Os.IsMac && BundleRoot(full) is { } bundle)
         {
             return new Detection(
@@ -134,10 +115,6 @@ public static class AppDetector
             Strings.T(lang, "det_folder") + climbedNote + resolvedNote);
     }
 
-    /// <summary>
-    /// Понятное имя для списка. Имя папки часто оказывается номером версии
-    /// (/opt/homebrew/Cellar/curl/8.20.0), и запись «8.20.0» человеку ничего не говорит.
-    /// </summary>
     private static string NiceName(string folder, string entered)
     {
         var leaf = Path.GetFileName(folder);
@@ -153,7 +130,6 @@ public static class AppDetector
     private static bool LooksLikeVersion(string name) =>
         name.Length > 0 && char.IsDigit(name[0]) && name.All(c => char.IsDigit(c) || c is '.' or '-' or '_');
 
-    /// <summary>/Applications/Foo.app/Contents/MacOS/Foo → /Applications/Foo.app</summary>
     private static string? BundleRoot(string path)
     {
         var current = path.TrimEnd('/');
@@ -176,7 +152,6 @@ public static class AppDetector
             var parent = Path.GetDirectoryName(current);
             if (string.IsNullOrEmpty(leaf) || string.IsNullOrEmpty(parent)) break;
 
-            // корень MSIX-пакета трогать нельзя — иначе поднимемся в общий WindowsApps
             if (parent.EndsWith(@"\WindowsApps", StringComparison.OrdinalIgnoreCase)) break;
             if (IsSystemFolder(parent)) break;
 
@@ -190,13 +165,9 @@ public static class AppDetector
         return current;
     }
 
-    /// <summary>
-    /// Go-regex, матчащий процессы приложения. Для MSIX — по префиксу без версии,
-    /// чтобы обновление приложения не выключало изоляцию молча.
-    /// </summary>
     public static string ToRegex(AppEntry app)
     {
-        var prefix = Os.IsLinux ? "^" : "(?i)^";   // на Linux пути регистрозависимы
+        var prefix = Os.IsLinux ? "^" : "(?i)^";
 
         if (app.SingleFile)
             return prefix + EscapeGo(app.Folder) + "$";

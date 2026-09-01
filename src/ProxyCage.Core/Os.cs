@@ -6,11 +6,6 @@ namespace ProxyCage.Core;
 
 public enum OsKind { Windows, Linux, Mac }
 
-/// <summary>
-/// Всё, что расходится между Windows, Linux и macOS: пути, права, поиск внешних программ.
-/// Платформенный шов собран здесь и в четырёх соседних файлах
-/// (SingBoxProcess, TunCleanup, Autostart, AppDetector) — больше нигде.
-/// </summary>
 public static class Os
 {
     public static OsKind Kind =>
@@ -21,7 +16,6 @@ public static class Os
     public static bool IsMac => Kind == OsKind.Mac;
     public static bool IsLinux => Kind == OsKind.Linux;
 
-    /// <summary>Папка настроек по умолчанию. Каноничное для каждой системы место, доступное только root.</summary>
     public static string DefaultRoot => Kind switch
     {
         OsKind.Windows => Path.Combine(
@@ -32,10 +26,6 @@ public static class Os
 
     public static string SingBoxFileName => IsWindows ? "sing-box.exe" : "sing-box";
 
-    /// <summary>
-    /// Движок ищем в папке настроек, рядом с собой и в PATH. На Unix его обычно ставят
-    /// пакетным менеджером, и требовать копию в своей папке — лишний тупик на ровном месте.
-    /// </summary>
     public static string? ResolveSingBox(string root)
     {
         var candidates = new List<string> { Path.Combine(root, SingBoxFileName) };
@@ -54,14 +44,6 @@ public static class Os
         return FindOnPath(SingBoxFileName);
     }
 
-    /// <summary>
-    /// Настоящие DNS-серверы машины — те, которыми она пользуется БЕЗ нашего туннеля.
-    ///
-    /// Нужны, чтобы не устроить петлю: с поднятым TUN система спрашивает наш туннель,
-    /// а туннель, если сказать ему «спрашивай систему», спрашивает её же. Поймано живьём
-    /// на Windows: при включённой защите машина переставала резолвить вообще всё.
-    /// Адреса из подсети нашего туннеля отбрасываются — это и есть петля.
-    /// </summary>
     public static IReadOnlyList<string> SystemDnsServers(string tunAddress)
     {
         var ours = tunAddress.Split('/')[0];
@@ -69,15 +51,12 @@ public static class Os
 
         var found = Kind switch
         {
-            // ветка выполняется только на Windows, но анализатор этого не выводит
             OsKind.Windows => OperatingSystem.IsWindows() ? FromWindowsDns() : Array.Empty<string>(),
             OsKind.Mac => FromMacDns(),
             _ => FromResolvConf(),
         };
 
         var candidates = found
-            // четыре октета через точку: «53» тоже разбирается как адрес, и такой
-            // мусор уезжал в конфиг движка
             .Where(a => a.Count(c => c == '.') == 3
                         && System.Net.IPAddress.TryParse(a, out var ip)
                         && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
@@ -85,31 +64,14 @@ public static class Os
             .Distinct()
             .ToList();
 
-        // Порядок важнее самого списка.
-        //
-        // 1. DNS физической сетевой карты, если он отвечает, — он переживёт наш туннель.
-        // 2. Публичный резолвер напрямую — работает всегда, пока есть интернет.
-        // 3. Всё остальное — только если ничего лучше нет.
-        //
-        // Почему не берём просто «тот, что отвечает»: на машине владельца отвечал только
-        // DNS ЧУЖОГО туннеля (happ-tun, 172.18.0.2). Наш TUN перекраивает маршруты, чужой
-        // туннель ломается — и его резолвер пропадает вместе с ним. Машина остаётся без
-        // имён целиком. Поймано живьём на Windows.
         var physical = candidates.Where(a => !LooksLikeTunnelAddress(a)).Where(Answers).ToList();
         if (physical.Count > 0) return physical.Take(2).ToList();
 
         return new List<string> { PublicResolver };
     }
 
-    /// <summary>Публичный резолвер: к нему ходим напрямую, когда своего рабочего нет.</summary>
     public const string PublicResolver = "1.1.1.1";
 
-    /// <summary>
-    /// Похоже на адрес внутри туннеля, а не на настоящий шлюз сети.
-    /// Туннельные клиенты живут в 10/8 и 172.16/12; домашние сети — почти всегда 192.168/16.
-    /// Правило грубое, поэтому оно только определяет ПОРЯДОК: если такой адрес окажется
-    /// единственным рабочим, мы всё равно предпочтём ему публичный резолвер.
-    /// </summary>
     private static bool LooksLikeTunnelAddress(string address)
     {
         if (address.StartsWith("10.", StringComparison.Ordinal)) return true;
@@ -118,7 +80,6 @@ public static class Os
         return int.TryParse(second, out var octet) && octet is >= 16 and <= 31;
     }
 
-    /// <summary>Отвечает ли этот DNS-сервер на настоящий запрос. Две секунды на ответ.</summary>
     private static bool Answers(string server)
     {
         try
@@ -127,7 +88,6 @@ public static class Os
             udp.Client.ReceiveTimeout = 2000;
             udp.Connect(server, 53);
 
-            // минимальный запрос A-записи для example.com
             var query = new byte[] {
                 0x2a, 0x2a, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 7, (byte)'e', (byte)'x', (byte)'a', (byte)'m', (byte)'p', (byte)'l', (byte)'e',
@@ -138,12 +98,9 @@ public static class Os
             var from = new System.Net.IPEndPoint(System.Net.IPAddress.Any, 0);
             var answer = udp.Receive(ref from);
             if (answer.Length < 12 || answer[0] != 0x2a || answer[1] != 0x2a) return false;
-            if ((answer[2] & 0x80) == 0) return false;              // это не ответ
-            if ((answer[3] & 0x0F) != 0) return false;              // ответ с ошибкой
+            if ((answer[2] & 0x80) == 0) return false;
+            if ((answer[3] & 0x0F) != 0) return false;
 
-            // Мало «ответил» — нужен настоящий адрес в ответе. Виртуальные сетевые карты
-            // (Docker, WSL) держат свой DNS, который откликается, но публичных имён не знает.
-            // Поймано живьём: такой сервер уехал в конфиг, и машина осталась без имён.
             var answers = (answer[6] << 8) | answer[7];
             return answers > 0;
         }
@@ -156,14 +113,6 @@ public static class Os
     [SupportedOSPlatform("windows")]
     private static IEnumerable<string> FromWindowsDns()
     {
-        // Сначала DNS того интерфейса, через который машина реально выходит в интернет.
-        // У Windows таких интерфейсов много: Docker, WSL, виртуальные сети — у каждого
-        // свой DNS, и он даже отвечает, но публичные имена знает не всякий. Поймано живьём:
-        // в конфиг уезжал DNS докеровского моста, и с поднятой защитой имена не резолвились.
-        // Сначала DNS ФИЗИЧЕСКИХ сетевых карт. На машине запросто работает ещё один VPN
-        // (у владельца это был happ-tun), и его DNS живёт только пока жив тот туннель.
-        // Наш TUN перекраивает маршруты — чужой резолвер становится недостижим, и машина
-        // остаётся без имён. Поймано живьём на Windows.
         const string script =
             "Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | " +
             "ForEach-Object { (Get-DnsClientServerAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4 " +
@@ -182,9 +131,6 @@ public static class Os
         if (code != 0) return Array.Empty<string>();
         return output.Split('\n')
             .Where(l => l.Contains("nameserver[", StringComparison.Ordinal))
-            // берём всё ПОСЛЕ первого двоеточия: у IPv6 адрес сам полон двоеточий,
-            // и деление по последнему превращало «fd7a::53» в «53» — а .NET считает
-            // «53» адресом 0.0.0.53 и молча пропускает его дальше
             .Select(l => l[(l.IndexOf(':') + 1)..].Trim());
     }
 
@@ -199,7 +145,6 @@ public static class Os
         catch { return Array.Empty<string>(); }
     }
 
-    /// <summary>curl нужен для проб выхода — HttpClient через локальный вход sing-box глухо таймаутит.</summary>
     public static string? ResolveCurl()
     {
         if (IsWindows)
@@ -228,23 +173,16 @@ public static class Os
         return null;
     }
 
-    /// <summary>
-    /// Файл есть И его можно запустить.
-    ///
-    /// Одного File.Exists мало: битая символическая ссылка проходит эту проверку, и продукт
-    /// объявлял установленной программу, которой в системе нет. Поймано живьём на macOS —
-    /// /usr/local/bin/cursor вёл на давно отмонтированный том установщика.
-    /// </summary>
     public static bool IsRunnable(string path)
     {
         try
         {
             if (!File.Exists(path)) return false;
             var target = RealPath(path);
-            if (!File.Exists(target)) return false;          // ссылка в никуда
+            if (!File.Exists(target)) return false;
             if (IsWindows) return true;
 
-    #pragma warning disable CA1416   // сюда не попадаем на Windows: выше стоит ранний выход
+    #pragma warning disable CA1416
         var mode = File.GetUnixFileMode(target);
 #pragma warning restore CA1416
             return (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
@@ -264,14 +202,6 @@ public static class Os
     [DllImport("libc", EntryPoint = "free")]
     private static extern void FreeNative(IntPtr ptr);
 
-    /// <summary>
-    /// Физический путь, без символических ссылок.
-    ///
-    /// Это не косметика: ядро macOS отдаёт движку именно физический путь. Приложение,
-    /// добавленное как /tmp/app, в системе выглядит как /private/tmp/app, и правило
-    /// изоляции по исходному пути не срабатывает МОЛЧА — продукт рапортует «изолировано»,
-    /// а трафик идёт мимо. Поймано живьём на macOS.
-    /// </summary>
     public static string RealPath(string path)
     {
         var full = Path.GetFullPath(path);
@@ -337,7 +267,6 @@ public static class Os
         }
     }
 
-    /// <summary>Открыть панель в браузере. Единственное место, где нужен GUI-хост системы.</summary>
     public static void OpenInBrowser(string url)
     {
         var (file, args) = Kind switch

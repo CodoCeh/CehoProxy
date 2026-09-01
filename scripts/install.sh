@@ -1,14 +1,4 @@
 #!/bin/sh
-# Установка CehoProxy на Linux или macOS — одной командой:
-#
-#   curl -fsSL https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/install.sh | sudo sh
-#
-# Локальный файл тоже подойдёт, если программа уже скачана:
-#   sudo ./install.sh ./cehoproxy
-#
-# Дальше скрипт сам открывает настройку. Спрашивать через «curl | sh» напрямую нельзя:
-# на месте клавиатуры там труба от curl, поэтому ввод берётся из /dev/tty. Если терминала
-# нет вовсе (запуск из скрипта), настройка не навязывается — печатается, что делать дальше.
 
 set -eu
 
@@ -56,7 +46,6 @@ install -m 755 "$SRC" "$BIN"
 mkdir -p "$ROOT"
 chmod 755 "$ROOT"
 
-# короткая команда: симлинк, а не алиас оболочки — алиас не виден скриптам и службам
 ln -sf "$BIN" /usr/local/bin/chp
 
 echo "Страница продукта: https://github.com/$REPO"
@@ -72,9 +61,6 @@ if ! command -v sing-box >/dev/null 2>&1 && [ ! -x "$ROOT/sing-box" ]; then
   echo
 fi
 
-# настройка сразу после установки; клавиатура — из /dev/tty, потому что stdin занят трубой.
-# Проверяем не правами на файл, а настоящим открытием: в службе и в контейнере /dev/tty
-# существует, но не открывается, и скрипт падал на ровном месте
 if { : < /dev/tty; } 2>/dev/null; then
   "$BIN" setup < /dev/tty
 else

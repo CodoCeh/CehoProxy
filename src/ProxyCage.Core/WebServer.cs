@@ -4,12 +4,6 @@ using System.Web;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Локальная панель управления на http://127.0.0.1:&lt;порт&gt;. Слушает только петлю.
-///
-/// Формы обычные POST + redirect: панель обязана работать, даже если что-то сломано,
-/// поэтому не зависит от JavaScript. Разделы — обычные ссылки с параметром, без вкладок на скриптах.
-/// </summary>
 public sealed class WebServer
 {
     private const string CookieName = "ceho";
@@ -19,30 +13,22 @@ public sealed class WebServer
     private readonly Action<string> _log;
     private HttpListener? _listener;
 
-    /// <param name="Probed">Проба выхода уже отработала хотя бы раз. Нужен, чтобы
-    /// не красить состояние в «ошибка», пока идёт ПЕРВАЯ проверка: красный тут врёт —
-    /// человек читает его как «сломано», хотя туннель только что поднялся.</param>
     public sealed record ControlState(
         bool Running, string? ExitCountry, string? ExitIp, string? LastError, bool Probed);
 
     public Func<Task<IReadOnlyList<NodeProbe.CountryRow>>>? OnCountries { get; set; }
     private IReadOnlyList<NodeProbe.CountryRow>? _countries;
 
-    /// <summary>Ноды пула без замера. Страны надо показывать и при поднятом туннеле:
-    /// иначе исключить страну нельзя, не выключив защиту, и человек попадает в тупик.</summary>
     public Func<Task<IReadOnlyList<ProxyNode>>>? OnPool { get; set; }
 
     public Func<Task<string?>>? OnStart { get; set; }
     public Func<Task<string?>>? OnStop { get; set; }
     public Func<Task<string?>>? OnApply { get; set; }
 
-    /// <summary>Проверка и установка обновления. Делает демон: только у него есть права на файл.</summary>
     public Func<bool, Task<string>>? OnUpdate { get; set; }
 
-    /// <summary>Проверка подписок настоящим запросом через туннель.</summary>
     public Func<Task<string>>? OnCheckSubs { get; set; }
 
-    /// <summary>Команды, уже переведённые на туннель, — чтобы панель показывала их списком.</summary>
     public Func<IReadOnlyList<string>>? WrappedNames { get; set; }
 
     public WebServer(string configPath, Func<ControlState> state, Action<string> log)
@@ -66,7 +52,7 @@ public sealed class WebServer
 
     public void Stop()
     {
-        try { _listener?.Stop(); } catch { /* закрываемся */ }
+        try { _listener?.Stop(); } catch { }
     }
 
     private async Task LoopAsync()
@@ -120,8 +106,6 @@ public sealed class WebServer
         await WriteHtmlAsync(ctx, RenderPage(cfg, _state(), current, flash, flashErr));
     }
 
-    // ── доступ ───────────────────────────────────────────────────────
-
     private static bool Authorized(HttpListenerContext ctx, CehoConfig cfg)
     {
         if (!Auth.HasPassword(cfg)) return true;
@@ -139,7 +123,7 @@ public sealed class WebServer
             if (Auth.Verify(cfg, form.GetValueOrDefault("password", "")))
             {
                 var token = Auth.IssueSession();
-                // HttpOnly — куку не должен читать скрипт; SameSite=Strict — не уедет по чужой ссылке
+
                 ctx.Response.Headers.Add("Set-Cookie",
                     $"{CookieName}={token}; Path=/; HttpOnly; SameSite=Strict");
                 Redirect(ctx, "/");
@@ -151,11 +135,6 @@ public sealed class WebServer
         await WriteHtmlAsync(ctx, RenderGate(cfg, error));
     }
 
-    /// <summary>
-    /// Единая точка для терминала. Нужна для машин, где у человека нет прав на файл настроек
-    /// (общий сервер) и нет браузера: команда уходит сюда, выполняется от имени службы,
-    /// а обратно приходит ровно тот текст, который напечатал бы локальный CLI.
-    /// </summary>
     public Func<string[], Task<(bool Ok, string Text)>>? OnApiCommand { get; set; }
 
     private async Task HandleApiAsync(HttpListenerContext ctx, CehoConfig cfg)
@@ -212,8 +191,6 @@ public sealed class WebServer
         await ctx.Response.OutputStream.WriteAsync(bytes);
         ctx.Response.Close();
     }
-
-    // ── действия ─────────────────────────────────────────────────────
 
     private async Task<(string? Message, bool IsError)> ApplyPostAsync(
         string path, Dictionary<string, string> f, CehoConfig cfg)
@@ -320,7 +297,6 @@ public sealed class WebServer
 
                 case "/countries/save":
                 {
-                    // приходят только отмеченные — снятые вычисляем по полному списку
                     var all = (f.GetValueOrDefault("all", "") ?? "")
                         .Split(',', StringSplitOptions.RemoveEmptyEntries);
                     var on = f.Keys.Where(k => k.StartsWith("c_", StringComparison.Ordinal))
@@ -333,8 +309,6 @@ public sealed class WebServer
                     cfg.PreferredCountries.RemoveAll(c => cfg.ExcludedCountries.Contains(c, StringComparer.OrdinalIgnoreCase));
                     Save(cfg);
 
-                    // выбор, при котором в пуле не остаётся нод, сохранять нельзя:
-                    // человек ушёл бы с настройкой, при которой туннель не поднимается
                     try
                     {
                         var applied = OnApply is null ? null : await OnApply();
@@ -359,9 +333,6 @@ public sealed class WebServer
                     if (NodeProbe.TunnelIsUp(cfg.TunAddress)) return (S("measure_blocked"), true);
                     _countries = await OnCountries();
 
-                    // замеры запоминаем: по ним потом отсеиваются медленные ноды,
-                    // а мерить заново при каждой сборке правил — ждать на ровном месте.
-                    // Но только настоящие: из-под чужого туннеля числа не про скорость нод
                     var items = _countries.SelectMany(c => c.Items).ToList();
                     if (NodeProbe.LooksLikeLocalAccept(items))
                         return (S("speed_local_accept"), true);
@@ -390,8 +361,6 @@ public sealed class WebServer
                     }
                     catch (PoolEmptyException ex)
                     {
-                        // откатываем только то, что пул и опустошило: прочие беды сборки
-                        // правил (нет программ, нет подписки) к порогу отношения не имеют
                         cfg.MaxLatencyMs = prevLimit;
                         Save(cfg);
                         return ($"{ex.Message} {S("change_reverted")}", true);
@@ -435,7 +404,6 @@ public sealed class WebServer
                     try { return (await OnUpdate(install), false); }
                     catch (Exception ex)
                     {
-                        // «проверить» и «обновить» — разные действия, и жалобы у них разные
                         return (S(install ? "upd_failed" : "upd_check_failed", ex.Message), true);
                     }
                 }
@@ -495,8 +463,6 @@ public sealed class WebServer
 
     private static string E(string? s) => WebUtility.HtmlEncode(s ?? "");
 
-    // ── страница входа ───────────────────────────────────────────────
-
     private static string RenderGate(CehoConfig cfg, string? error)
     {
         var sb = new StringBuilder();
@@ -521,8 +487,6 @@ public sealed class WebServer
         sb.Append("<meta name=viewport content=\"width=device-width,initial-scale=1\">");
         sb.Append("<title>CehoProxy</title><style>").Append(WebUi.Css).Append("</style></head><body>");
     }
-
-    // ── основная страница ────────────────────────────────────────────
 
     private string RenderPage(CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr)
     {
@@ -579,8 +543,8 @@ public sealed class WebServer
         sb.Append("<section>");
         var cls = !st.Running ? "off"
                 : st.ExitIp is not null ? "on"
-                : st.Probed ? "bad"          // проба отработала и не нашла выхода — это правда ошибка
-                : "wait";                    // первая проверка ещё идёт, пугать красным нельзя
+                : st.Probed ? "bad"
+                : "wait";
         sb.Append("<div class=\"status ").Append(cls).Append("\"><span class=dot></span><b>");
         sb.Append(E(st.Running
             ? (cls == "bad" ? S("state_no_exit", []) : S("state_on", []))
@@ -598,9 +562,6 @@ public sealed class WebServer
                      && !c.Title.Contains("ort ", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        // причину показываем до кнопки: сначала человек читает, почему включить нельзя,
-        // и только потом видит саму кнопку. Ошибку запуска не повторяем, если она слово
-        // в слово совпадает с уже показанной помехой
         if (st.LastError is not null && !problems.Any(c => st.LastError.Contains(c.Title, StringComparison.Ordinal)))
             sb.Append("<div class=\"flash err\">").Append(E(st.LastError)).Append("</div>");
 
@@ -613,8 +574,6 @@ public sealed class WebServer
             sb.Append("</div>");
         }
 
-        // без прав кнопка «Включить» гарантированно не сработает: панель запускает движок
-        // от себя же. Живая кнопка, которая всегда падает, обманывает — гасим её
         var canStart = st.Running || Os.IsElevated();
         sb.Append("<form class=row method=post action=\"")
           .Append(st.Running ? "/control/stop" : "/control/start").Append("\">")
@@ -700,10 +659,6 @@ public sealed class WebServer
         sb.Append("</section>");
     }
 
-    /// <summary>
-    /// Найденные ИИ-инструменты. Скриптовые показываем тоже, но честно объясняем, что правило
-    /// по файлу не сработает: молчаливая «изоляция», которой нет, хуже отсутствия кнопки.
-    /// </summary>
     private void RenderDetected(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
         IReadOnlyList<AiTools.Found> found;
@@ -727,12 +682,8 @@ public sealed class WebServer
         sb.Append("<h2>").Append(E(S("run_title", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("run_lede", []))).Append("</p>");
 
-        // пример строим по найденному инструменту, а не шаблоном: команду из панели
-        // человек копирует целиком, и «<команда>» в ней выполниться не может
         var sample = found.FirstOrDefault(t => t.Kind == AiTools.ToolKind.Script)?.Path;
-        // Нашли такую команду — показываем её, она копируется и работает. Не нашли —
-        // ставим не чужое имя, а слово «имя-команды»: пример с посторонним названием
-        // человек копирует буквально и получает отказ. Поправлено по замечанию владельца
+
         var name = sample is not null
             ? Path.GetFileNameWithoutExtension(sample)
             : S("run_sample_name", []);
@@ -845,8 +796,6 @@ public sealed class WebServer
         sb.Append("<section><h2>").Append(E(S("countries_title", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("countries_hint", []))).Append("</p>");
 
-        // страны берём из пула, а не из результатов замера: замер при поднятом туннеле
-        // запрещён, и иначе раздел был бы пустым ровно тогда, когда он нужен
         IReadOnlyList<ProxyNode> pool = Array.Empty<ProxyNode>();
         string? poolError = null;
         try { if (OnPool is not null) pool = OnPool().GetAwaiter().GetResult(); }
@@ -855,8 +804,6 @@ public sealed class WebServer
         if (poolError is not null)
             sb.Append("<div class=\"flash err\">").Append(E(poolError)).Append("</div>");
 
-        // группу «страна не определена» показываем наравне с остальными: её ноды
-        // работают и лежат в пуле, поэтому человек должен их видеть и уметь выключить
         var groups = pool.GroupBy(n => n.CountryCode ?? CountryResolver.Unknown)
             .OrderByDescending(g => g.Count())
             .ToList();
@@ -903,8 +850,6 @@ public sealed class WebServer
           .Append("<button class=ghost>").Append(E(S("btn_measure", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("udp_not_measured", []))).Append("</p>");
 
-        // три разные настройки стояли одной строкой под кнопкой «Сохранить адрес проверки»,
-        // и поле с адресом было вообще без подписи — непонятно, что это за ссылка
         sb.Append("<h2>").Append(E(S("check_title", []))).Append("</h2>");
         sb.Append("<form class=stack method=post action=/settings><input type=hidden name=tab value=exit>");
         sb.Append("<label class=check><input type=checkbox name=rotation")
@@ -935,8 +880,7 @@ public sealed class WebServer
     private static void RenderAccess(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
         sb.Append("<section><h2>").Append(E(S("nav_access", []))).Append("</h2>");
-        // раньше вступление утверждало «панель закрыта паролем» даже тогда, когда пароля нет,
-        // и то же самое повторялось строкой ниже: одно состояние — одна фраза
+
         var hasPassword = Auth.HasPassword(cfg);
         sb.Append("<p class=lede>")
           .Append(E(S(hasPassword ? "auth_hint_set" : "auth_no_password", []))).Append("</p>");

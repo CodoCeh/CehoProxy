@@ -2,23 +2,12 @@ using ProxyCage.Core;
 
 namespace ProxyCage.Cli;
 
-/// <summary>
-/// Что происходит, когда человек набрал просто «chp».
-///
-/// Раньше вываливался список из тридцати команд, и дальше надо было догадываться,
-/// какие из них нужны именно сейчас. Здесь наоборот: показываем состояние в пять строк
-/// и спрашиваем ровно о том, чего не хватает. Список команд остался, но по запросу — «chp help».
-///
-/// Все вопросы задаются только в живом терминале: в скриптах и службе спрашивать не у кого,
-/// там команды ведут себя по-прежнему и возвращают понятный отказ.
-/// </summary>
 public static class Assistant
 {
     public static bool Interactive => !Console.IsInputRedirected;
 
     public static async Task<int> RunAsync()
     {
-        // первый запуск: список команд человеку сейчас не нужен, нужна настройка
         if (!CanWriteSettings(out var cfgOrNull))
         {
             var lang = cfgOrNull?.Language ?? "ru";
@@ -57,10 +46,6 @@ public static class Assistant
         return 0;
     }
 
-    /// <summary>
-    /// Настройки лежат в общей папке машины. Если писать в неё нельзя — разговаривать не о чем:
-    /// любой ответ человека всё равно некуда сохранить, и честнее сказать это сразу.
-    /// </summary>
     private static bool CanWriteSettings(out CehoConfig? cfg)
     {
         cfg = null;
@@ -128,13 +113,6 @@ public static class Assistant
     private static void Row(string name, string value) =>
         Console.WriteLine($"  {name,-18} {value}");
 
-    // ── чего не хватает ───────────────────────────────────────────────
-
-    /// <summary>
-    /// Подписка спрашивается и тут же проверяется: скачиваем, разбираем и показываем,
-    /// сколько нод и каких стран нашлось. Иначе человек узнаёт о нерабочей ссылке
-    /// только при включении защиты, и связать одно с другим уже сложно.
-    /// </summary>
     public static async Task<bool> AskSubscriptionAsync(CehoConfig cfg)
     {
         if (!Interactive) return false;
@@ -150,7 +128,7 @@ public static class Assistant
             cfg.ActiveSubscription ??= name;
 
             Console.WriteLine("  " + Cli.S(cfg, "ask_sub_checking"));
-            Ceho.Quiet = true;                       // причину скажем сами, разборчиво
+            Ceho.Quiet = true;
             var count = await DescribePoolAsync(cfg, quiet: true);
             Ceho.Quiet = false;
             var entry = cfg.Subscriptions.First(s => s.Name == name);
@@ -169,7 +147,6 @@ public static class Assistant
         }
     }
 
-    /// <summary>Сколько нод и каких стран отдали подписки. Ноль означает, что пул пуст.</summary>
     public static async Task<int> DescribePoolAsync(CehoConfig cfg, bool quiet = false)
     {
         IReadOnlyList<ProxyNode> nodes;
@@ -205,10 +182,6 @@ public static class Assistant
         return name;
     }
 
-    /// <summary>
-    /// Программы предлагаем из найденных, а не просим вспоминать путь: у ИИ-инструментов
-    /// он длинный и в каждой системе свой. Путь при этом всё равно можно вписать руками.
-    /// </summary>
     public static bool AskApps(CehoConfig cfg)
     {
         if (!Interactive) return false;
@@ -249,7 +222,6 @@ public static class Assistant
         app.Folder.Equals(path, StringComparison.OrdinalIgnoreCase) ||
         path.StartsWith(app.Folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Добавление одной программы с человеческим отказом вместо исключения.</summary>
     public static bool AddApp(CehoConfig cfg, string path)
     {
         if (!File.Exists(path) && !Directory.Exists(path))
@@ -281,10 +253,6 @@ public static class Assistant
         return true;
     }
 
-    /// <summary>
-    /// Включение защиты — это автозапуск: служба стартует с нужными правами сама,
-    /// иначе человеку пришлось бы держать открытым терминал с «sudo chp daemon».
-    /// </summary>
     private static void AskProtection(CehoConfig cfg)
     {
         if (!Interactive) return;
@@ -303,9 +271,6 @@ public static class Assistant
         Console.WriteLine("  " + Strings.T(cfg.Language, "panel_at", $"http://127.0.0.1:{cfg.WebPort}"));
     }
 
-    // ── выбор из списка для команд без аргумента ──────────────────────
-
-    /// <summary>Номер строки или пусто. Возвращает −1, если человек ничего не выбрал.</summary>
     public static int Pick(CehoConfig cfg, IReadOnlyList<string> rows, string title)
     {
         if (rows.Count == 0) { Console.WriteLine("  " + Cli.S(cfg, "ask_nothing_to_pick")); return -1; }

@@ -2,26 +2,16 @@ using ProxyCage.Core;
 
 namespace ProxyCage.Cli;
 
-/// <summary>
-/// Вспомогательное для терминала: доступ по паролю, диалог первичной настройки,
-/// печать таблиц. Вынесено из Program.cs, чтобы разбор команд читался подряд.
-/// </summary>
 public static class Cli
 {
     public static string Lang(CehoConfig cfg) => cfg.Language;
     public static string S(CehoConfig cfg, string key, params object[] a) => Strings.T(cfg.Language, key, a);
 
-    /// <summary>
-    /// Полный список команд. Он больше не выводится по «chp» без аргументов: там теперь
-    /// состояние и вопросы по делу, а справочник — по запросу, «chp help».
-    /// </summary>
     public static void PrintHelp(CehoConfig cfg)
     {
         var sudo = Os.IsWindows ? "" : "sudo ";
         var en = Lang(cfg) == "en";
 
-        // колонки считаем, а не подбираем пробелами руками: на Windows префикса sudo нет,
-        // и захардкоженные отступы разъезжались ровно там, где он был
         (string Title, (string Cmd, string What)[] Rows)[] groups = en
         ? [
             ("Every day", [
@@ -110,12 +100,6 @@ public static class Cli
         Console.WriteLine("  " + S(cfg, "product_page_at", Brand.RepoUrl(cfg.UpdateRepo)));
     }
 
-    /// <summary>
-    /// Модель доступа. Права системы уже закрывают файл настроек от посторонних,
-    /// поэтому администратора паролем не мучаем — он всё равно может править файл руками.
-    /// Пароль спрашивается у обычного пользователя: на терминальном сервере таких много,
-    /// и настройки изоляции — не их дело.
-    /// </summary>
     public static bool Allowed(CehoConfig cfg, string[] args, out string? error)
     {
         error = null;
@@ -150,7 +134,6 @@ public static class Cli
         return line is "y" or "yes" or "д" or "да";
     }
 
-    /// <summary>Ввод пароля без эха. Без терминала (запуск из службы) молча возвращает пусто.</summary>
     public static string AskSecret(string prompt)
     {
         Console.Write($"{prompt}: ");
@@ -172,7 +155,6 @@ public static class Cli
         return buffer.ToString();
     }
 
-    /// <summary>Команды, которые можно выполнять через панель. Всё остальное — только локально.</summary>
     private static readonly HashSet<string> RemoteAllowed = new(StringComparer.Ordinal)
     {
         "status", "doctor", "verify", "apps", "add-app", "remove-app",
@@ -182,25 +164,17 @@ public static class Cli
 
     public static bool CanRunRemotely(string command) => RemoteAllowed.Contains(command);
 
-    /// <summary>
-    /// Настройки нам недоступны: либо закрыт сам файл, либо папка целиком.
-    ///
-    /// Проверять только File.Exists нельзя: при закрытой папке он возвращает false, и код
-    /// уходил бы в «ещё не настроено», показывая человеку пустой список вместо отказа.
-    /// Признак установленной системы — публичный указатель на панель рядом с настройками.
-    /// </summary>
     public static bool ConfigUnreadable(string configPath)
     {
         try
         {
             using var _ = File.OpenRead(configPath);
-            return false;                      // читаем — значит доступ есть
+            return false;
         }
         catch (FileNotFoundException) { }
         catch (DirectoryNotFoundException) { }
-        catch { return true; }                 // есть, но не наш
+        catch { return true; }
 
-        // файла не видно: он либо не создан, либо спрятан закрытой папкой
         var root = Path.GetDirectoryName(configPath) ?? ".";
         return Auth.ReadPanelPointer(root) is not null || !Directory.Exists(root) && DirectoryHidden(root);
     }
@@ -212,7 +186,6 @@ public static class Cli
         catch { return true; }
     }
 
-    /// <summary>Команды, которые меняют настройки: им мало прочитать файл, нужно и записать.</summary>
     private static readonly HashSet<string> Mutating = new(StringComparer.Ordinal)
     {
         "add-app", "remove-app", "sub-add", "sub-remove", "country", "set-port",
@@ -221,13 +194,6 @@ public static class Cli
 
     public static bool ChangesSettings(string command) => Mutating.Contains(command);
 
-    /// <summary>
-    /// Файл настроек читается, но записать в него мы не можем.
-    ///
-    /// Проверять только чтение мало: у обычного пользователя общей машины файл нередко
-    /// доступен на чтение и закрыт на запись, и команда падала с системной ошибкой
-    /// вместо понятного отказа. Поймано живьём.
-    /// </summary>
     public static bool ConfigReadOnly(string configPath)
     {
         if (!File.Exists(configPath)) return false;
@@ -242,11 +208,6 @@ public static class Cli
         }
     }
 
-    /// <summary>
-    /// Терминал без прав на настройки работает через панель: команда уходит службе,
-    /// выполняется от её имени и возвращает тот же текст, что напечатал бы локальный запуск.
-    /// Так CLI остаётся полноценным и на сервере, где человек не администратор.
-    /// </summary>
     public static async Task<int> RunRemoteAsync(string root, string[] args, string lang)
     {
         var port = Auth.ReadPanelPointer(root);
@@ -261,8 +222,6 @@ public static class Cli
 
         var password = Opt(args, "--password") ?? Environment.GetEnvironmentVariable("CEHOPROXY_PASSWORD");
 
-        // сначала пробуем без пароля: он мог быть и не задан, а спрашивать заранее —
-        // значит подвесить команду на машине, где пароля нет вовсе
         var (status, body) = await CallApiAsync(port.Value, payload, password ?? "", lang);
         if (status == 401 && password is null && !Console.IsInputRedirected)
         {
@@ -287,7 +246,6 @@ public static class Cli
         }
     }
 
-    /// <summary>0 в статусе — до панели вообще не достучались, и в теле человеческая причина.</summary>
     private static async Task<(int Status, string Body)> CallApiAsync(
         int port, string payload, string password, string lang)
     {
@@ -309,10 +267,6 @@ public static class Cli
         }
     }
 
-    /// <summary>
-    /// Короткая команда chp рядом с самим бинарником. Симлинк, а не алиас оболочки:
-    /// алиас живёт только в интерактивной сессии и не виден скриптам, службам и PowerShell.
-    /// </summary>
     public static string? MakeShortcut(string exePath, out string? created)
     {
         created = null;
@@ -323,7 +277,6 @@ public static class Cli
 
             if (Os.IsWindows)
             {
-                // .cmd работает и в cmd, и в PowerShell, и не требует правки профилей
                 var cmd = Path.Combine(dir, "chp.cmd");
                 File.WriteAllText(cmd, "@echo off\r\n\"" + exePath + "\" %*\r\n");
                 created = cmd;
@@ -342,13 +295,6 @@ public static class Cli
         }
     }
 
-    /// <summary>
-    /// Запуск команды через туннель переменными окружения.
-    ///
-    /// Нужно для терминальных агентов: у них нет своей программы, их запускает общий
-    /// интерпретатор, и правило по пути совпадёт с интерпретатором, а не с агентом.
-    /// Проверено живьём: curl слушается HTTPS_PROXY сам, а node — только с NODE_USE_ENV_PROXY.
-    /// </summary>
     public static int RunThroughTunnel(int proxyPort, string[] argv)
     {
         var proxy = $"http://127.0.0.1:{proxyPort}";
@@ -360,7 +306,7 @@ public static class Cli
             psi.Environment[key] = proxy;
         psi.Environment["NO_PROXY"] = "localhost,127.0.0.1,::1";
         psi.Environment["no_proxy"] = "localhost,127.0.0.1,::1";
-        // без этого node игнорирует переменные прокси — проверено на node 22
+
         psi.Environment["NODE_USE_ENV_PROXY"] = "1";
 
         try
@@ -377,7 +323,6 @@ public static class Cli
         }
     }
 
-    /// <summary>Куда класть обёртки: каталог пользователя, права администратора не нужны.</summary>
     public static string WrapDir()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -389,12 +334,6 @@ public static class Cli
     public static string WrapPath(string name) =>
         Path.Combine(WrapDir(), Os.IsWindows ? name + ".cmd" : name);
 
-    /// <summary>
-    /// Постоянный перевод команды на туннель: рядом с оригиналом появляется обёртка с тем же
-    /// именем, которая вызывает его через прокси. Дальше человек пишет привычное «gemini»,
-    /// а трафик идёт в туннель. Остальные программы, включая другие на том же интерпретаторе,
-    /// не затрагиваются.
-    /// </summary>
     public static string? Wrap(string name, out string? note)
     {
         note = null;
@@ -404,7 +343,6 @@ public static class Cli
         var dir = WrapDir();
         var wrapper = WrapPath(name);
 
-        // не оборачивать собственную обёртку, иначе получится бесконечный вызов
         if (Os.RealPath(real).Equals(Os.RealPath(wrapper), StringComparison.OrdinalIgnoreCase))
             return $"«{name}» уже переведена на туннель";
 
@@ -430,7 +368,6 @@ public static class Cli
             return ex.Message;
         }
 
-        // обёртка сработает, только если её каталог идёт в PATH РАНЬШЕ оригинала
         if (!ShadowsOriginal(dir, real))
             note = $"каталог {dir} идёт в PATH после {Path.GetDirectoryName(real)}, " +
                    "поэтому обёртка не перехватит команду. Поставьте его раньше в PATH " +
@@ -460,7 +397,6 @@ public static class Cli
         catch (Exception ex) { return ex.Message; }
     }
 
-    /// <summary>Список переведённых команд: узнаём их по нашей подписи внутри файла.</summary>
     public static IReadOnlyList<string> Wrapped()
     {
         try
@@ -479,18 +415,15 @@ public static class Cli
         }
     }
 
-    /// <summary>Наша обёртка узнаётся по подписи внутри файла, а не по имени.</summary>
     private static bool IsOurWrapper(string file)
     {
         try { return File.ReadAllText(file).Contains("CehoProxy", StringComparison.Ordinal); }
         catch { return false; }
     }
 
-    /// <summary>Флаг страны, а для группы «страна не определена» — пустое место той же ширины.</summary>
     public static string FlagCell(string code) =>
         code == CountryResolver.Unknown ? "  " : CountryResolver.Flag(code);
 
-    /// <summary>Страны пула с галочками. Ноды без распознанной страны — отдельной строкой «??».</summary>
     public static void PrintCountries(CehoConfig cfg, IReadOnlyList<ProxyNode> nodes)
     {
         Console.WriteLine(S(cfg, "countries_title"));
@@ -514,10 +447,6 @@ public static class Cli
                 i))
             .ToList();
 
-    /// <summary>
-    /// Список стран, где строка включается и выключается номером. Настройка, при которой
-    /// в пуле не остаётся ни одной ноды, откатывается: уйти с неработающим туннелем нельзя.
-    /// </summary>
     public static async Task<int> CountryMenuAsync(CehoConfig cfg)
     {
         IReadOnlyList<ProxyNode> nodes;
@@ -576,14 +505,6 @@ public static class Cli
         return 0;
     }
 
-    /// <summary>
-    /// Замер задержек и отсев медленных нод.
-    ///
-    /// Мерим один раз и запоминаем: делать это при каждой сборке правил значило бы ждать
-    /// на ровном месте. Порог хранится отдельно от замеров, поэтому его можно менять
-    /// без повторного замера. Возвращает число оставшихся нод, либо null — если замеру
-    /// нельзя верить и трогать настройки не за что.
-    /// </summary>
     public static async Task<int?> MeasureAndFilterAsync(CehoConfig cfg, int limitMs)
     {
         IReadOnlyList<ProxyNode> nodes;
@@ -593,7 +514,6 @@ public static class Cli
         Console.WriteLine("  " + S(cfg, "speed_measuring"));
         var measured = await Task.WhenAll(nodes.Select(n => NodeProbe.MeasureAsync(n)));
 
-        // числа, полученные из-под чужого туннеля, не про скорость нод — по ним не отсеиваем
         if (NodeProbe.LooksLikeLocalAccept(measured))
         {
             Console.WriteLine("  " + S(cfg, "speed_local_accept"));
@@ -614,21 +534,11 @@ public static class Cli
         return left;
     }
 
-    /// <summary>
-    /// Пересобрать правила после изменения настроек.
-    ///
-    /// Раньше это была отдельная команда «apply», и человек уходил с уверенностью, что
-    /// программа уже в туннеле, хотя правила остались прежними. Ошибку показываем,
-    /// но кодом возврата не караем: сама-то настройка сохранена.
-    /// </summary>
     public static async Task RebuildQuietlyAsync(CehoConfig cfg)
     {
         try { Console.WriteLine(await Ceho.ApplyAsync()); }
         catch (Exception ex) { Stuck(cfg, ex.Message); return; }
 
-        // Пересобрать правила мало: работающая защита продолжает жить по старым.
-        // Просить человека «перезапустите» — значит оставить ловушку: он добавил
-        // программу, увидел «готово» и уверен, что она в туннеле. Перезапускаем сами.
         if (!DaemonControl.IsRunning(Ceho.Root)) return;
         if (!Os.IsElevated()) { Console.WriteLine(S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo ")); return; }
 
@@ -636,10 +546,6 @@ public static class Cli
         Console.WriteLine(S(cfg, "rules_applied"));
     }
 
-    /// <summary>
-    /// Отказ, после которого человеку надо что-то сделать. Одного «не добавлено ни одной
-    /// подписки» мало: из него не следует, что делать дальше. Подсказываем самый короткий путь.
-    /// </summary>
     public static void Stuck(CehoConfig cfg, string message)
     {
         Console.Error.WriteLine(message);
@@ -669,13 +575,6 @@ public static class Cli
         }
     }
 
-    /// <summary>
-    /// Мастер первичной настройки: пять вопросов, каждый со значением по умолчанию.
-    ///
-    /// Порты отсюда убраны намеренно: у них есть рабочие умолчания, менять их нужно редко
-    /// и для этого есть отдельная команда. Пароль спрашивается не сам по себе, а через
-    /// вопрос о том, общий ли это компьютер: на личном он лишняя морока, на общем обязателен.
-    /// </summary>
     public static async Task<int> SetupAsync(string configPath)
     {
         var cfg = CehoConfig.Load(configPath);
@@ -689,11 +588,8 @@ public static class Cli
             Ask("  Язык интерфейса / interface language (ru/en)", cfg.Language));
         Console.WriteLine();
 
-        // 1. подписка — и сразу проверка, что по ссылке действительно есть ноды
         await Assistant.AskSubscriptionAsync(cfg);
 
-        // 2. отсев медленных нод — предложение, а не умолчание: замер занимает время,
-        // и не всем он нужен
         if (cfg.Subscriptions.Count > 0 && AskYes("  " + S(cfg, "speed_ask"), false))
         {
             var limit = Ask("  " + S(cfg, "speed_limit"), "500");
@@ -706,11 +602,9 @@ public static class Cli
             Console.WriteLine();
         }
 
-        // 3. что изолировать — из найденного на этой машине
         Assistant.AskApps(cfg);
         Console.WriteLine();
 
-        // 4. общий компьютер → пароль обязателен, личный → не спрашиваем вовсе
         if (AskYes("  " + S(cfg, "setup_shared_ask"), false))
         {
             Console.WriteLine("  " + S(cfg, "setup_password_why"));
@@ -726,8 +620,6 @@ public static class Cli
             }
         }
 
-        // без движка туннель не поднимется, а искать его самому — тупик на ровном месте.
-        // Качает его пользователь своим согласием: раздавать чужой GPL-бинарник мы не вправе
         if (Os.ResolveSingBox(Ceho.Root) is null && Os.IsElevated()
             && AskYes("  " + S(cfg, "inst_engine_ask"), true))
         {
@@ -749,7 +641,6 @@ public static class Cli
             catch (Exception ex) { Console.WriteLine("  " + ex.Message); }
         }
 
-        // 5. автозапуск: он же и включает защиту прямо сейчас — со всеми нужными правами
         Console.WriteLine();
         if (AskYes("  " + S(cfg, "setup_autostart"), true))
         {
@@ -762,8 +653,6 @@ public static class Cli
             }
         }
 
-        // если короткая команда уже есть в PATH (её сделал установщик), второй раз не создаём:
-        // иначе рядом с временной копией программы остаётся мусорный ярлык
         if (Os.FindOnPath(Os.IsWindows ? "chp.cmd" : "chp") is { } existing)
             Console.WriteLine("  " + S(cfg, "alias_made", existing));
         else
@@ -782,8 +671,7 @@ public static class Cli
         }
 
         Console.WriteLine();
-        // «Готово» сразу после двух [стоп] — враньё: настройка не закончена, и человек
-        // должен уйти отсюда с понятным следующим шагом, а не с ложным успехом
+
         Console.WriteLine("  " + S(cfg, blockers.Count > 0 ? "setup_unfinished" : "setup_done"));
         Console.WriteLine();
         Console.WriteLine("  " + Strings.T(cfg.Language, "panel_at", $"http://127.0.0.1:{cfg.WebPort}"));

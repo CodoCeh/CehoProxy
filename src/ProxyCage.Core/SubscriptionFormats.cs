@@ -2,20 +2,8 @@ using System.Text.Json;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Подписка приходит не только списком ссылок. Провайдеры и генераторы раздают ещё
-/// готовые конфигурации целиком, и человек не обязан знать, что у него за формат:
-/// он вставляет ссылку, а разбираться — наша работа.
-///
-/// Разобраны четыре формата помимо ссылок:
-/// • xray/v2ray JSON — один конфиг или массив конфигов, у каждого свой «remarks»;
-/// • sing-box JSON — плоский список outbounds;
-/// • Clash / Clash.Meta YAML — раздел «proxies»;
-/// • SIP008 — список серверов shadowsocks.
-/// </summary>
 public static class SubscriptionFormats
 {
-    /// <summary>Ноды из любого известного не-ссылочного формата; пусто — формат не наш.</summary>
     public static IReadOnlyList<ProxyNode> Parse(string text, string lang)
     {
         var trimmed = text.TrimStart('﻿', ' ', '\t', '\r', '\n');
@@ -26,8 +14,6 @@ public static class SubscriptionFormats
         return Array.Empty<ProxyNode>();
     }
 
-    // ── JSON: xray, sing-box, SIP008 ──────────────────────────────────
-
     private static IReadOnlyList<ProxyNode> ParseJson(string text, string lang)
     {
         var nodes = new List<ProxyNode>();
@@ -36,7 +22,6 @@ public static class SubscriptionFormats
             using var doc = JsonDocument.Parse(text);
             var root = doc.RootElement;
 
-            // массив конфигов: так отдаёт генератор подписок — по конфигу на ноду
             if (root.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in root.EnumerateArray()) ReadContainer(item, nodes, lang);
@@ -56,7 +41,6 @@ public static class SubscriptionFormats
     {
         if (root.ValueKind != JsonValueKind.Object) return;
 
-        // имя ноды у xray лежит на уровне всего конфига, а не outbound
         var remarks = Str(root, "remarks") ?? Str(root, "name") ?? "";
 
         if (root.TryGetProperty("outbounds", out var outbounds) && outbounds.ValueKind == JsonValueKind.Array)
@@ -68,7 +52,6 @@ public static class SubscriptionFormats
             }
         }
 
-        // SIP008: список серверов shadowsocks
         if (root.TryGetProperty("servers", out var servers) && servers.ValueKind == JsonValueKind.Array)
         {
             foreach (var s in servers.EnumerateArray())
@@ -90,7 +73,6 @@ public static class SubscriptionFormats
         }
     }
 
-    /// <summary>xray: протокол в «protocol», адрес внутри settings, транспорт в streamSettings.</summary>
     private static ProxyNode? ReadXrayOutbound(JsonElement o, string remarks, string lang)
     {
         var protocol = Str(o, "protocol");
@@ -176,7 +158,6 @@ public static class SubscriptionFormats
         }
     }
 
-    /// <summary>sing-box: плоско — «type», «server», «server_port», транспорт отдельным объектом.</summary>
     private static ProxyNode? ReadSingBoxOutbound(JsonElement o, string remarks, string lang)
     {
         var kind = ProtocolOf(Str(o, "type"));
@@ -230,13 +211,6 @@ public static class SubscriptionFormats
         return Make(node, name, lang);
     }
 
-    // ── Clash / Clash.Meta YAML ───────────────────────────────────────
-
-    /// <summary>
-    /// Читаем только раздел «proxies» и только те ключи, которые нужны ноде.
-    /// Полноценный YAML тут не нужен: раздел всегда список плоских записей,
-    /// а тащить ради него постороннюю библиотеку в самодостаточную сборку — лишнее.
-    /// </summary>
     private static IReadOnlyList<ProxyNode> ParseClash(string text, string lang)
     {
         var nodes = new List<ProxyNode>();
@@ -268,7 +242,6 @@ public static class SubscriptionFormats
                 continue;
             }
 
-            // следующий раздел верхнего уровня — раздел с нодами кончился
             if (indent == 0 && !body.StartsWith('-')) { Flush(); break; }
 
             if (body.StartsWith("- ", StringComparison.Ordinal) || body == "-")
@@ -288,14 +261,12 @@ public static class SubscriptionFormats
         return nodes;
     }
 
-    /// <summary>Однострочная запись: - {name: NL-1, type: vless, server: a.com, port: 443, ...}</summary>
     private static void ReadInline(string text, Dictionary<string, string> into)
     {
         var inner = text.Trim().TrimStart('{').TrimEnd('}');
         foreach (var part in SplitTop(inner)) ReadPair(part, into);
     }
 
-    /// <summary>Делим по запятым верхнего уровня: внутри могут быть вложенные скобки и кавычки.</summary>
     private static IEnumerable<string> SplitTop(string text)
     {
         var depth = 0;
@@ -360,8 +331,6 @@ public static class SubscriptionFormats
 
         return Make(node, V("name") ?? "", lang);
     }
-
-    // ── общее ─────────────────────────────────────────────────────────
 
     private static ProxyProtocol? ProtocolOf(string? name) => name?.ToLowerInvariant() switch
     {

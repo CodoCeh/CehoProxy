@@ -1,9 +1,5 @@
 namespace ProxyCage.Core.Tests;
 
-/// <summary>
-/// Подписку выдают не только списком ссылок. Здесь проверяется, что продукт принимает
-/// и готовые конфигурации: человек вставляет то, что ему дали, а формат — наша забота.
-/// </summary>
 public class SubscriptionFormatsTests
 {
     private static string Fixture(string name)
@@ -15,7 +11,6 @@ public class SubscriptionFormatsTests
         var nodes = SubscriptionParser.Parse(Fixture("sub-xray.json"));
         Assert.Equal(3, nodes.Count);
 
-        // имя ноды у xray лежит на уровне конфига, а не outbound
         var de = nodes.First(n => n.CountryCode == "DE");
         Assert.Equal(ProxyProtocol.Vless, de.Protocol);
         Assert.Equal("node1.example.com", de.Server);
@@ -32,7 +27,6 @@ public class SubscriptionFormatsTests
         Assert.Equal("/ws", nl.Path);
         Assert.Equal("cdn.example.com", nl.Host);
 
-        // «Автовыбор» и здесь остаётся служебной записью
         Assert.Single(nodes.Where(n => n.IsMeta));
     }
 
@@ -61,7 +55,6 @@ public class SubscriptionFormatsTests
         var nodes = SubscriptionParser.Parse(Fixture("sub-clash.yaml"));
         Assert.Equal(3, nodes.Count);
 
-        // однострочная запись
         var pl = nodes.First(n => n.CountryCode == "PL");
         Assert.Equal(ProxyProtocol.Vless, pl.Protocol);
         Assert.Equal(8443, pl.Port);
@@ -69,7 +62,6 @@ public class SubscriptionFormatsTests
         Assert.Equal("reality", pl.Security);
         Assert.Equal("GunService", pl.ServiceName);
 
-        // многострочная запись
         var us = nodes.First(n => n.CountryCode == "US");
         Assert.Equal(ProxyProtocol.Trojan, us.Protocol);
         Assert.Equal("trojan-secret", us.Credential);
@@ -79,7 +71,6 @@ public class SubscriptionFormatsTests
         Assert.Equal(ProxyProtocol.Shadowsocks, sg.Protocol);
         Assert.Equal("chacha20-ietf-poly1305", sg.Method);
 
-        // раздел proxy-groups нодами не является
         Assert.DoesNotContain(nodes, n => n.Remark == "auto");
     }
 
@@ -100,7 +91,6 @@ public class SubscriptionFormatsTests
     [InlineData("sub-sip008.json")]
     public void Every_format_survives_base64_wrapping(string fixture)
     {
-        // провайдеры заворачивают в base64 что угодно, а не только список ссылок
         var raw = Fixture(fixture);
         var packed = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(raw));
         Assert.Equal(SubscriptionParser.Parse(raw).Count, SubscriptionParser.Parse(packed).Count);

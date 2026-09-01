@@ -4,17 +4,8 @@ using System.Web;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Разбирает подписку (base64-блоб или голый список ссылок) в список <see cref="ProxyNode"/>.
-/// Поддержаны vless, vmess, trojan, shadowsocks, hysteria2, tuic.
-/// </summary>
 public static class SubscriptionParser
 {
-    /// <summary>
-    /// Служебные записи подписки — не ноды выхода, а «автовыбор» провайдера: та же нода
-    /// под другим именем. Раньше сюда же попадала любая запись с нераспознанной страной,
-    /// и подписка с непривычными подписями теряла ВСЕ ноды разом. Проверено живьём.
-    /// </summary>
     private static readonly string[] MetaMarkers =
         { "автовыбор", "авто выбор", "автоматический выбор", "auto", "url-test", "urltest",
           "балансировщик", "balancer" };
@@ -30,22 +21,13 @@ public static class SubscriptionParser
         ("tuic://", ProxyProtocol.Tuic),
     };
 
-    /// <summary>
-    /// Это уже сама нода, а не адрес, по которому её надо скачивать.
-    ///
-    /// Человеку часто выдают не подписку, а одну ссылку на ноду — и он вставляет её туда же,
-    /// куда вставляют подписку. Отказывать за это не за что: разберём на месте.
-    /// </summary>
     public static bool LooksLikeNodeUri(string text) =>
         Schemes.Any(x => text.TrimStart().StartsWith(x.Scheme, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Язык нужен только для названия страны: код один, а показываем его человеку.</summary>
     public static IReadOnlyList<ProxyNode> Parse(string subscriptionBody, string lang = "ru")
     {
         var text = Decode(subscriptionBody);
 
-        // подписка может быть не списком ссылок, а готовой конфигурацией: xray, sing-box,
-        // Clash, SIP008. Человек вставляет то, что ему выдали, и знать формат не обязан
         var ready = SubscriptionFormats.Parse(text, lang);
         if (ready.Count > 0) return ready;
 
@@ -95,7 +77,6 @@ public static class SubscriptionParser
         }
     }
 
-    /// <summary>vless / trojan / hysteria2 / tuic: scheme://credential@host:port?query#remark</summary>
     private static ProxyNode? ParseUriStyle(string uri, string scheme, ProxyProtocol protocol, int index, string lang)
     {
         try
@@ -123,7 +104,6 @@ public static class SubscriptionParser
 
             var credential = HttpUtility.UrlDecode(rest[..atIdx]);
 
-            // tuic несёт логин как uuid:password — без разделения sing-box ругается на uuid
             string? tuicPassword = null;
             if (protocol == ProxyProtocol.Tuic)
             {
@@ -176,7 +156,6 @@ public static class SubscriptionParser
         }
     }
 
-    /// <summary>vmess://&lt;base64 JSON&gt;</summary>
     private static ProxyNode? ParseVmess(string uri, int index, string lang)
     {
         try
@@ -235,7 +214,6 @@ public static class SubscriptionParser
         }
     }
 
-    /// <summary>ss://base64(method:password)@host:port#remark, либо целиком base64.</summary>
     private static ProxyNode? ParseShadowsocks(string uri, int index, string lang)
     {
         try
@@ -333,11 +311,6 @@ public static class SubscriptionParser
 
     private static string? Empty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
-    /// <summary>
-    /// Служебная запись узнаётся по маркеру, и только целым словом: без этого «auto»
-    /// внутри имени сервера выкидывало бы обычную ноду. Нераспознанная страна служебной
-    /// записью НЕ считается — такая нода работает не хуже прочих.
-    /// </summary>
     internal static bool IsServiceEntry(string remark) => IsMeta(remark, null);
 
     private static bool IsMeta(string remark, string? country)

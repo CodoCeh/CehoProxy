@@ -1,9 +1,5 @@
 namespace ProxyCage.Core.Tests;
 
-/// <summary>
-/// Отсев медленных нод. Правило простое, но у него две опасные границы:
-/// нельзя выбрасывать неизмеренные ноды и нельзя верить замеру из-под чужого туннеля.
-/// </summary>
 public class SpeedFilterTests
 {
     private static ProxyNode Node(string server, ProxyProtocol protocol = ProxyProtocol.Vless,
@@ -37,7 +33,6 @@ public class SpeedFilterTests
     [Fact]
     public void Keeps_nodes_that_were_never_measured()
     {
-        // «не измеряли» и «медленная» — разные вещи; у hysteria2 и tuic замера не будет никогда
         var udp = Node("hy2.example.com", ProxyProtocol.Hysteria2);
         var cfg = new CehoConfig { MaxLatencyMs = 50 };
         Assert.False(SingBoxConfigGenerator.IsTooSlow(udp, cfg));
@@ -54,8 +49,6 @@ public class SpeedFilterTests
     [Fact]
     public void Rejects_a_measurement_taken_from_under_another_tunnel()
     {
-        // ноды в разных странах не могут отвечать одинаково быстро — это принимает
-        // туннель на самой машине, а не сеть. Поймано живьём на подписке владельца
         var measured = new List<NodeProbe.Measured>
         {
             new(Node("a.example.com", country: "FI"), 0),
@@ -82,7 +75,6 @@ public class SpeedFilterTests
     [Fact]
     public void Does_not_suspect_a_provider_whose_nodes_are_all_nearby()
     {
-        // все ноды одной страны рядом с человеком — низкая задержка тут честная
         var measured = new List<NodeProbe.Measured>
         {
             new(Node("a.example.com", country: "RU"), 3),

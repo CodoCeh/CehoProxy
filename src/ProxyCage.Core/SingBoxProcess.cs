@@ -4,19 +4,6 @@ using System.Runtime.Versioning;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Запуск и — главное — КОРРЕКТНАЯ остановка движка.
-///
-/// Windows: не Process.Start + Kill, потому что в TUN-режиме жёсткое убийство не даёт
-/// WinTun освободить адаптер, и СЛЕДУЮЩИЙ запуск падает с
-/// "configure tun interface: Cannot create a file when that file already exists".
-/// Поэтому дочерний процесс создаётся в своей группе (CREATE_NEW_PROCESS_GROUP),
-/// а остановка = CTRL_BREAK: Go-рантайм ловит его как os.Interrupt и закрывает TUN сам.
-///
-/// Unix: та же цель достигается сигналом SIGTERM. Process.Kill() в .NET шлёт SIGKILL,
-/// который движок перехватить не может — а тогда на Linux остаются ip rule и таблица
-/// nftables, и сеть машины ложится целиком. Поэтому kill(pid, SIGTERM) через libc.
-/// </summary>
 public sealed class SingBoxProcess : IDisposable
 {
     private const uint CREATE_NEW_PROCESS_GROUP = 0x00000200;
@@ -121,8 +108,6 @@ public sealed class SingBoxProcess : IDisposable
         var p = System.Diagnostics.Process.Start(psi)
                 ?? throw new InvalidOperationException("не удалось запустить sing-box");
 
-        // не читать потоки нельзя: движок пишет в stderr постоянно, буфер трубы заполнится
-        // и он встанет намертво уже после успешного старта
         p.ErrorDataReceived += (_, e) => { if (e.Data is not null) LastLog = e.Data; };
         p.OutputDataReceived += (_, _) => { };
         p.BeginErrorReadLine();
@@ -132,7 +117,6 @@ public sealed class SingBoxProcess : IDisposable
         ProcessId = (uint)p.Id;
     }
 
-    /// <summary>Последняя строка из stderr движка — её показываем, если он не поднялся.</summary>
     public string? LastLog { get; private set; }
 
     public bool IsRunning
@@ -141,21 +125,16 @@ public sealed class SingBoxProcess : IDisposable
         {
             if (_unix is not null) return !_unix.HasExited;
             if (_hProcess == IntPtr.Zero) return false;
-            return GetExitCodeProcess(_hProcess, out var code) && code == 259; // STILL_ACTIVE
+            return GetExitCodeProcess(_hProcess, out var code) && code == 259;
         }
     }
 
-    /// <summary>
-    /// Штатная остановка. false — пришлось убивать принудительно; тогда за системой
-    /// остаётся мусор, который снимет TunCleanup при следующем старте.
-    /// </summary>
     public bool Stop(int gracefulTimeoutMs = 10000)
     {
         if (_unix is not null) return StopUnix(gracefulTimeoutMs);
 
         if (_hProcess == IntPtr.Zero || !IsRunning) return true;
 
-        // группа == PID дочернего, т.к. он создан с CREATE_NEW_PROCESS_GROUP
         GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, ProcessId);
 
         if (WaitForSingleObject(_hProcess, (uint)gracefulTimeoutMs) == 0)

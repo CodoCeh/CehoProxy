@@ -2,26 +2,8 @@ using System.Globalization;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Определяет страну ноды по её подписи и показывает название на языке интерфейса.
-///
-/// Порядок распознавания важен и проверен на живых подписках:
-/// 1. флаг-эмодзи (🇳🇱 → NL) — самый надёжный признак, его ставит большинство провайдеров;
-/// 2. название страны — по-русски, по-английски или на языке самой страны;
-/// 3. код страны отдельным словом («DE-01», «[NL] node2», «US | Dallas»).
-///
-/// Названия сверяются от ДЛИННОГО к короткому и только с начала слова. Без этих двух
-/// правил «Ukraine» опознавался как Великобритания (из-за подстроки «uk»), «Nigeria» —
-/// как Нигер, а «Bukarest» и «Fukuoka» — снова как Великобритания. Всё поймано живьём
-/// на настоящих подписях нод.
-/// </summary>
 public static class CountryResolver
 {
-    /// <summary>
-    /// Русские названия стран. Английские и местные названия платформа знает сама,
-    /// русских у неё нет — поэтому таблица здесь. Список покрывает то, что встречается
-    /// у VPN-провайдеров; для остальных кодов останется английское название.
-    /// </summary>
     private static readonly (string Code, string Ru)[] RussianNames =
     {
         ("AE", "ОАЭ"), ("AL", "Албания"), ("AM", "Армения"), ("AR", "Аргентина"),
@@ -59,10 +41,6 @@ public static class CountryResolver
         ("ZA", "ЮАР"),
     };
 
-    /// <summary>
-    /// Что провайдеры пишут вместо названия страны: города, разговорные и старые формы.
-    /// Города здесь потому, что «Frankfurt-01» или «Amsterdam node» — обычная подпись ноды.
-    /// </summary>
     private static readonly (string Needle, string Code)[] Aliases =
     {
         ("сша", "US"), ("соединённые штаты", "US"), ("соединенные штаты", "US"),
@@ -93,16 +71,11 @@ public static class CountryResolver
         ("emirates", "AE"),
     };
 
-    /// <summary>Что пишут как код страны, хотя ISO такого кода не знает.</summary>
     private static readonly Dictionary<string, string> CodeAliases = new(StringComparer.Ordinal)
     {
         ["UK"] = "GB",
     };
 
-    /// <summary>
-    /// Двухбуквенные сокращения, которые в подписи ноды почти наверняка означают не страну.
-    /// TV — телевидение (а не Тувалу), ID — идентификатор (а не Индонезия), HD и SD — качество.
-    /// </summary>
     private static readonly HashSet<string> NotCountryTokens = new(StringComparer.Ordinal)
     {
         "TV", "ID", "HD", "SD", "PM", "AM",
@@ -115,10 +88,6 @@ public static class CountryResolver
             .Select(c => c!)
             .ToHashSet(StringComparer.Ordinal));
 
-    /// <summary>
-    /// Названия для поиска: русские из таблицы выше, английские и местные — от платформы.
-    /// Отсортированы от длинного к короткому, чтобы «Nigeria» не превращалась в «Niger».
-    /// </summary>
     private static readonly Lazy<(string Needle, string Code)[]> Needles = new(() =>
     {
         var list = new List<(string, string)>();
@@ -138,7 +107,6 @@ public static class CountryResolver
 
         list.AddRange(Aliases.Select(a => (a.Needle, a.Code)));
 
-        // короче трёх букв — не название, а случайное совпадение
         return list
             .Where(n => n.Item1.Length >= 3)
             .DistinctBy(n => n.Item1, StringComparer.Ordinal)
@@ -146,23 +114,14 @@ public static class CountryResolver
             .ToArray();
     });
 
-    /// <summary>
-    /// Группа «страна не определена». Нужна как обычный код, чтобы такие ноды можно было
-    /// и увидеть в списке стран, и выключить — иначе они молча остаются в пуле навсегда.
-    /// </summary>
     public const string Unknown = "??";
 
-    /// <summary>ISO-код страны из подписи ноды, либо null если не распознано.</summary>
     public static string? ResolveCode(string remark)
     {
         if (string.IsNullOrWhiteSpace(remark)) return null;
         return FromFlagEmoji(remark) ?? FromName(remark) ?? FromCodeToken(remark);
     }
 
-    /// <summary>
-    /// Название страны на языке интерфейса. Русских названий у платформы нет,
-    /// поэтому они из таблицы; для остального берётся английское название системы.
-    /// </summary>
     public static string? DisplayName(string? code, string lang = "ru")
     {
         if (string.IsNullOrWhiteSpace(code) || code.Length != 2) return null;
@@ -178,7 +137,6 @@ public static class CountryResolver
         catch (ArgumentException) { return upper; }
     }
 
-    /// <summary>Код страны → флаг: две буквы становятся региональными индикаторами Unicode.</summary>
     public static string Flag(string? code)
     {
         if (code is null || code.Length != 2) return "";
@@ -213,7 +171,6 @@ public static class CountryResolver
             var at = lower.IndexOf(needle, StringComparison.Ordinal);
             while (at >= 0)
             {
-                // только с начала слова: иначе «Bukarest» и «Fukuoka» ловятся на «uk»
                 if (at == 0 || !char.IsLetterOrDigit(lower[at - 1])) return code;
                 at = lower.IndexOf(needle, at + 1, StringComparison.Ordinal);
             }
@@ -221,11 +178,6 @@ public static class CountryResolver
         return null;
     }
 
-    /// <summary>
-    /// Код страны отдельным словом: «DE-01», «[NL] node2», «US | Dallas».
-    /// Только заглавные и только целым словом — иначе под правило попадает
-    /// любая пара букв внутри имени сервера.
-    /// </summary>
     private static string? FromCodeToken(string remark)
     {
         for (var i = 0; i + 1 < remark.Length; i++)
@@ -236,7 +188,7 @@ public static class CountryResolver
 
             var token = remark.Substring(i, 2);
             if (NotCountryTokens.Contains(token)) continue;
-            // «100 GB», «500 MB» — это объём трафика, а не Великобритания с Молдавией
+
             if (PrecededByNumber(remark, i)) continue;
 
             if (CodeAliases.TryGetValue(token, out var mapped)) return mapped;

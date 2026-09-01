@@ -2,11 +2,6 @@ using System.Text.Json.Nodes;
 
 namespace ProxyCage.Core.Tests;
 
-/// <summary>
-/// hysteria2 разбирается и собирается иначе, чем остальные: он поверх UDP, пароль
-/// лежит не там, где у vless, и есть обфускация. Здесь закреплено то, что проверено
-/// живым трафиком через настоящую ноду.
-/// </summary>
 public class Hysteria2Tests
 {
     private static ProxyNode Parse(string uri) => SubscriptionParser.Parse(uri).Single();
@@ -20,7 +15,7 @@ public class Hysteria2Tests
         Assert.Equal(ProxyProtocol.Hysteria2, n.Protocol);
         Assert.Equal("198.51.100.7", n.Server);
         Assert.Equal(443, n.Port);
-        // поверх UDP и всегда с шифрованием — иначе движок не примет
+
         Assert.Equal("quic", n.Network);
         Assert.Equal("tls", n.Security);
     }
@@ -30,7 +25,6 @@ public class Hysteria2Tests
     [InlineData("allowInsecure=1")]
     public void Understands_both_names_of_the_self_signed_flag(string param)
     {
-        // у ноды владельца сертификат самоподписанный, и без этого флага соединения нет
         Assert.True(Parse($"hy2://secret@198.51.100.7:443?{param}#Нода").AllowInsecure);
     }
 
@@ -53,7 +47,7 @@ public class Hysteria2Tests
 
         Assert.Equal("198.51.100.7", (string?)node["server"]);
         Assert.Equal(443, (int?)node["server_port"]);
-        // пароль hysteria2 лежит в своём поле, а не там, где uuid у vless
+
         Assert.Equal("secret", (string?)node["password"]);
         Assert.Equal("salamander", (string?)node["obfs"]!["type"]);
         Assert.Equal("obfsecret", (string?)node["obfs"]!["password"]);
@@ -65,15 +59,13 @@ public class Hysteria2Tests
     [Fact]
     public void Direct_dns_server_has_no_detour()
     {
-        // «detour к пустому direct» движок не принимает и вовсе не стартует.
-        // Поймано живьём: продукт молча оставался без туннеля
         var nodes = SubscriptionParser.Parse("hy2://secret@198.51.100.7:443#Нода");
         var cfg = new CehoConfig { Apps = { new AppEntry { Name = "проба", Folder = "/opt/proba" } } };
 
         var dns = JsonNode.Parse(SingBoxConfigGenerator.GenerateForConfig(nodes, cfg))!["dns"]!;
         foreach (var server in dns["servers"]!.AsArray())
         {
-            if ((string?)server!["tag"] == "dns-proxy") continue;   // этот как раз через туннель
+            if ((string?)server!["tag"] == "dns-proxy") continue;
             Assert.Null(server["detour"]);
         }
     }
@@ -81,7 +73,6 @@ public class Hysteria2Tests
     [Fact]
     public void Never_drops_hysteria2_by_speed()
     {
-        // задержку у него не измерить: он поверх UDP, а проба идёт TCP-рукопожатием
         var node = Parse("hy2://secret@198.51.100.7:443#Нода");
         var cfg = new CehoConfig { MaxLatencyMs = 1 };
         Assert.False(SingBoxConfigGenerator.IsTooSlow(node, cfg));

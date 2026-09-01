@@ -2,21 +2,10 @@ using System.Text.Json;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Обновление из релизов GitHub: проверить, скачать, заменить себя, перезапустить службу.
-///
-/// Движок sing-box сюда не входит и не обновляется: он лицензирован отдельно и ставится
-/// пользователем, см. THIRD-PARTY.md. Обновляется только сам CehoProxy.
-/// </summary>
 public static class Updater
 {
     public sealed record Release(string Version, string Url, long Size, string? Notes);
 
-    /// <summary>
-    /// Версия работающей программы. Берём сборку, с которой её запустили, а не свою:
-    /// номер стоит на программе, и читать его у библиотеки — значит однажды показать
-    /// человеку не ту версию и не заметить вышедшее обновление.
-    /// </summary>
     public static string CurrentVersion =>
         (System.Reflection.Assembly.GetEntryAssembly() ?? typeof(Updater).Assembly)
             .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
@@ -25,7 +14,6 @@ public static class Updater
         ?? (System.Reflection.Assembly.GetEntryAssembly() ?? typeof(Updater).Assembly).GetName().Version?.ToString(3)
         ?? "0.0.0";
 
-    /// <summary>Имя файла в релизе для текущей системы и процессора.</summary>
     public static string AssetName()
     {
         var os = Os.Kind switch
@@ -42,7 +30,6 @@ public static class Updater
         return $"cehoproxy-{os}-{arch}" + (Os.IsWindows ? ".exe" : "");
     }
 
-    /// <summary>null — обновлений нет. Ошибку сети пробрасываем: молчать про неё нельзя.</summary>
     public static async Task<Release?> CheckAsync(string repo)
     {
         if (string.IsNullOrWhiteSpace(repo))
@@ -97,11 +84,6 @@ public static class Updater
         return false;
     }
 
-    /// <summary>
-    /// Скачивает и ставит на место себя. Работающий файл заменяем через переименование:
-    /// на Windows запущенный .exe перезаписать нельзя, но переименовать можно, и новый
-    /// встанет на его место. На Unix rename поверх тоже безопасен — открытый файл живёт по inode.
-    /// </summary>
     public static async Task<string> InstallAsync(Release release, string targetPath, Action<string>? log = null)
     {
         var temp = targetPath + ".new";

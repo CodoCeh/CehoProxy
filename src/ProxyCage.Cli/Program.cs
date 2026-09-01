@@ -1,14 +1,10 @@
 using ProxyCage.Core;
 using ProxyCage.Cli;
 
-// CehoProxy — изоляция выбранных программ в туннель.
-// Один слой команд на CLI и веб-панель (см. Ceho.cs).
-
 CehoConfig cfg0;
 try { cfg0 = CehoConfig.Load(Ceho.ConfigPath); }
-catch { cfg0 = new CehoConfig(); }   // настройки закрыты правами — режим определим ниже
+catch { cfg0 = new CehoConfig(); }
 
-// последняя страховка: человеку в терминале нужен понятный отказ, а не стек вызовов
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
     var ex = e.ExceptionObject as Exception;
@@ -19,9 +15,6 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
     Environment.Exit(1);
 };
 
-// «chp» без аргументов — это разговор, а не справочник: показываем состояние
-// и спрашиваем о том, чего не хватает. В скрипте и в службе спрашивать не у кого,
-// поэтому там выводится обычная справка.
 if (args.Length == 0)
 {
     if (!Assistant.Interactive) { Cli.PrintHelp(cfg0); return 0; }
@@ -53,10 +46,6 @@ if (cmd == "install")
     try { installed = Installer.Install(Ceho.Root, m => Console.WriteLine("  " + m), cfg0.Language); }
     catch (Exception ex) { Console.Error.WriteLine("  " + ex.Message); return 1; }
 
-    // Спрашивать про движок можно только там, где есть кому отвечать.
-    // Поймано живьём: графический установщик запускает эту команду в СКРЫТОМ окне
-    // и ждёт её завершения — вопрос повисал невидимым, установка не заканчивалась,
-    // а файл программы оставался занятым и не удалялся при следующем удалении.
     var mayAskAboutEngine = Assistant.Interactive && !args.Contains("--no-setup");
 
     if (Os.ResolveSingBox(Ceho.Root) is null
@@ -75,10 +64,8 @@ if (cmd == "install")
     Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_done"));
     Console.WriteLine("  " + Strings.T(cfg0.Language, "product_page_at", Brand.RepoUrl(cfg0.UpdateRepo)));
 
-    // сразу за установкой — мастер: иначе человек остаётся один на один с пустым конфигом
     if (!args.Contains("--no-setup")) return await Cli.SetupAsync(Ceho.ConfigPath);
 
-    // движок без вопроса не качали — скажем об этом, чтобы человек не искал причину потом
     if (Os.ResolveSingBox(Ceho.Root) is null)
         Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_engine_later"));
     Console.WriteLine("  " + Strings.T(cfg0.Language, "setup_hint"));
@@ -87,7 +74,6 @@ if (cmd == "install")
 
 if (cmd == "setup") return await Cli.SetupAsync(Ceho.ConfigPath);
 
-// версия — про саму программу, доступ к настройкам для неё не нужен
 if (cmd == "version")
 {
     Console.WriteLine(Updater.CurrentVersion);
@@ -95,8 +81,6 @@ if (cmd == "version")
     return 0;
 }
 
-// wrap/unwrap/wrapped живут в домашней папке пользователя и настроек продукта не трогают:
-// заворачивать свои команды может каждый, и прав администратора для этого не нужно
 if (cmd is "wrap" or "unwrap" or "wrapped")
 {
     if (cmd == "wrapped")
@@ -109,8 +93,6 @@ if (cmd is "wrap" or "unwrap" or "wrapped")
         return 0;
     }
 
-    // без имени команды показываем, что вообще можно перевести: у терминальных агентов
-    // имя команды и имя инструмента совпадают не всегда, и угадывать его человек не обязан
     var name = args.Length >= 2 ? args[1] : null;
     if (name is null)
     {
@@ -145,8 +127,6 @@ if (cmd is "wrap" or "unwrap" or "wrapped")
     return 0;
 }
 
-// «run» — команда обычного пользователя: он заворачивает СВОЙ процесс и не обязан
-// иметь прав на настройки. Порт берём из публичного указателя рядом с ними.
 if (cmd == "run")
 {
     var rest = args.Skip(1).ToArray();
@@ -161,8 +141,6 @@ if (cmd == "run")
     return Cli.RunThroughTunnel(proxyPort, rest);
 }
 
-// нет прав на файл настроек — значит это обычный пользователь общей машины.
-// Не показываем ему пустоту, а выполняем команду через панель от имени службы.
 if (Cli.ConfigUnreadable(Ceho.ConfigPath) ||
     (Cli.ChangesSettings(cmd) && Cli.ConfigReadOnly(Ceho.ConfigPath)))
 {
@@ -174,7 +152,6 @@ if (Cli.ConfigUnreadable(Ceho.ConfigPath) ||
     return await Cli.RunRemoteAsync(Ceho.Root, args, cfg0.Language);
 }
 
-// команды, меняющие настройки, требуют пароль — если он задан и вы не администратор
 if (!Cli.Allowed(cfg0, args, out var authError))
 {
     Console.Error.WriteLine(authError);
@@ -185,8 +162,6 @@ switch (cmd)
 {
     case "add-app":
     {
-        // без пути не отказываем, а показываем найденное и спрашиваем: путь к ИИ-инструменту
-        // человек наизусть не помнит, а в каждой системе он свой
         if (args.Length < 2)
         {
             if (!Assistant.Interactive) { Console.Error.WriteLine(Cli.S(cfg0, "err_need_path")); return 1; }
@@ -263,7 +238,6 @@ switch (cmd)
 
     case "sub-add":
     {
-        // ссылку спрашиваем и сразу проверяем: сколько нод и каких стран получилось
         if (args.Length < 3)
         {
             if (!Assistant.Interactive) { Console.Error.WriteLine(Cli.S(cfg0, "err_need_sub_args")); return 1; }
@@ -356,16 +330,12 @@ switch (cmd)
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
 
-        // без аргументов — список стран, где строка переключается номером:
-        // помнить коды и писать их руками ради «убрать Германию» незачем
         if (args.Length < 2)
         {
             if (!Assistant.Interactive) { Console.Error.WriteLine(Cli.S(cfg, "err_country_usage")); return 1; }
             return await Cli.CountryMenuAsync(cfg);
         }
 
-        // запомним, что было: настройку, при которой пул пустеет, сохранять нельзя —
-        // иначе человек уходит с конфигурацией, при которой туннель просто не поднимется
         var prevExcluded = new List<string>(cfg.ExcludedCountries);
         var prevPreferred = new List<string>(cfg.PreferredCountries);
 
@@ -559,8 +529,6 @@ switch (cmd)
         return 0;
     }
 
-    // порт прокси меняется отдельно от порта панели: на машине уже может стоять
-    // другой клиент, и без этой команды человеку некуда деться
     case "set-proxy-port":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
@@ -617,7 +585,6 @@ switch (cmd)
             return 0;
         }
 
-        // при поднятом туннеле замер врёт: любая нода отвечает локально за пару миллисекунд
         if (NodeProbe.TunnelIsUp(cfg.TunAddress))
         {
             Console.Error.WriteLine(Cli.S(cfg, "measure_blocked"));
@@ -634,7 +601,6 @@ switch (cmd)
         var previousLimit = cfg.MaxLatencyMs;
         var left = await Cli.MeasureAndFilterAsync(cfg, limit);
 
-        // замеру нельзя верить — молча отступаем, причину уже объяснили
         if (left is null) { cfg.MaxLatencyMs = previousLimit; return 1; }
 
         if (left == 0)
@@ -689,13 +655,9 @@ switch (cmd)
         if (DaemonControl.RequestStop(Ceho.Root))
             await Task.Delay(TimeSpan.FromSeconds(8));
 
-        // мягкая остановка могла не сработать: служба бывает запущена не нами и без pid-файла.
-        // Оставить после удаления живой туннель и открытую панель нельзя
         TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
         TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", Console.WriteLine);
 
-        // следы туннеля снимаем после остановки: на Linux оставленные правила
-        // маршрутизации кладут сеть машины целиком, а не только изолированных программ
         TunCleanup.RemoveLeftovers(Console.WriteLine);
         DaemonControl.ClearRunning(Ceho.Root);
 
@@ -705,7 +667,7 @@ switch (cmd)
         {
             foreach (var f in Directory.GetFiles(Ceho.Root, "sub-*.txt")) File.Delete(f);
             foreach (var f in Directory.GetFiles(Ceho.Root, "*.log")) File.Delete(f);
-            // указатель на панель — тоже наш след, без него в папке остаётся мусор
+
             var pointer = Path.Combine(Ceho.Root, "panel.port");
             if (File.Exists(pointer)) File.Delete(pointer);
         }
@@ -713,8 +675,6 @@ switch (cmd)
 
         Installer.Remove(Ceho.Root, Console.WriteLine, cfg.Language);
 
-        // движок убираем, только если он лежит в НАШЕЙ папке: туда его кладём мы сами,
-        // а системный из пакетного менеджера трогать нельзя — он не наш
         var ourEngine = Path.Combine(Ceho.Root, Os.SingBoxFileName);
         if (File.Exists(ourEngine))
             try { File.Delete(ourEngine); Console.WriteLine($"удалён движок: {ourEngine}"); }
@@ -722,7 +682,6 @@ switch (cmd)
 
         Console.WriteLine(Cli.S(cfg, "uninstall_done"));
 
-        // сам файл программы сносим последним: после этого выполняться уже нечему
         if (args.Contains("--purge") && !Os.IsWindows)
         {
             try
@@ -748,15 +707,14 @@ switch (cmd)
     case "status":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
-        // «служба работает» и «туннель поднят» — разные вещи: служба может быть жива,
-        // а туннель не встать. Показывать в этом случае «защита включена» — врать в лицо
+
         var daemon = DaemonControl.IsRunning(Ceho.Root);
         var tunnel = NodeProbe.TunnelIsUp(cfg.TunAddress);
         var running = daemon && tunnel;
         Console.WriteLine(running ? Cli.S(cfg, "state_on")
             : daemon ? Cli.S(cfg, "state_broken")
             : Cli.S(cfg, "state_off"));
-        // туннель без службы — след аварийного завершения, и молчать о нём нельзя
+
         if (!daemon && tunnel)
             Console.WriteLine(Cli.S(cfg, "state_leftovers", Os.IsWindows ? "" : "sudo "));
         Console.WriteLine(Cli.S(cfg, "apps_isolated", cfg.Apps.Count(a => a.Enabled)));
@@ -821,9 +779,6 @@ switch (cmd)
             return 0;
         }
 
-        // службы нет, но туннель в системе может остаться: после аварийного завершения
-        // движок живёт сам по себе, и трафик изолированных программ продолжает уходить в него.
-        // «Выключить» обязано выключать и такое состояние, иначе снять его нечем
         if (NodeProbe.TunnelIsUp(cfg.TunAddress) || DaemonControl.RunningPid(Ceho.Root) is not null)
         {
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
@@ -849,7 +804,6 @@ switch (cmd)
     }
 }
 
-// ── демон: защита + панель ────────────────────────────────────────────
 if (cmd is "daemon" or "web")
 {
     var cfg = CehoConfig.Load(Ceho.ConfigPath);
@@ -866,20 +820,16 @@ if (cmd is "daemon" or "web")
         try
         {
             var c = CehoConfig.Load(Ceho.ConfigPath);
-            // на запуске поднимаемся на сохранённой копии подписок, если она есть:
-            // ждать медленного провайдера с выключенной защитой — худшее из положений
+
             var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: true);
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 
-            // самолечение: снять следы аварийного завершения до того, как поднимем свой туннель
             TunCleanup.RemoveLeftovers(m => Console.Error.WriteLine(m));
 
             var p = new SingBoxProcess();
             p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
 
-            // движок падает не сразу, а на конфигурации интерфейса: без этой паузы
-            // мы бы отрапортовали «включено» и оставили пользователя без изоляции
             await Task.Delay(TimeSpan.FromSeconds(2));
             if (!p.IsRunning)
             {
@@ -892,7 +842,7 @@ if (cmd is "daemon" or "web")
 
             proc = p;
             lastError = null;
-            probed = false;          // новая сессия — состояние выхода ещё неизвестно
+            probed = false;
             return null;
         }
         catch (Exception ex) { lastError = ex.Message; return ex.Message; }
@@ -906,8 +856,7 @@ if (cmd is "daemon" or "web")
         proc = null;
         exitCountry = exitIp = null;
         probed = false;
-        // если штатно остановиться не вышло, мусор снимаем прямо сейчас, а не ждём
-        // следующего старта: на Linux оставленные правила ложат сеть всей машины
+
         if (!clean) TunCleanup.RemoveLeftovers(m => Console.Error.WriteLine(m));
         return null;
     }
@@ -923,7 +872,6 @@ if (cmd is "daemon" or "web")
     web.WrappedNames = Cli.Wrapped;
     web.OnCheckSubs = async () =>
     {
-        // перечитываем подписки: состояние каждой выставит сама загрузка, по факту нод
         var c = CehoConfig.Load(Ceho.ConfigPath);
         try
         {
@@ -952,8 +900,6 @@ if (cmd is "daemon" or "web")
     web.OnCountries = async () =>
         await NodeProbe.ByCountryAsync(await Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath)));
 
-    // команда из терминала пользователя без прав: выполняем СВОИМ ЖЕ бинарником, но от имени
-    // службы. Это не дублирует логику команд и гарантирует ровно то же поведение, что локально.
     web.OnApiCommand = argv => Task.Run(() =>
     {
         if (argv.Length == 0 || !Cli.CanRunRemotely(argv[0]))
@@ -984,8 +930,6 @@ if (cmd is "daemon" or "web")
             Console.Error.WriteLine($"  {b.Title}");
             if (b.Fix is not null) Console.Error.WriteLine($"    {b.Fix}");
         }
-        // в панель это не кладём: она показывает те же помехи отдельным блоком,
-        // с объяснением и командой — дублировать их красной строкой незачем
     }
 
     try { web.Start(cfg.WebPort); }
@@ -998,7 +942,6 @@ if (cmd is "daemon" or "web")
 
     if (withTunnel)
     {
-        // порт панели тут уже занят нами, поэтому смотрим только то, что мешает именно туннелю
         var tunnelBlockers = startupBlockers
             .Where(c => !c.Title.Contains("орт ", StringComparison.OrdinalIgnoreCase)
                      && !c.Title.Contains("ort ", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -1014,18 +957,14 @@ if (cmd is "daemon" or "web")
     }
 
     DaemonControl.MarkRunning(Ceho.Root);
-    // папка должна оставаться читаемой: внутри указатель на панель, по которому
-    // обычный пользователь узнаёт, куда обращаться. Секрет закрыт правами самого файла.
+
     Auth.RestrictConfigAccess(Ceho.ConfigPath);
 
-    // фоновая проба выхода — панель показывает реальный IP, а не «должно работать»
     using var cts = new CancellationTokenSource();
     _ = Task.Run(async () =>
     {
         while (!cts.IsCancellationRequested)
         {
-            // движок может уйти и после успешного старта. Без этой проверки демон
-            // продолжал бы жить, панель показывала бы «включено», а изоляции бы не было
             if (proc is not null && !proc.IsRunning)
             {
                 var reason = proc.LastLog ?? Strings.T(cfg.Language, "engine_died");

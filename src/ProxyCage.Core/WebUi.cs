@@ -1,20 +1,5 @@
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Стили панели. Токены КодоЦеха, обе темы, без теней и кикеров, статусы только переменными.
-/// Страница обязана работать без JavaScript — это панель управления сетью, и открываться
-/// она должна как раз тогда, когда что-то сломано. Поэтому вся анимация на CSS.
-///
-/// Пояснения к решениям держим здесь, а не комментариями внутри CSS: он уходит клиенту
-/// с каждой страницей, и в английской версии русские комментарии выглядели как мусор.
-/// <list type="bullet">
-/// <item>rise — появление секций: один спокойный жест сверху вниз, без кувырков.</item>
-/// <item>halo — пульсация только у состояния «проверяю»: движение здесь означает ожидание,
-/// а не украшение.</item>
-/// <item>.logo и .forged — марка в скруглённом контейнере с подложкой и тонкой рамкой,
-/// как на codoceh.ru: тёмная картинка на тёмном фоне иначе тонет.</item>
-/// </list>
-/// </summary>
 public static class WebUi
 {
     public const string Css = """
@@ -71,7 +56,6 @@ public static class WebUi
     p{margin:0 0 12px}
     .lede{color:var(--subtext);max-width:66ch}
     .hint{color:var(--muted);font-size:13px;margin:6px 0 0;max-width:70ch}
-
     .status{display:flex;align-items:center;gap:12px;padding:16px 18px;border:1px solid var(--line);
       border-radius:var(--radius);background:var(--surface);margin-bottom:12px}
     .dot{width:10px;height:10px;border-radius:50%;flex:none;position:relative}
@@ -129,7 +113,6 @@ public static class WebUi
     .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
     .actions form{margin:0}
     .actions button{min-height:34px;padding:7px 14px}
-
     .flash{padding:12px 15px;border:1px solid var(--line);border-radius:var(--radius);
       margin-bottom:16px;background:var(--surface)}
     .flash.err{border-color:var(--danger-ink);color:var(--danger-ink)}
@@ -155,7 +138,6 @@ public static class WebUi
     .foot-links a:hover{color:var(--brand-ink)}
     .forged img{width:28px;height:28px;border-radius:10px;display:block;object-fit:cover;
       background:var(--panel);box-shadow:inset 0 0 0 1px var(--line)}
-
     .gate{max-width:380px;margin:14vh auto 0;padding:26px;border:1px solid var(--line);
       border-radius:var(--radius);background:var(--surface);animation:rise .4s ease both}
     .gate .logo{margin-bottom:14px}

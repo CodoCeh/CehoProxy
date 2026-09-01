@@ -3,17 +3,8 @@ using ProxyCage.Core;
 
 namespace ProxyCage.Cli;
 
-/// <summary>
-/// Команды CehoProxy. И CLI, и веб-панель дёргают ОДИН этот слой —
-/// иначе логика разъедется между двумя интерфейсами.
-/// </summary>
 public static class Ceho
 {
-    /// <summary>
-    /// Тихий режим: сообщения о неудачной загрузке подписки не печатаются.
-    /// Нужен там, где причину мы всё равно объясним разборчиво, — иначе человек
-    /// сначала читает системную ошибку по-английски, а потом объяснение по-русски.
-    /// </summary>
     public static bool Quiet { get; set; }
 
     public static string Root =>
@@ -22,19 +13,11 @@ public static class Ceho
     public static string ConfigPath => Path.Combine(Root, "config.json");
     public static string RuntimeConfigPath => Path.Combine(Root, "singbox.json");
 
-    /// <summary>Движок ищем в папке настроек, рядом с собой и в PATH — см. <see cref="Os.ResolveSingBox"/>.</summary>
     public static string SingBoxPath =>
         Os.ResolveSingBox(Root) ?? Path.Combine(Root, Os.SingBoxFileName);
 
     private static string SubCachePath(string name) => Path.Combine(Root, $"sub-{name}.txt");
 
-    /// <summary>
-    /// Путь к программе для автозапуска и обёрток.
-    ///
-    /// Берём УСТАНОВЛЕННУЮ копию, а не ту, из которой запустились: установщик часто
-    /// запускают из временной папки или из загрузок, и служба потом ссылалась бы на файл,
-    /// который вот-вот удалят. Поймано живьём: юнит systemd указывал на /tmp.
-    /// </summary>
     public static string OwnExecutablePath
     {
         get
@@ -45,16 +28,6 @@ public static class Ceho
         }
     }
 
-    /// <summary>
-    /// Два разных собеседника, поэтому и представляемся по-разному.
-    ///
-    /// Панели подписок (Marzban, Remnawave, 3x-ui и подобные) смотрят на User-Agent:
-    /// браузеру они отдают человеческую страницу со ссылками и QR-кодом, а клиенту —
-    /// сам список нод. Поймано живьём на рабочей ссылке владельца: под видом Chrome
-    /// приходило 118 КБ разметки, и продукт честно говорил «нод нет», хотя ссылка живая.
-    /// Файловые хостинги за Cloudflare, наоборот, без браузерных заголовков дают 403.
-    /// Поэтому сначала спрашиваем как клиент, и только если не вышло — как браузер.
-    /// </summary>
     private static HttpClient MakeClient(string? proxy = null, bool asBrowser = true)
     {
         var handler = new HttpClientHandler();
@@ -81,7 +54,6 @@ public static class Ceho
         return c;
     }
 
-    /// <summary>Ответ похож на веб-страницу, а не на подписку.</summary>
     private static bool LooksLikeWebPage(string body)
     {
         var head = body.TrimStart();
@@ -98,18 +70,9 @@ public static class Ceho
         public bool IsBypassed(Uri host) => host.IsLoopback;
     }
 
-    /// <summary>
-    /// Ноды одной подписки; при сбое сети берётся последняя удачная копия с диска.
-    ///
-    /// preferCache — режим для запуска защиты: если копия уже есть, поднимаемся на ней
-    /// сразу, а свежесть догоняет фоновая проверка. Поймано живьём: провайдер отвечал
-    /// по минуте, и всё это время защита была выключена, а машина молчала о причине.
-    /// </summary>
     private static async Task<IReadOnlyList<ProxyNode>> LoadOneAsync(
         SubscriptionEntry sub, string lang, bool preferCache = false)
     {
-        // ссылка может и не быть ссылкой: одна нода целиком или файл на диске.
-        // Тогда качать нечего — разбираем на месте
         if (ReadWithoutNetwork(sub.Url, lang) is { Count: > 0 } local)
         {
             Mark(sub, true);
@@ -124,9 +87,6 @@ public static class Ceho
             if (saved.Count > 0) return Tag(saved, sub.Name);
         }
 
-        // Кэш обновляем ТОЛЬКО годным ответом. Иначе страница-заглушка провайдера
-        // (у неё бывает и код 200) затрёт последнюю рабочую копию, и продукт
-        // останется вообще без нод — отказ там, где его можно было пережить.
         var (fresh, failure) = await FetchWithRetriesAsync(sub.Url);
         if (fresh is not null)
         {
@@ -156,26 +116,14 @@ public static class Ceho
         return Array.Empty<ProxyNode>();
     }
 
-    /// <summary>
-    /// Сколько раз пробовать скачать подписку, прежде чем считать её недоступной.
-    ///
-    /// Одной попытки мало: сервис подписки может отвечать 502 минуту-другую и тут же
-    /// работать. Поймано живьём — владелец видел рабочую ссылку в браузере, а продукт
-    /// сдавался с первого отказа и говорил «нод нет». Браузер в такой ситуации человек
-    /// просто перезагружает; делаем то же самое, только сами.
-    /// </summary>
     private const int FetchAttempts = 3;
 
-    /// <summary>Текст подписки, либо null и человеческая причина последней неудачи.</summary>
     private static async Task<(string? Body, string? Failure)> FetchWithRetriesAsync(string url)
     {
         string? failure = null;
-        string? webPage = null;          // страница вместо подписки: пригодится, если ничего лучше не пришло
+        string? webPage = null;
         for (var attempt = 1; attempt <= FetchAttempts; attempt++)
         {
-            // первый заход — как клиент подписки: панели отдают ему список нод.
-            // дальше — как браузер: так отвечают файловые хостинги за Cloudflare.
-            // числа попыток это не увеличивает, ждать дольше человеку не приходится
             var asBrowser = attempt > 1;
             try
             {
@@ -197,11 +145,10 @@ public static class Ceho
 
             if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(2));
         }
-        // подписки не дождались: отдаём страницу, чтобы разбор назвал причину человеку
+
         return webPage is not null ? (webPage, null) : (null, failure);
     }
 
-    /// <summary>Ноды из того, что уже есть под рукой: ссылка на ноду или файл. Иначе null.</summary>
     private static IReadOnlyList<ProxyNode>? ReadWithoutNetwork(string source, string lang)
     {
         var text = source.Trim();
@@ -217,11 +164,6 @@ public static class Ceho
         return null;
     }
 
-    /// <summary>
-    /// Отметка «работает» ставится по факту: отдала ЭТА подписка ноды или нет.
-    /// Раньше состояние всех подписок выставлялось по общей пробе выхода, и мёртвая
-    /// подписка, вернувшая пустоту, показывалась как рабочая — поймано живьём.
-    /// </summary>
     private static void Mark(SubscriptionEntry sub, bool ok)
     {
         try
@@ -242,14 +184,6 @@ public static class Ceho
         return nodes;
     }
 
-    /// <summary>
-    /// ОБЩИЙ ПУЛ: ноды всех подписок разом, а не только «активной».
-    ///
-    /// Ротация по подпискам целиком слишком груба: в одной подписке часть нод живая, часть
-    /// мёртвая, и переключать надо ноду, а не поставщика. Поэтому парсим всё, складываем
-    /// в один пул, а выбор живой оставляем urltest внутри движка — он и есть ротация.
-    /// Дедупликация по адресу и логину: один и тот же сервер часто встречается в двух подписках.
-    /// </summary>
     public static async Task<IReadOnlyList<ProxyNode>> LoadAllNodesAsync(
         CehoConfig cfg, bool preferCache = false)
     {
@@ -266,7 +200,7 @@ public static class Ceho
         {
             var key = $"{node.Protocol}|{node.Server}|{node.Port}|{node.Credential}";
             if (!seen.Add(key)) continue;
-            node.Tag = $"n{++index:D3}";     // теги должны быть уникальны на весь конфиг
+            node.Tag = $"n{++index:D3}";
             pool.Add(node);
         }
 
@@ -276,7 +210,6 @@ public static class Ceho
         return pool;
     }
 
-    /// <summary>Пересобирает боевой конфиг sing-box из текущего config.json.</summary>
     public static async Task<string> ApplyAsync()
     {
         var cfg = CehoConfig.Load(ConfigPath);
@@ -287,12 +220,8 @@ public static class Ceho
         return Strings.T(cfg.Language, "rules_rebuilt");
     }
 
-    /// <summary>Реальная проверка выхода — через локальный вход sing-box, а не «пинг».</summary>
     public static Task<(string? Country, string? Ip)> ProbeExitAsync(int mixedPort) => Task.Run(() =>
     {
-        // Проба идёт через curl, а не через HttpClient. Причина не косметическая:
-        // HttpClient с прокси на локальный mixed-инбаунд стабильно упирался в таймаут
-        // (и в http-, и в socks5-режиме), тогда как curl тем же портом отвечал мгновенно.
         var curl = Os.ResolveCurl();
         if (curl is null) return (null, null);
 
@@ -303,15 +232,6 @@ public static class Ceho
         return (Extract(output, "countryCode"), Extract(output, "query"));
     });
 
-    /// <summary>
-    /// Ротацию нод делает сам движок: пул собран из всех подписок, а urltest внутри него
-    /// постоянно выбирает живую с наименьшей задержкой. Отдельно переключать ничего не надо.
-    ///
-    /// Эта проверка — про другой случай: не отвечает ВЕСЬ пул. Тогда переключаться не на что,
-    /// и единственное осмысленное действие — перекачать подписки (провайдер мог заменить ноды)
-    /// и пересобрать правила. Живость меряется настоящим запросом к адресу, который назначил
-    /// пользователь, а не пингом: нода отвечает и будучи заблокированной.
-    /// </summary>
     public static async Task<string?> RefreshIfDeadAsync(int mixedPort)
     {
         var cfg = CehoConfig.Load(ConfigPath);
@@ -331,13 +251,11 @@ public static class Ceho
             return ex.Message;
         }
 
-        // перезапускать туннель есть смысл, только если провайдер отдал другой список нод
         return SubscriptionsFingerprint() != before
             ? "подписки обновились, правила перечитаны"
             : "ни одна нода не отвечает";
     }
 
-    /// <summary>Отпечаток кэшей подписок: сменился — значит провайдер отдал другой список нод.</summary>
     private static string SubscriptionsFingerprint()
     {
         try
@@ -353,12 +271,6 @@ public static class Ceho
         }
     }
 
-    /// <summary>
-    /// Почему по ссылке не нашлось нод. Отвечать «нод нет» и молчать о причине нельзя:
-    /// человек видит одинаковый текст и когда ссылка мертва, и когда опечатался,
-    /// и когда провайдер лежит. Поймано живьём: подписка отдавала 502, а продукт
-    /// говорил только «нод нет», и владелец искал ошибку у себя.
-    /// </summary>
     public static async Task<string> DiagnoseSubscriptionAsync(string url, string lang)
     {
         var text = url.Trim();
@@ -373,8 +285,6 @@ public static class Ceho
 
         try
         {
-            // диагностика должна видеть ровно то же, что и обычная загрузка: там мы
-            // сначала представляемся клиентом подписки, иначе панель отдаёт свою страницу
             using var http = MakeClient(null, asBrowser: false);
             HttpResponseMessage response = null!;
             for (var attempt = 1; attempt <= FetchAttempts; attempt++)
@@ -399,7 +309,6 @@ public static class Ceho
         }
         catch (TaskCanceledException)
         {
-            // .NET называет таймаут «запрос отменён» — человеку это ничего не говорит
             return Strings.T(lang, "diag_timeout");
         }
         catch (HttpRequestException ex)
@@ -415,18 +324,6 @@ public static class Ceho
     public sealed record VerifyResult(
         bool? Isolated, int Processes, int Tunneled, int Direct, string? Problem);
 
-    /// <summary>
-    /// Доказательство изоляции по ЖИВЫМ соединениям самого приложения.
-    ///
-    /// Почему не «подложить пробник в папку и сравнить IP»: в MSIX-папку
-    /// (C:\Program Files\WindowsApps\...) писать нельзя — Windows запрещает, и для
-    /// Store-приложений такая проверка невозможна в принципе. А главное, пробник
-    /// доказывал бы изоляцию пробника, а не приложения.
-    ///
-    /// Здесь берём процессы приложения и смотрим локальный адрес их TCP-соединений:
-    /// у завёрнутых в туннель он из подсети TUN, у утекающих мимо — реальный адрес
-    /// сетевой карты. Это ровно тот признак, по которому изоляцию видно снаружи.
-    /// </summary>
     public static VerifyResult VerifyApp(AppEntry app, string tunAddress, string lang = "ru")
     {
         var tunPrefix = TunPrefix(tunAddress);
@@ -439,8 +336,7 @@ public static class Ceho
         foreach (var localAddr in ProcessInspector.LocalAddressesOf(pids))
         {
             if (localAddr.StartsWith(tunPrefix, StringComparison.Ordinal)) tunneled++;
-            // соединения внутри самой машины через туннель идти не могут и утечкой не являются:
-            // без этой поправки продукт кричал бы «ТЕЧЁТ» там, где всё в порядке
+
             else if (IsLoopback(localAddr)) local++;
             else direct++;
         }
@@ -455,7 +351,6 @@ public static class Ceho
         address.StartsWith("127.", StringComparison.Ordinal)
         || address is "::1" or "0.0.0.0" or "::";
 
-    /// <summary>172.19.0.1/30 → «172.19.0.» — по этому префиксу и опознаём туннель.</summary>
     private static string TunPrefix(string tunAddress)
     {
         var ip = tunAddress.Split('/')[0];
@@ -472,11 +367,6 @@ public static class Ceho
         return j < 0 ? null : json[i..j];
     }
 
-    /// <summary>
-    /// Живость подписки = настоящий запрос к адресу, который назначил пользователь.
-    /// Браузерные заголовки обязательны: сайты за Cloudflare отдают 403 голому клиенту
-    /// независимо от того, заблокирован выход или нет, и без них проверка врёт.
-    /// </summary>
     public static Task<bool> CheckSubscriptionLiveAsync(int mixedPort, string checkUrl) => Task.Run(() =>
     {
         var curl = Os.ResolveCurl();

@@ -2,7 +2,6 @@ using System.Text.Json.Nodes;
 
 namespace ProxyCage.Core;
 
-/// <summary>Нода подписки → outbound sing-box. Один вход для всех протоколов.</summary>
 public static class OutboundBuilder
 {
     public static JsonObject Build(ProxyNode n) => n.Protocol switch
@@ -96,7 +95,6 @@ public static class OutboundBuilder
             tls["alpn"] = new JsonArray(n.Alpn.Split(',', StringSplitOptions.RemoveEmptyEntries)
                                               .Select(a => (JsonNode)a.Trim()).ToArray());
 
-        // utls только там, где имитируется TLS-хендшейк браузера; для QUIC-протоколов не применимо
         if (n.Protocol is not (ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic))
             tls["utls"] = new JsonObject
             {

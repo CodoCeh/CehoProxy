@@ -1,21 +1,10 @@
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Установка и полное удаление продукта своими силами, без сторонних инсталляторов.
-///
-/// Нужно потому, что поставка идёт двумя путями: файлом из релиза GitHub и обычным
-/// установщиком. Логика в обоих случаях одна и та же, и держать её в двух местах нельзя —
-/// разъедется. Установщик под Windows просто вызывает эту команду.
-///
-/// Движок sing-box мы не раздаём (он под GPL, см. THIRD-PARTY.md), но скачать его с сайта
-/// автора по просьбе пользователя — обычное действие пользователя, а не раздача с нашей стороны.
-/// </summary>
 public static class Installer
 {
     public static string BinaryPath(string root) =>
         Path.Combine(root, Os.IsWindows ? "cehoproxy.exe" : "cehoproxy");
 
-    /// <summary>Копирует программу в папку продукта, делает короткую команду и правит PATH.</summary>
     public static string Install(string root, Action<string> log, string lang = "ru")
     {
         Directory.CreateDirectory(root);
@@ -26,7 +15,6 @@ public static class Installer
 
         if (!Os.RealPath(self).Equals(Os.RealPath(target), StringComparison.OrdinalIgnoreCase))
         {
-            // работающий файл нельзя перезаписать, но можно отодвинуть
             var backup = target + ".old";
             try { if (File.Exists(backup)) File.Delete(backup); } catch { }
             if (File.Exists(target)) File.Move(target, backup, overwrite: true);
@@ -62,10 +50,6 @@ public static class Installer
         }
     }
 
-    /// <summary>
-    /// Без записи в PATH человек вынужден каждый раз печатать полный путь,
-    /// а команда chp из панели и из документации просто не работает.
-    /// </summary>
     private static void AddToPath(string root, Action<string> log, string lang)
     {
         if (Os.IsWindows)
@@ -88,7 +72,6 @@ public static class Installer
             return;
         }
 
-        // на Unix кладём ссылку туда, что и так есть в PATH у всех
         try
         {
             var link = "/usr/local/bin/chp";
@@ -103,19 +86,11 @@ public static class Installer
         }
     }
 
-    /// <summary>Убирает всё, что положил Install. Файлы настроек чистит команда uninstall.</summary>
     [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
     private static extern bool MoveFileEx(string existing, string? newName, int flags);
 
     private const int DelayUntilReboot = 0x4;
 
-    /// <summary>
-    /// Просит Windows удалить файл при следующей перезагрузке.
-    ///
-    /// Нужно ровно для одного: деинсталлятор не может стереть сам себя, пока работает,
-    /// и после «полного удаления» в папке навсегда оставался четырёхмегабайтный файл.
-    /// Поймано живьём. Своими файлами это не занимается — их мы удаляем сразу.
-    /// </summary>
     private static void DeleteAtReboot(string path, Action<string> log, string lang)
     {
         try
@@ -130,7 +105,6 @@ public static class Installer
     {
         if (Os.IsWindows)
         {
-            // остатки установщика: сам себя он стереть не может
             try
             {
                 foreach (var leftover in Directory.GetFiles(root, "unins*.*"))
@@ -171,10 +145,6 @@ public static class Installer
             catch { }
     }
 
-    /// <summary>
-    /// Скачивает движок с сайта автора в папку продукта. Раздачей с нашей стороны это не является:
-    /// файл берётся напрямую из релизов sing-box по явной просьбе пользователя.
-    /// </summary>
     public static async Task<string> DownloadEngineAsync(string root, Action<string> log, string lang = "ru")
     {
         var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
@@ -217,7 +187,6 @@ public static class Installer
         return engine;
     }
 
-    /// <summary>Внутри архива движок лежит в подпапке с версией — достаём только его.</summary>
     private static void Extract(string archive, string root, string engine)
     {
         var temp = Path.Combine(root, "engine-tmp");

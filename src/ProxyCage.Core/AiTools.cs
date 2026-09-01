@@ -1,27 +1,11 @@
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Поиск установленных ИИ-инструментов, чтобы не заставлять человека вспоминать пути.
-///
-/// Ищем только по известным местам и в PATH: обход диска на терминальном сервере занял бы
-/// минуты и ничего не дал бы. Найденное показываем с честной пометкой, можно ли его вообще
-/// изолировать — см. <see cref="ToolKind"/>.
-/// </summary>
 public static class AiTools
 {
     public enum ToolKind
     {
-        /// <summary>Пакет .app или папка программы: изолируется целиком, всё честно.</summary>
         Bundle,
-
-        /// <summary>Обычный исполняемый файл: правило строится по нему.</summary>
         Native,
-
-        /// <summary>
-        /// Скрипт под интерпретатором (обычно node). Система видит процесс ИНТЕРПРЕТАТОРА,
-        /// а не скрипта, поэтому правило по пути скрипта не сработает — молча, что хуже всего.
-        /// Проверено: у запущенного через `#!/usr/bin/env node` процесса путь — сам node.
-        /// </summary>
         Script,
     }
 
@@ -42,8 +26,7 @@ public static class AiTools
                 yield return new("Codex", new[] { "/Applications/Codex.app" }, new[] { "codex" });
                 yield return new("Cursor", new[] { "/Applications/Cursor.app" }, new[] { "cursor" });
                 yield return new("Gemini", new[] { "/Applications/Gemini.app" }, new[] { "gemini" });
-                // именно папка инструмента: bin/grok — ссылка на файл с номером версии в имени,
-                // и после обновления правило по нему молча перестало бы совпадать
+
                 yield return new("Grok", new[] { "/Applications/Grok.app", $"{home}/.grok" }, new[] { "grok" });
                 yield return new("Antigravity", new[]
                 {
@@ -101,7 +84,6 @@ public static class AiTools
         return found;
     }
 
-    /// <summary>Путь с хвостовой звёздочкой означает «папка с меняющимся суффиксом» (MSIX-пакеты).</summary>
     private static string? Expand(string pattern)
     {
         if (!pattern.EndsWith('*'))
@@ -119,7 +101,7 @@ public static class AiTools
         }
         catch
         {
-            return null;   // WindowsApps закрыт от чтения — это норма
+            return null;
         }
     }
 
@@ -129,7 +111,6 @@ public static class AiTools
         return InterpreterOf(path) is null ? ToolKind.Native : ToolKind.Script;
     }
 
-    /// <summary>Первая строка «#!…» — значит запускать будет интерпретатор, и процессом станет он.</summary>
     private static string? InterpreterOf(string path)
     {
         if (!File.Exists(path)) return null;
@@ -147,7 +128,6 @@ public static class AiTools
             var parts = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return null;
 
-            // «/usr/bin/env node» — настоящий интерпретатор во втором слове
             var name = Path.GetFileName(parts[0]) == "env" && parts.Length > 1 ? parts[1] : parts[0];
             return Os.FindOnPath(Path.GetFileName(name)) ?? name;
         }

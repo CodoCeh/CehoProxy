@@ -2,10 +2,6 @@ using System.Net.NetworkInformation;
 
 namespace ProxyCage.Core;
 
-/// <summary>
-/// Проверка условий до запуска. Любая нехватка прав или файла должна всплывать
-/// понятной фразой с готовым решением, а не падать невнятной ошибкой посреди работы.
-/// </summary>
 public static class Preflight
 {
     public enum Level { Ok, Warning, Blocker }
@@ -55,9 +51,7 @@ public static class Preflight
 
         checks.Add(CheckWritable(root, l));
         checks.Add(CheckPort(cfg.WebPort, l, root, panel: true));
-        // порт прокси проверяем отдельно: на машине уже может стоять другой клиент
-        // (xray, sing-box, обычный VPN-клиент), и тогда движок не поднимется вовсе,
-        // а человек увидит только невнятную ошибку от движка
+
         checks.Add(CheckPort(cfg.MixedPort, l, root, panel: false));
 
         if (cfg.Subscriptions.Count == 0)
@@ -93,11 +87,6 @@ public static class Preflight
         }
     }
 
-    /// <summary>
-    /// Первый действительно свободный порт после занятого. Раньше предлагали просто +1,
-    /// и на машине, где рядом стоит другой клиент, следующий порт оказывался занят тоже:
-    /// человек выполнял подсказку и получал ту же ошибку.
-    /// </summary>
     public static int NextFreePort(int from)
     {
         try
@@ -121,9 +110,6 @@ public static class Preflight
                 .GetActiveTcpListeners()
                 .Any(e => e.Port == port);
 
-            // порт держит НАША ЖЕ панель — это не беда, а признак работающей защиты.
-            // Поймано живьём: «chp doctor» при поднятой службе показывал «стоп: порт занят»
-            // и человек шёл менять порт на ровном месте
             if (busy && DaemonControl.IsRunning(root))
                 return new Check(Level.Ok, Strings.T(lang, "pf_port_ours", port), null, null);
 
