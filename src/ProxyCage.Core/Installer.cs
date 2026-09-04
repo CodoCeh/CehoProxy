@@ -24,6 +24,19 @@ public static class Installer
 
         if (!Os.IsWindows) Os.Run("chmod", $"755 {target}", 5000);
 
+        var ownDir = Path.GetDirectoryName(self);
+        if (!string.IsNullOrEmpty(ownDir))
+        {
+            var nearbyEngine = Path.Combine(ownDir, Os.SingBoxFileName);
+            var targetEngine = Path.Combine(root, Os.SingBoxFileName);
+            if (File.Exists(nearbyEngine) && !Os.RealPath(nearbyEngine).Equals(Os.RealPath(targetEngine), StringComparison.OrdinalIgnoreCase))
+            {
+                File.Copy(nearbyEngine, targetEngine, overwrite: true);
+                if (!Os.IsWindows) Os.Run("chmod", $"755 {targetEngine}", 5000);
+                log(Strings.T(lang, "inst_engine_at", targetEngine));
+            }
+        }
+
         MakeShortcut(root, target, log, lang);
         AddToPath(root, log, lang);
         return target;
