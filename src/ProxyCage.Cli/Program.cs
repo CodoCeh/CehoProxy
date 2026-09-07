@@ -286,7 +286,12 @@ switch (cmd)
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
         if (cfg.Apps.Count == 0) { Console.WriteLine(Cli.S(cfg, "empty")); return 0; }
         foreach (var a in cfg.Apps)
-            Console.WriteLine($"{a.Name,-24} {a.Folder}");
+        {
+            var how = a.AllowedNodes.Count == 0
+                ? Cli.S(cfg, "app_tunnel_general")
+                : Cli.S(cfg, "app_tunnel_pinned", a.AllowedNodes.Count);
+            Console.WriteLine($"{a.Name,-24} {a.Folder}  · {how}");
+        }
         return 0;
     }
 
@@ -311,6 +316,86 @@ switch (cmd)
         Console.WriteLine(Cli.S(cfg, n > 0 ? "removed" : "err_not_in_list"));
         if (n > 0) await Cli.RebuildQuietlyAsync(cfg);
         return n > 0 ? 0 : 1;
+    }
+
+    case "tunnel":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        if (!Assistant.Interactive)
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "tunnel_need_interactive"));
+            return 1;
+        }
+        if (cfg.Apps.Count == 0) { Console.WriteLine(Cli.S(cfg, "empty")); return 0; }
+
+        Console.WriteLine(Cli.S(cfg, "apps_title"));
+        Console.WriteLine();
+        for (var i = 0; i < cfg.Apps.Count; i++)
+        {
+            var a = cfg.Apps[i];
+            var how = a.AllowedNodes.Count == 0
+                ? Cli.S(cfg, "app_tunnel_general")
+                : Cli.S(cfg, "app_tunnel_pinned", a.AllowedNodes.Count);
+            Console.WriteLine($"  {i + 1,3}. {a.Name,-20} {how}");
+        }
+
+        var appsAnswer = Cli.Ask("  " + Cli.S(cfg, "tunnel_ask_apps") + " (" + Cli.S(cfg, "ask_skip") + ")");
+        if (appsAnswer.Length == 0) return 0;
+        if (!IndexList.TryParse(appsAnswer, cfg.Apps.Count, out var appIdx) || appIdx.Count == 0)
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "ask_bad_choice"));
+            return 1;
+        }
+
+        List<ProxyNode> all;
+        using (var spinner = new ConsoleSpinner(Cli.S(cfg, "sub_parsing_nodes")))
+        {
+            var loaded = await Ceho.LoadAllNodesAsync(cfg, preferCache: true, spinner.AsReport());
+            all = Cli.NodeList(loaded);
+            spinner.Done(Cli.S(cfg, "nodes_read", all.Count));
+        }
+        if (all.Count == 0) { Console.Error.WriteLine(Cli.S(cfg, "pf_no_subs_detail")); return 1; }
+
+        Console.WriteLine();
+        for (var i = 0; i < all.Count; i++)
+        {
+            var n = all[i];
+            var name = n.Remark.Length > 0 ? n.Remark : n.Tag;
+            Console.WriteLine($"  {i + 1,3}. {(n.CountryCode ?? "?"),-3} {n.Server}:{n.Port,-5}  {name}");
+        }
+
+        var nodesAnswer = Cli.Ask("  " + Cli.S(cfg, "tunnel_ask_nodes"));
+        List<string> keys;
+        if (string.IsNullOrWhiteSpace(nodesAnswer))
+        {
+            keys = new List<string>();
+        }
+        else if (!IndexList.TryParse(nodesAnswer, all.Count, out var nodeIdx) || nodeIdx.Count == 0)
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "ask_bad_choice"));
+            return 1;
+        }
+        else
+        {
+            keys = nodeIdx.Select(i => all[i].Key).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        var names = new List<string>();
+        foreach (var i in appIdx)
+        {
+            cfg.Apps[i].AllowedNodes = keys.ToList();
+            names.Add(cfg.Apps[i].Name);
+        }
+
+        cfg.Save(Ceho.ConfigPath);
+        Auth.RestrictConfigAccess(Ceho.ConfigPath);
+
+        var who = string.Join(", ", names);
+        Console.WriteLine(keys.Count == 0
+            ? Cli.S(cfg, "tunnel_cleared", who)
+            : Cli.S(cfg, "tunnel_done", who, keys.Count));
+        await Cli.RebuildQuietlyAsync(cfg);
+        return 0;
     }
 
     case "sub-add":

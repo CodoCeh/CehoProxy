@@ -90,6 +90,15 @@ public class PanelLayoutTests : IDisposable
     }
 
     [Fact]
+    public async Task App_row_has_a_tunnel_button_next_to_remove()
+    {
+        var page = await _http.GetStringAsync("/?tab=apps");
+        Assert.Contains("tunnel=", page);
+        Assert.Contains("Туннель", page);
+        Assert.Contains("/apps/remove", page);
+    }
+
+    [Fact]
     public async Task A_page_that_refreshes_itself_does_not_replay_the_intro()
     {
         var reply = await _http.PostAsync("/pool/refresh",

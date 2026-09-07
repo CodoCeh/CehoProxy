@@ -149,7 +149,8 @@ public sealed class WebServer
         var current = ctx.Request.QueryString["tab"] ?? "state";
         var job = Jobs.Find(ctx.Request.QueryString["job"]);
         var view = ViewFromQuery(ctx.Request.QueryString["view"]);
-        await WriteHtmlAsync(ctx, RenderPage(cfg, _state(), current, flash, flashErr, job, view));
+        var tunnel = ctx.Request.QueryString["tunnel"];
+        await WriteHtmlAsync(ctx, RenderPage(cfg, _state(), current, flash, flashErr, job, view, tunnel));
     }
 
     private static bool Authorized(HttpListenerContext ctx, CehoConfig cfg)
@@ -371,6 +372,33 @@ public sealed class WebServer
                     cfg.Apps.RemoveAll(a => a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
                     Save(cfg);
                     return (S("removed"), false, cfg.Apps.Count > 0 ? ApplyJob(cfg).Id : null);
+                }
+
+                case "/apps/tunnel":
+                {
+                    var folder = f.GetValueOrDefault("folder", "");
+                    var app = cfg.Apps.FirstOrDefault(a =>
+                        a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                    if (app is null) return (S("app_tunnel_missing"), true, null);
+
+                    var shown = (f.GetValueOrDefault("all", "") ?? "")
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(k => k.Trim())
+                        .Where(k => k.Length > 0)
+                        .ToList();
+                    var keep = f.Keys.Where(k => k.StartsWith("n_", StringComparison.Ordinal))
+                        .Select(k => k[2..])
+                        .Where(k => shown.Contains(k, StringComparer.OrdinalIgnoreCase))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    app.AllowedNodes = keep;
+                    Save(cfg);
+
+                    var msg = keep.Count == 0
+                        ? S("app_tunnel_cleared", app.Name)
+                        : S("app_tunnel_saved", app.Name, keep.Count);
+                    return (msg, false, ApplyJob(cfg).Id);
                 }
 
                 case "/subs/add":
@@ -838,7 +866,7 @@ public sealed class WebServer
 
     private string RenderPage(
         CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr, Job? job,
-        LogView logView = LogView.All)
+        LogView logView = LogView.All, string? tunnelFolder = null)
     {
         string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
         var sb = new StringBuilder();
@@ -870,7 +898,7 @@ public sealed class WebServer
 
         switch (tab)
         {
-            case "apps": RenderApps(sb, cfg, S); break;
+            case "apps": RenderApps(sb, cfg, S, tunnelFolder); break;
             case "subs": RenderSubs(sb, cfg, S); break;
             case "exit": RenderExit(sb, cfg, S); break;
             case "browser": RenderBrowser(sb, cfg, S); break;
@@ -1139,8 +1167,15 @@ public sealed class WebServer
         sb.Append("</ul>");
     }
 
-    private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
+    private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,
+        string? tunnelFolder)
     {
+        if (!string.IsNullOrEmpty(tunnelFolder))
+        {
+            RenderAppTunnel(sb, cfg, S, tunnelFolder);
+            return;
+        }
+
         sb.Append("<section><h2>").Append(E(S("apps_title", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("apps_lede", []))).Append("</p>");
 
@@ -1156,7 +1191,15 @@ public sealed class WebServer
                 sb.Append("<tr><td>").Append(E(a.Name));
                 if (a.VersionAgnostic) sb.Append("<br><span class=tag>Microsoft Store</span>");
                 if (a.SingleFile) sb.Append("<br><span class=tag>").Append(E(S("col_file", []))).Append("</span>");
+                sb.Append("<br><span class=tag>")
+                  .Append(E(a.AllowedNodes.Count == 0
+                      ? S("app_tunnel_general", [])
+                      : S("app_tunnel_pinned", new object[] { a.AllowedNodes.Count })))
+                  .Append("</span>");
                 sb.Append("</td><td class=path>").Append(E(a.Folder)).Append("</td><td class=actions>");
+                sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")
+                  .Append(Uri.EscapeDataString(a.Folder)).Append("\">")
+                  .Append(E(S("btn_tunnel", []))).Append("</a>");
                 sb.Append("<form method=post action=/apps/remove><input type=hidden name=tab value=apps>")
                   .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder))
                   .Append("\"><button class=danger>").Append(E(S("btn_remove", []))).Append("</button></form>");
@@ -1178,6 +1221,89 @@ public sealed class WebServer
           .Append(E(Os.IsMac ? S("apps_hint_mac", []) : S("apps_hint_sysdir", []))).Append("</p>");
 
         RenderDetected(sb, cfg, S);
+        sb.Append("</section>");
+    }
+
+    private void RenderAppTunnel(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,
+        string folder)
+    {
+        var app = cfg.Apps.FirstOrDefault(a =>
+            a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+        if (app is null)
+        {
+            sb.Append("<section><h2>").Append(E(S("apps_title", []))).Append("</h2>");
+            sb.Append("<p class=empty>").Append(E(S("app_tunnel_missing", []))).Append("</p>");
+            sb.Append("<p><a href=\"/?tab=apps\">").Append(E(S("app_tunnel_back", []))).Append("</a></p>");
+            sb.Append("</section>");
+            return;
+        }
+
+        sb.Append("<section><h2>").Append(E(S("app_tunnel_title", new object[] { app.Name }))).Append("</h2>");
+        sb.Append("<p class=lede>").Append(E(S("app_tunnel_lede", []))).Append("</p>");
+        sb.Append("<p><a href=\"/?tab=apps\">").Append(E(S("app_tunnel_back", []))).Append("</a></p>");
+
+        var pool = _pool;
+        var loading = Jobs.Active(JobPool);
+        if (pool is null && loading is null && cfg.Subscriptions.Any(s => s.Enabled))
+            loading = StartPoolJob(cfg);
+
+        if (_poolError is not null)
+            sb.Append("<div class=\"flash err\">").Append(E(_poolError)).Append("</div>");
+
+        if (pool is null)
+        {
+            sb.Append("<p class=empty>").Append(E(S(loading is null
+                ? "pf_no_subs_detail"
+                : "pool_loading", []))).Append("</p>");
+            sb.Append("</section>");
+            return;
+        }
+
+        var groups = pool.Where(n => !n.IsMeta)
+            .GroupBy(n => n.CountryCode ?? CountryResolver.Unknown)
+            .OrderByDescending(g => g.Count())
+            .ToList();
+        var selected = app.AllowedNodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        sb.Append("<form method=post action=/apps/tunnel><input type=hidden name=tab value=apps>");
+        sb.Append("<input type=hidden name=folder value=\"").Append(E(app.Folder)).Append("\">");
+        sb.Append("<input type=hidden name=all value=\"")
+          .Append(E(string.Join("\n", groups.SelectMany(g => g).Select(n => n.Key)))).Append("\">");
+
+        foreach (var g in groups)
+        {
+            var countryName = g.Key == CountryResolver.Unknown
+                ? S("country_unknown", [])
+                : g.First().CountryName ?? g.Key;
+            var here = g.Count(n => selected.Contains(n.Key));
+            sb.Append("<details class=nodes").Append(here > 0 ? " open" : "")
+              .Append("><summary>");
+            sb.Append("<span class=flag>").Append(CountryResolver.Flag(g.Key)).Append("</span> ")
+              .Append(E(countryName)).Append(" · ").Append(g.Count());
+            if (here > 0)
+                sb.Append(" · ").Append(E(S("app_tunnel_pinned", new object[] { here })));
+            sb.Append("</summary><div class=scroll><table class=t-nodes>");
+            sb.Append("<tr><th>").Append(E(S("col_use", []))).Append("</th><th>")
+              .Append(E(S("col_node", []))).Append("</th><th>").Append(E(S("col_address", [])))
+              .Append("</th><th>").Append(E(S("col_protocols", []))).Append("</th><th>")
+              .Append(E(S("col_source", []))).Append("</th></tr>");
+
+            foreach (var n in g.OrderBy(n => n.Remark, StringComparer.OrdinalIgnoreCase)
+                               .ThenBy(n => n.Server, StringComparer.OrdinalIgnoreCase))
+            {
+                var on = selected.Contains(n.Key);
+                sb.Append("<tr").Append(on ? "" : " class=off").Append("><td><label class=check>")
+                  .Append("<input type=checkbox name=\"n_").Append(E(n.Key)).Append('"')
+                  .Append(on ? " checked" : "").Append("></label></td>");
+                sb.Append("<td>").Append(E(n.Remark.Length > 0 ? n.Remark : n.Tag)).Append("</td>");
+                sb.Append("<td class=tag>").Append(E($"{n.Server}:{n.Port}")).Append("</td>");
+                sb.Append("<td class=tag>").Append(E(n.Protocol.ToString())).Append("</td>");
+                sb.Append("<td class=tag>").Append(E(n.Source ?? "—")).Append("</td></tr>");
+            }
+            sb.Append("</table></div></details>");
+        }
+
+        sb.Append("<button>").Append(E(S("btn_save", []))).Append("</button></form>");
         sb.Append("</section>");
     }
 

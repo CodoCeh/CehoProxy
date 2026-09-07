@@ -173,6 +173,20 @@ public static class SingBoxConfigGenerator
         ["timestamp"] = false,
     };
 
+    public static string AppOutboundTag(int appIndex) => $"proxy-app-{appIndex}";
+
+    public static string AppDnsTag(int appIndex) => $"dns-proxy-app-{appIndex}";
+
+    public static bool HasNodeFilter(AppEntry app) =>
+        app.AllowedNodes is { Count: > 0 };
+
+    public static List<ProxyNode> ResolvePinned(AppEntry app, IReadOnlyList<ProxyNode> allNodes)
+    {
+        if (!HasNodeFilter(app)) return new List<ProxyNode>();
+        var keys = app.AllowedNodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return allNodes.Where(n => !n.IsMeta && keys.Contains(n.Key)).ToList();
+    }
+
     public static string GenerateForConfig(IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg)
     {
         var apps = cfg.Apps.Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)).ToList();
@@ -180,38 +194,128 @@ public static class SingBoxConfigGenerator
             throw new InvalidOperationException("Не добавлено ни одного приложения — изолировать нечего.");
 
         var pool = BuildPool(allNodes, cfg);
+        var pinned = apps.Select((a, i) => (App: a, Index: i, Nodes: ResolvePinned(a, allNodes)))
+            .Where(x => HasNodeFilter(x.App))
+            .ToList();
+        var unpinned = apps.Where(a => !HasNodeFilter(a)).ToList();
 
-        var appRegexes = new JsonArray();
-        foreach (var a in apps) appRegexes.Add(AppDetector.ToRegex(a));
+        var engineNodes = new List<ProxyNode>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in pool.Concat(pinned.SelectMany(x => x.Nodes)))
+        {
+            if (seen.Add(node.Key)) engineNodes.Add(node);
+        }
+
+        var checkUrl = string.IsNullOrWhiteSpace(cfg.CheckUrl)
+            ? "https://www.gstatic.com/generate_204"
+            : cfg.CheckUrl;
 
         var outbounds = new JsonArray();
-        var poolTags = new JsonArray();
-        foreach (var node in pool)
-        {
+        foreach (var node in engineNodes)
             outbounds.Add(OutboundBuilder.Build(node));
-            poolTags.Add(node.Tag);
-        }
-        outbounds.Add(new JsonObject
+
+        var poolTags = new JsonArray();
+        foreach (var node in pool) poolTags.Add(node.Tag);
+        outbounds.Add(UrlTest(ProxyTag, poolTags, checkUrl));
+
+        foreach (var item in pinned.Where(x => x.Nodes.Count > 0))
         {
-            ["type"] = "urltest",
-            ["tag"] = ProxyTag,
-            ["outbounds"] = poolTags,
-            ["url"] = "https://www.gstatic.com/generate_204",
-            ["interval"] = "3m",
-            ["tolerance"] = 50,
-        });
+            var tags = new JsonArray();
+            foreach (var node in item.Nodes) tags.Add(node.Tag);
+            outbounds.Add(UrlTest(AppOutboundTag(item.Index), tags, checkUrl));
+        }
+
         outbounds.Add(new JsonObject { ["type"] = "direct", ["tag"] = DirectTag });
+
+        var dnsServers = DnsServersWithDirect(cfg.TunAddress);
+        var dnsRules = new JsonArray();
+        var hijack = new JsonArray();
+        var routeRules = new JsonArray { new JsonObject { ["action"] = "sniff" } };
+
+        foreach (var item in pinned)
+        {
+            var regex = new JsonArray { AppDetector.ToRegex(item.App) };
+            if (item.Nodes.Count == 0)
+            {
+                routeRules.Add(new JsonObject
+                {
+                    ["protocol"] = "dns",
+                    ["process_path_regex"] = regex.DeepClone(),
+                    ["action"] = "reject",
+                });
+                routeRules.Add(new JsonObject
+                {
+                    ["process_path_regex"] = regex.DeepClone(),
+                    ["action"] = "reject",
+                });
+                continue;
+            }
+
+            var dnsTag = AppDnsTag(item.Index);
+            dnsServers.Insert(1, new JsonObject
+            {
+                ["type"] = "https",
+                ["tag"] = dnsTag,
+                ["server"] = "1.1.1.1",
+                ["detour"] = AppOutboundTag(item.Index),
+            });
+            dnsRules.Add(new JsonObject
+            {
+                ["process_path_regex"] = regex.DeepClone(),
+                ["server"] = dnsTag,
+            });
+            hijack.Add(regex.DeepClone());
+            routeRules.Add(new JsonObject
+            {
+                ["process_path_regex"] = regex.DeepClone(),
+                ["outbound"] = AppOutboundTag(item.Index),
+            });
+        }
+
+        if (unpinned.Count > 0)
+        {
+            var regexes = new JsonArray();
+            foreach (var a in unpinned) regexes.Add(AppDetector.ToRegex(a));
+            dnsRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["server"] = "dns-proxy" });
+            hijack.Add(regexes.DeepClone());
+            routeRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["outbound"] = ProxyTag });
+        }
+
+        // Перехватываем только запросы имён от выбранных программ. Запросы остальной
+        // системы проходят насквозь к её обычному серверу имён: чужие имена не наше дело.
+        var hijackRegexes = FlattenRegexes(hijack);
+        if (hijackRegexes.Count > 0)
+        {
+            routeRules.Insert(1, new JsonObject
+            {
+                ["protocol"] = "dns",
+                ["process_path_regex"] = hijackRegexes,
+                ["action"] = "hijack-dns",
+            });
+        }
+
+        // Windows видит наш адаптер и заодно спрашивает имена у него. Молчать в ответ
+        // нельзя — система будет ждать и тормозить, поэтому отвечаем через её же сервер.
+        var tunHijackIndex = hijackRegexes.Count > 0 ? 2 : 1;
+        routeRules.Insert(tunHijackIndex, new JsonObject
+        {
+            ["protocol"] = "dns",
+            ["ip_cidr"] = new JsonArray { cfg.TunAddress },
+            ["action"] = "hijack-dns",
+        });
+        routeRules.Insert(tunHijackIndex + 1, new JsonObject
+        {
+            ["inbound"] = new JsonArray { "mixed-in" },
+            ["outbound"] = ProxyTag,
+        });
 
         var config = new JsonObject
         {
             ["log"] = BuildLog(cfg),
             ["dns"] = new JsonObject
             {
-                ["servers"] = DnsServersWithDirect(cfg.TunAddress),
-                ["rules"] = new JsonArray
-                {
-                    new JsonObject { ["process_path_regex"] = appRegexes.DeepClone(), ["server"] = "dns-proxy" },
-                },
+                ["servers"] = dnsServers,
+                ["rules"] = dnsRules,
                 ["final"] = "dns-direct",
                 ["strategy"] = "prefer_ipv4",
             },
@@ -229,30 +333,7 @@ public static class SingBoxConfigGenerator
             ["outbounds"] = outbounds,
             ["route"] = new JsonObject
             {
-                ["rules"] = new JsonArray
-                {
-                    new JsonObject { ["action"] = "sniff" },
-
-                    // Перехватываем только запросы имён от выбранных программ. Запросы остальной
-                    // системы проходят насквозь к её обычному серверу имён: чужие имена не наше дело.
-                    new JsonObject
-                    {
-                        ["protocol"] = "dns",
-                        ["process_path_regex"] = appRegexes.DeepClone(),
-                        ["action"] = "hijack-dns",
-                    },
-
-                    // Windows видит наш адаптер и заодно спрашивает имена у него. Молчать в ответ
-                    // нельзя — система будет ждать и тормозить, поэтому отвечаем через её же сервер.
-                    new JsonObject
-                    {
-                        ["protocol"] = "dns",
-                        ["ip_cidr"] = new JsonArray { cfg.TunAddress },
-                        ["action"] = "hijack-dns",
-                    },
-                    new JsonObject { ["inbound"] = new JsonArray { "mixed-in" }, ["outbound"] = ProxyTag },
-                    new JsonObject { ["process_path_regex"] = appRegexes.DeepClone(), ["outbound"] = ProxyTag },
-                },
+                ["rules"] = routeRules,
                 ["final"] = DirectTag,
                 ["auto_detect_interface"] = true,
                 ["default_domain_resolver"] = new JsonObject { ["server"] = "dns-direct" },
@@ -264,6 +345,33 @@ public static class SingBoxConfigGenerator
             WriteIndented = true,
             TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
         });
+    }
+
+    private static JsonObject UrlTest(string tag, JsonArray outboundTags, string url) => new()
+    {
+        ["type"] = "urltest",
+        ["tag"] = tag,
+        ["outbounds"] = outboundTags,
+        ["url"] = url,
+        ["interval"] = "3m",
+        ["tolerance"] = 50,
+    };
+
+    private static JsonArray FlattenRegexes(JsonArray groups)
+    {
+        var all = new JsonArray();
+        foreach (var item in groups)
+        {
+            if (item is JsonArray arr)
+            {
+                foreach (var x in arr) all.Add(x!.DeepClone());
+            }
+            else if (item is not null)
+            {
+                all.Add(item.DeepClone());
+            }
+        }
+        return all;
     }
 
     /// <summary>

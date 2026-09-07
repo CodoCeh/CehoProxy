@@ -16,6 +16,12 @@ public sealed class AppEntry
     public bool SingleFile { get; set; }
 
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Ноды, через которые ходит эта программа. Пусто — общие правила пула.
+    /// Ключи те же, что у BlockedNodes: «Vless|server|443».
+    /// </summary>
+    public List<string> AllowedNodes { get; set; } = new();
 }
 
 public sealed class SubscriptionEntry
@@ -104,6 +110,9 @@ public sealed class CehoConfig
         var cfg = File.Exists(path)
             ? JsonSerializer.Deserialize<CehoConfig>(File.ReadAllText(path), Json) ?? new CehoConfig()
             : new CehoConfig();
+
+        foreach (var app in cfg.Apps)
+            app.AllowedNodes ??= new();
 
         // Старые установки жили на заводском адресе движка — том же, что у Happ.
         if (SharesSingBoxTun(cfg.TunAddress))

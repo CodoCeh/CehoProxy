@@ -23,7 +23,7 @@ public static class Cli
             ("Setup", [
                 ("chp setup", "go through the setup again"),
                 ("chp add-app [path]", "isolate a program (no path — pick from a list)"),
-                ("chp apps · chp remove-app", "list and remove"),
+                ("chp apps · chp remove-app · chp tunnel", "list, remove, pick nodes per app"),
                 ("chp sub-add [name link]", "add a subscription (no arguments — I will ask)"),
                 ("chp subs · chp sub-remove", "list, expiry, traffic and removal"),
                 ("chp sub-off · sub-on <name>", "keep a subscription out of the pool without deleting it"),
@@ -63,7 +63,7 @@ public static class Cli
             ("Настройка", [
                 ("chp setup", "пройти настройку заново"),
                 ("chp add-app [путь]", "изолировать программу (без пути — выбор из списка)"),
-                ("chp apps · chp remove-app", "список и удаление"),
+                ("chp apps · chp remove-app · chp tunnel", "список, удаление, ноды для программы"),
                 ("chp sub-add [имя ссылка]", "добавить подписку (без аргументов — спрошу)"),
                 ("chp subs · chp sub-remove", "список, срок, трафик и удаление"),
                 ("chp sub-off · sub-on <имя>", "убрать подписку из пула, не удаляя её"),
@@ -201,7 +201,7 @@ public static class Cli
 
     private static readonly HashSet<string> Mutating = new(StringComparer.Ordinal)
     {
-        "add-app", "remove-app", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
+        "add-app", "remove-app", "tunnel", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
         "lang", "passwd", "apply", "autostart", "uninstall", "speed", "timeout", "set-timeout",
     };
 
