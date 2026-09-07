@@ -23,8 +23,18 @@ public sealed class SubscriptionEntry
     public string Name { get; set; } = "";
     public string Url { get; set; } = "";
 
+    /// <summary>Выключенная подписка остаётся в списке со своими данными, но нод в пул не даёт.</summary>
+    public bool Enabled { get; set; } = true;
+
     public bool? LastCheckOk { get; set; }
     public string? LastCheckedUtc { get; set; }
+
+    public DateTime? ExpiresUtc { get; set; }
+    public long? UsedBytes { get; set; }
+    public long? TotalBytes { get; set; }
+
+    public int? LastNodes { get; set; }
+    public string? LastError { get; set; }
 }
 
 public sealed class CehoConfig
@@ -43,6 +53,12 @@ public sealed class CehoConfig
     public List<string> PreferredCountries { get; set; } = new();
 
     public List<string> ExcludedCountries { get; set; } = new() { "RU" };
+
+    /// <summary>
+    /// Ноды, выключенные вручную: страна разрешена, а именно эта нода в пул не идёт.
+    /// Хранятся ключами вида «Vless|server|443», чтобы выбор жил после обновления подписки.
+    /// </summary>
+    public List<string> BlockedNodes { get; set; } = new();
 
     public bool RotationEnabled { get; set; } = true;
 
@@ -63,6 +79,9 @@ public sealed class CehoConfig
     public string CheckUrl { get; set; } = "https://www.gstatic.com/generate_204";
 
     public int TimeoutSeconds { get; set; } = 15;
+
+    /// <summary>Подробность лога движка: debug помогает разобрать падение, warn — обычная работа.</summary>
+    public string EngineLogLevel { get; set; } = "warn";
 
     private static readonly JsonSerializerOptions Json = new()
     {

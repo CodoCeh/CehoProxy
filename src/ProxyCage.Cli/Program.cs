@@ -12,14 +12,26 @@ CehoConfig cfg0;
 try { cfg0 = CehoConfig.Load(Ceho.ConfigPath); }
 catch { cfg0 = new CehoConfig(); }
 
+Log.Init(Ceho.Root, args.Length > 0 ? args[0] : "chp");
+
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
     var ex = e.ExceptionObject as Exception;
+    Log.Crash("необработанная ошибка", ex);
+
     Console.Error.WriteLine(ex is UnauthorizedAccessException
         ? Strings.T(cfg0.Language, "no_write_access", Ceho.ConfigPath,
             Os.IsWindows ? "" : "sudo ")
         : ex?.Message ?? "непредвиденная ошибка");
+    Console.Error.WriteLine(Strings.T(cfg0.Language, "crash_written"));
     Environment.Exit(1);
+};
+
+// Упавшая фоновая задача роняла демон молча: причина не попадала ни в лог, ни на экран.
+TaskScheduler.UnobservedTaskException += (_, e) =>
+{
+    Log.Crash("фоновая задача", e.Exception);
+    e.SetObserved();
 };
 
 if (args.Length == 0)
@@ -49,6 +61,11 @@ if (cmd == "install")
     Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_title"));
     Console.WriteLine();
 
+    // Ставим ВМЕСТО прошлой версии, а не рядом с ней: иначе на машине живут два
+    // экземпляра, и непонятно, чей автозапуск сработал.
+    var previous = Installer.PrepareForNewVersion(
+        Ceho.Root, m => Console.WriteLine("  " + m), cfg0.Language);
+
     string installed;
     try { installed = Installer.Install(Ceho.Root, m => Console.WriteLine("  " + m), cfg0.Language); }
     catch (Exception ex) { Console.Error.WriteLine("  " + ex.Message); return 1; }
@@ -70,6 +87,19 @@ if (cmd == "install")
     Console.WriteLine();
     Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_done"));
     Console.WriteLine("  " + Strings.T(cfg0.Language, "product_page_at", Brand.RepoUrl(cfg0.UpdateRepo)));
+
+    // Обновление не должно оставлять машину без защиты: что работало — включаем обратно.
+    if (previous.AutostartWasOn)
+    {
+        var err = Autostart.Enable(Installer.BinaryPath(Ceho.Root), Ceho.Root);
+        Console.WriteLine("  " + (err ?? Strings.T(cfg0.Language, "inst_autostart_back")));
+        if (err is null) Autostart.Restart();
+    }
+    else if (previous.WasRunning)
+    {
+        Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_start_again",
+            Os.IsWindows ? "" : "sudo "));
+    }
 
     if (!args.Contains("--no-setup")) return await Cli.SetupAsync(Ceho.ConfigPath);
 
@@ -271,7 +301,7 @@ switch (cmd)
         {
             try
             {
-                var nodes = await Ceho.LoadAllNodesAsync(cfg, preferCache: false, msg => spinner.Update(msg));
+                var nodes = await Ceho.LoadAllNodesAsync(cfg, preferCache: false, spinner.AsReport());
                 spinner.Done(Cli.S(cfg, "sub_parsed", nodes.Count));
                 Console.WriteLine();
                 Assistant.PrintPoolBreakdown(nodes, cfg);
@@ -297,10 +327,123 @@ switch (cmd)
                 false => Cli.S(cfg, "sub_bad"),
                 null => Cli.S(cfg, "sub_unchecked"),
             };
-            Console.WriteLine($"{s.Name,-16} {state,-14} {s.Url}");
+            var until = s.ExpiresUtc is { } when
+                ? $"{when.ToLocalTime():dd.MM.yyyy} ({SubscriptionInfo.DaysLeft(when)})"
+                : "-";
+            Console.WriteLine($"[{(s.Enabled ? "x" : " ")}] {s.Name,-16} {state,-14} {until,-18} {s.Url}");
+            if (s.UsedBytes is { } used)
+                Console.WriteLine($"      {Cli.S(cfg, "col_traffic")}: {SubscriptionInfo.Bytes(used)}" +
+                                  (s.TotalBytes is { } total ? Cli.S(cfg, "sub_of_total", SubscriptionInfo.Bytes(total)) : ""));
+            if (s.LastError is not null) Console.WriteLine($"      {s.LastError}");
         }
         Console.WriteLine();
         Console.WriteLine(Cli.S(cfg, "subs_pool"));
+        Console.WriteLine("  chp sub-off ИМЯ · chp sub-on ИМЯ");
+        return 0;
+    }
+
+    case "sub-on":
+    case "sub-off":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        var wanted = cmd == "sub-on";
+
+        var name = args.Length >= 2 ? args[1] : null;
+        if (name is null)
+        {
+            var choices = cfg.Subscriptions.Where(s => s.Enabled != wanted).ToList();
+            if (!Assistant.Interactive || choices.Count == 0)
+            {
+                Console.Error.WriteLine(Cli.S(cfg, "err_need_sub_name"));
+                return 1;
+            }
+            var i = Assistant.Pick(cfg, choices.Select(s => $"{s.Name,-16} {s.Url}").ToList(),
+                Cli.S(cfg, "nav_subs"));
+            if (i < 0) return 0;
+            name = choices[i].Name;
+        }
+
+        var entry = cfg.Subscriptions.FirstOrDefault(s => s.Name == name);
+        if (entry is null) { Console.Error.WriteLine(Cli.S(cfg, "err_no_such_sub", name)); return 1; }
+
+        if (!wanted && cfg.Subscriptions.Count(s => s.Enabled) <= 1 && entry.Enabled)
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "subs_last_one"));
+            return 1;
+        }
+
+        entry.Enabled = wanted;
+        cfg.Save(Ceho.ConfigPath);
+        Console.WriteLine(Cli.S(cfg, wanted ? "sub_turned_on" : "sub_turned_off", name));
+        await Cli.RebuildQuietlyAsync(cfg);
+        return 0;
+    }
+
+    case "log":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+
+        // Журнал один, аргументы только выбирают, что из него показать:
+        // chp log · chp log 300 · chp log engine · chp log crash · chp log clear
+        var view = LogView.All;
+        var lines = 60;
+        var clear = false;
+
+        foreach (var arg in args.Skip(1))
+        {
+            if (int.TryParse(arg, out var n)) { lines = Math.Clamp(n, 1, 5000); continue; }
+            switch (arg.ToLowerInvariant())
+            {
+                case "engine" or "движок": view = LogView.Engine; break;
+                case "ours" or "наше": view = LogView.Ours; break;
+                case "crash" or "crashes" or "падения": view = LogView.Crashes; break;
+                case "all" or "всё" or "все": view = LogView.All; break;
+                case "clear" or "очистить": clear = true; break;
+                default:
+                    Console.Error.WriteLine(Cli.S(cfg, "log_arg_bad", arg));
+                    return 1;
+            }
+        }
+
+        if (clear)
+        {
+            Log.Clear();
+            Console.WriteLine(Cli.S(cfg, "log_cleared"));
+            return 0;
+        }
+
+        if (view is LogView.All or LogView.Crashes)
+        {
+            var crashes = Log.Crashes();
+            if (crashes.Count > 0)
+            {
+                Console.WriteLine(Cli.S(cfg, "log_crashes", crashes.Count));
+                var last = crashes[0];
+                Console.WriteLine(Cli.S(cfg, "log_crash_last", last.When.ToString("dd.MM HH:mm"), last.Context));
+                foreach (var line in last.Lines.Take(20)) Console.WriteLine("  " + line);
+                Console.WriteLine();
+            }
+            else if (view == LogView.Crashes)
+            {
+                Console.WriteLine(Cli.S(cfg, "log_no_crashes"));
+                return 0;
+            }
+        }
+
+        var title = view switch
+        {
+            LogView.Engine => "log_view_engine",
+            LogView.Ours => "log_view_ours",
+            LogView.Crashes => "log_view_crashes",
+            _ => "log_view_all",
+        };
+        Console.WriteLine(Cli.S(cfg, title) + $"  ({Log.FilePath})");
+
+        var tail = Log.Tail(lines, view);
+        if (tail.Count == 0) Console.WriteLine("  " + Cli.S(cfg, "log_empty"));
+        else foreach (var line in tail) Console.WriteLine("  " + line);
+
+        if (view == LogView.All) Console.WriteLine(Cli.S(cfg, "log_cli_hint"));
         return 0;
     }
 
@@ -336,7 +479,12 @@ switch (cmd)
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
         IReadOnlyList<ProxyNode> nodes;
-        try { nodes = await Ceho.LoadAllNodesAsync(cfg); }
+        try
+        {
+            using var spinner = new ConsoleSpinner(Cli.S(cfg, "job_pool"));
+            nodes = await Ceho.LoadAllNodesAsync(cfg, preferCache: false, spinner.AsReport());
+            spinner.Done(Cli.S(cfg, "pool_loaded", nodes.Count));
+        }
         catch (Exception ex) { Cli.Stuck(cfg, ex.Message); return 1; }
 
         Cli.PrintCountries(cfg, nodes);
@@ -627,6 +775,91 @@ switch (cmd)
         return 0;
     }
 
+    case "node":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+
+        var action = args.Length >= 2 ? args[1].ToLowerInvariant() : "";
+        if (action is not ("" or "on" or "off"))
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "node_usage"));
+            return 1;
+        }
+
+        List<ProxyNode> all;
+        using (var spinner = new ConsoleSpinner(Cli.S(cfg, "sub_parsing_nodes")))
+        {
+            var loaded = await Ceho.LoadAllNodesAsync(cfg, preferCache: true, spinner.AsReport());
+            all = Cli.NodeList(loaded);
+            spinner.Done(Cli.S(cfg, "nodes_read", all.Count));
+        }
+
+        if (all.Count == 0) { Console.Error.WriteLine(Cli.S(cfg, "pf_no_subs_detail")); return 1; }
+
+        if (action.Length == 0)
+        {
+            Cli.PrintNodes(cfg, all);
+            return 0;
+        }
+
+        var what = args.Length >= 3 ? args[2] : null;
+        if (what is null) { Console.Error.WriteLine(Cli.S(cfg, "node_usage")); return 1; }
+
+        var prevBlocked = new List<string>(cfg.BlockedNodes);
+        List<ProxyNode> touched;
+
+        if (action == "on" && what.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            touched = all.Where(n => SingBoxConfigGenerator.IsBlockedByHand(n, cfg)).ToList();
+            cfg.BlockedNodes.Clear();
+        }
+        else
+        {
+            var found = Cli.FindNodes(all, what);
+            if (found.Count == 0)
+            {
+                Console.Error.WriteLine(Cli.S(cfg, "node_none_found", what));
+                return 1;
+            }
+
+            var wanted = action == "on";
+            touched = found
+                .Where(n => SingBoxConfigGenerator.IsBlockedByHand(n, cfg) == wanted)
+                .ToList();
+
+            foreach (var n in touched)
+                if (wanted) cfg.BlockedNodes.RemoveAll(k => k.Equals(n.Key, StringComparison.OrdinalIgnoreCase));
+                else cfg.BlockedNodes.Add(n.Key);
+        }
+
+        if (touched.Count == 0)
+        {
+            Console.WriteLine(Cli.S(cfg, "nodes_unchanged"));
+            return 0;
+        }
+
+        cfg.Save(Ceho.ConfigPath);
+
+        // Сначала пересборка правил, и только потом отчёт: иначе при откате
+        // на экране остаётся «выключено», хотя ничего не выключилось.
+        string applied;
+        try { applied = await Ceho.ApplyAsync(); }
+        catch (PoolEmptyException ex)
+        {
+            cfg.BlockedNodes = prevBlocked;
+            cfg.Save(Ceho.ConfigPath);
+            Console.Error.WriteLine(ex.Message);
+            Console.Error.WriteLine(Cli.S(cfg, "change_reverted"));
+            return 1;
+        }
+        catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
+
+        foreach (var n in touched) Console.WriteLine("  " + Cli.NodeLine(cfg, n));
+        Console.WriteLine(Cli.S(cfg, action == "on" ? "node_turned_on" : "node_turned_off", touched.Count));
+        Console.WriteLine(applied);
+        return 0;
+    }
+
     case "speed":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
@@ -730,6 +963,10 @@ switch (cmd)
             foreach (var f in Directory.GetFiles(Ceho.Root, "sub-*.txt")) File.Delete(f);
             foreach (var f in Directory.GetFiles(Ceho.Root, "*.log")) File.Delete(f);
 
+            // Резервная копия прошлой версии больше ни для чего не нужна, а сообщение
+            // об удалении обещает, что рядом остался только сам файл программы.
+            foreach (var f in Directory.GetFiles(Ceho.Root, "*.old")) File.Delete(f);
+
             var pointer = Path.Combine(Ceho.Root, "panel.port");
             if (File.Exists(pointer)) File.Delete(pointer);
         }
@@ -775,7 +1012,13 @@ switch (cmd)
     case "apply":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
-        try { Console.WriteLine(await Ceho.ApplyAsync()); return 0; }
+        try
+        {
+            using var spinner = new ConsoleSpinner(Cli.S(cfg, "job_apply"));
+            var done = await Ceho.ApplyAsync(spinner.AsReport());
+            spinner.Done(done);
+            return 0;
+        }
         catch (Exception ex) { Cli.Stuck(cfg, ex.Message); return 1; }
     }
 
@@ -800,6 +1043,8 @@ switch (cmd)
                 : cfg.ExcludedCountries.Count > 0
                     ? Cli.S(cfg, "country_any_but", string.Join(", ", cfg.ExcludedCountries))
                     : Cli.S(cfg, "country_any")));
+        if (cfg.BlockedNodes.Count > 0)
+            Console.WriteLine(Cli.S(cfg, "nodes_off_now", cfg.BlockedNodes.Count));
         if (!Auth.HasPassword(cfg)) Console.WriteLine(Cli.S(cfg, "auth_no_password"));
         if (running)
         {
@@ -963,33 +1208,45 @@ if (cmd is "daemon" or "web")
     var cfg = CehoConfig.Load(Ceho.ConfigPath);
     var withTunnel = cmd == "daemon";
 
+    // Демон живёт без консоли (служба, задача планировщика, launchd), поэтому всё,
+    // что он рассказывает, обязано попадать в файл журнала, а не только в stderr.
+    Log.EchoToConsole = true;
+
     SingBoxProcess? proc = null;
     string? lastError = null;
     string? exitCountry = null, exitIp = null;
     var probed = false;
 
-    async Task<string?> StartTunnel()
+    async Task<string?> StartTunnel(IStageReport? report)
     {
         if (proc is not null) return Strings.T(cfg.Language, "already_on");
         try
         {
             var c = CehoConfig.Load(Ceho.ConfigPath);
 
-            var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: true);
+            var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: true, report);
+
+            report?.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 
-            TunCleanup.RemoveLeftovers(m => Console.Error.WriteLine(m));
+            report?.Stage(Strings.T(c.Language, "stage_cleanup"), 94);
+            TunCleanup.RemoveLeftovers(Log.Info);
 
+            report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
             var p = new SingBoxProcess();
             p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
+            Log.Info($"движок запущен, pid {p.ProcessId}");
 
+            report?.Stage(Strings.T(c.Language, "stage_engine_wait"), 98);
             await Task.Delay(TimeSpan.FromSeconds(2));
             if (!p.IsRunning)
             {
-                var reason = p.LastLog ?? Strings.T(c.Language, "engine_died");
+                // Сам вывод движка уже в журнале: он попадает туда строкой за строкой.
+                var reason = p.Explain(c.Language);
+                Log.Error($"движок не устоял: {reason}");
                 p.Dispose();
-                TunCleanup.RemoveLeftovers(m => Console.Error.WriteLine(m));
+                TunCleanup.RemoveLeftovers(Log.Info);
                 lastError = reason;
                 return reason;
             }
@@ -999,7 +1256,12 @@ if (cmd is "daemon" or "web")
             probed = false;
             return null;
         }
-        catch (Exception ex) { lastError = ex.Message; return ex.Message; }
+        catch (Exception ex)
+        {
+            Log.Error("защита не включилась", ex);
+            lastError = ex.Message;
+            return ex.Message;
+        }
     }
 
     string? StopTunnel()
@@ -1011,55 +1273,64 @@ if (cmd is "daemon" or "web")
         exitCountry = exitIp = null;
         probed = false;
 
-        if (!clean) TunCleanup.RemoveLeftovers(m => Console.Error.WriteLine(m));
+        if (!clean)
+        {
+            Log.Warn("движок не завершился по-хорошему, снимаю следы");
+            TunCleanup.RemoveLeftovers(Log.Info);
+        }
         return null;
     }
 
     var web = new WebServer(
         Ceho.ConfigPath,
         () => new WebServer.ControlState(proc is not null, exitCountry, exitIp, lastError, probed),
-        m => Console.Error.WriteLine(m));
+        Log.Info);
 
-    async Task<string?> RestartTunnel()
+    async Task<string?> RestartTunnel(IStageReport? report)
     {
+        report?.Stage(Strings.T(cfg.Language, "stage_stopping"), 5);
         StopTunnel();
-        return await StartTunnel();
+        return await StartTunnel(report);
     }
 
     web.OnStart = StartTunnel;
     web.OnStop = () => Task.FromResult(StopTunnel());
     web.OnRestart = RestartTunnel;
-    web.OnApply = async () => await Ceho.ApplyAsync();
+    web.OnApply = Ceho.ApplyAsync;
     web.WrappedNames = Cli.Wrapped;
-    web.OnCheckSubs = async () =>
+    web.OnCheckSubs = async report =>
     {
         var c = CehoConfig.Load(Ceho.ConfigPath);
-        try
-        {
-            var nodes = await Ceho.LoadAllNodesAsync(c);
-            return Strings.T(c.Language, "sub_checked_nodes", nodes.Count);
-        }
-        catch (Exception ex)
-        {
-            return ex.Message;
-        }
+        var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: false, report);
+        return Strings.T(c.Language, "sub_checked_nodes", nodes.Count);
     };
 
-    web.OnUpdate = async install =>
+    web.OnUpdate = async (install, report) =>
     {
         var c = CehoConfig.Load(Ceho.ConfigPath);
+        report.Stage(Strings.T(c.Language, "job_update_check"), 20);
         var release = await Updater.CheckAsync(c.UpdateRepo);
         if (release is null) return Strings.T(c.Language, "upd_none");
         if (!install) return Strings.T(c.Language, "upd_found", release.Version);
 
-        await Updater.InstallAsync(release, Ceho.OwnExecutablePath, m => Console.Error.WriteLine(m));
+        report.Stage(Strings.T(c.Language, "stage_download",
+            release.Version, release.Size / 1024 / 1024), 40);
+        await Updater.InstallAsync(release, Ceho.OwnExecutablePath, m => report.Note(m));
+
+        report.Stage(Strings.T(c.Language, "stage_installing"), 90);
         Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
         if (Autostart.IsEnabled()) Autostart.Restart();
         return Strings.T(c.Language, "upd_done", release.Version);
     };
-    web.OnPool = async () => await Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath));
-    web.OnCountries = async () =>
-        await NodeProbe.ByCountryAsync(await Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath)));
+    web.OnPool = report =>
+        Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath), preferCache: false, report);
+    web.OnCountries = async report =>
+    {
+        var nodes = await Ceho.LoadAllNodesAsync(
+            CehoConfig.Load(Ceho.ConfigPath), preferCache: false, report);
+        report.Stage(Strings.T(cfg.Language, "speed_measuring"), 90);
+        return await NodeProbe.ByCountryAsync(nodes);
+    };
 
     web.OnUninstall = () =>
     {
@@ -1153,8 +1424,8 @@ if (cmd is "daemon" or "web")
             Console.Error.WriteLine(Strings.T(cfg.Language, "panel_only", cfg.WebPort));
         else
         {
-            var err = await StartTunnel();
-            Console.Error.WriteLine(err is null
+            var err = await StartTunnel(null);
+            Log.Info(err is null
                 ? Strings.T(cfg.Language, "state_on")
                 : $"{Strings.T(cfg.Language, "start_failed")}: {err}");
         }
@@ -1171,11 +1442,12 @@ if (cmd is "daemon" or "web")
         {
             if (proc is not null && !proc.IsRunning)
             {
-                var reason = proc.LastLog ?? Strings.T(cfg.Language, "engine_died");
-                Console.Error.WriteLine($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
+                var reason = proc.Explain(cfg.Language);
+                Log.Error($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
+                lastError = reason;
                 StopTunnel();
-                var again = await StartTunnel();
-                Console.Error.WriteLine(again is null
+                var again = await StartTunnel(null);
+                Log.Info(again is null
                     ? Strings.T(cfg.Language, "state_on")
                     : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
             }
@@ -1191,12 +1463,12 @@ if (cmd is "daemon" or "web")
                     var refreshed = await Ceho.RefreshIfDeadAsync(port);
                     if (refreshed is not null)
                     {
-                        Console.Error.WriteLine(refreshed);
+                        Log.Warn(refreshed);
                         lastError = refreshed;
                         if (refreshed.Contains("обнов") || refreshed.Contains("updated"))
                         {
                             StopTunnel();
-                            await StartTunnel();
+                            await StartTunnel(null);
                         }
                     }
                 }

@@ -5,6 +5,88 @@ public static class Installer
     public static string BinaryPath(string root) =>
         Path.Combine(root, Os.IsWindows ? "cehoproxy.exe" : "cehoproxy");
 
+    /// <summary>Файлы прошлой версии: их можно и нужно затирать, данных в них нет.</summary>
+    private static readonly string[] VersionLeftovers =
+    {
+        "*.old", "*.new", "singbox.json", "panel.port", "cehoproxy.pid", "chp.cmd",
+        "sing-box-*.zip", "sing-box-*.tar.gz",
+        // Прошлые версии вели отдельный лог движка и файл на каждое падение;
+        // теперь всё это в одном журнале, а файлы только мусорят в папке.
+        "sing-box.log", "sing-box.log.1", "crash-*.log",
+    };
+
+    /// <summary>Данные пользователя: настройки и сохранённые копии подписок.</summary>
+    private static readonly string[] DataFiles = { "config.json", "sub-*.txt" };
+
+    public sealed record Replaced(bool WasRunning, bool AutostartWasOn, int Wiped, int DataKept);
+
+    /// <summary>
+    /// Готовит папку под новую версию: снимает работающую защиту и убирает файлы прошлой
+    /// сборки, но не трогает настройки и сохранённые подписки — ставить «поверх» и терять
+    /// при этом подписки нельзя, а держать рядом две версии тем более.
+    /// </summary>
+    public static Replaced PrepareForNewVersion(string root, Action<string> log, string lang = "ru")
+    {
+        if (!Directory.Exists(root))
+            return new Replaced(false, false, 0, 0);
+
+        var autostartWasOn = Autostart.IsEnabled();
+        var wasRunning = DaemonControl.IsRunning(root);
+
+        if (wasRunning || autostartWasOn)
+        {
+            log(Strings.T(lang, "inst_stopping"));
+            if (autostartWasOn) Autostart.StopService();
+            if (DaemonControl.RequestStop(root)) Thread.Sleep(3000);
+
+            if (DaemonControl.IsRunning(root))
+            {
+                TunCleanup.KillOurProcesses(Path.Combine(root, "singbox.json"), _ => { });
+                TunCleanup.RemoveLeftovers(log);
+                DaemonControl.ClearRunning(root);
+            }
+        }
+
+        var (wiped, kept) = WipeVersionLeftovers(root);
+
+        log(Strings.T(lang, "inst_wiped", wiped));
+        log(Strings.T(lang, "inst_kept", kept));
+        return new Replaced(wasRunning, autostartWasOn, wiped, kept);
+    }
+
+    /// <summary>
+    /// Убирает файлы прошлой сборки и считает, сколько пользовательских файлов осталось
+    /// нетронутыми. Возвращает: сколько затёрли и сколько данных сохранили.
+    /// </summary>
+    public static (int Wiped, int DataKept) WipeVersionLeftovers(string root)
+    {
+        var kept = 0;
+        foreach (var pattern in DataFiles)
+            try { kept += Directory.GetFiles(root, pattern).Length; } catch { }
+
+        var wiped = 0;
+        foreach (var pattern in VersionLeftovers)
+        {
+            try
+            {
+                foreach (var file in Directory.GetFiles(root, pattern))
+                {
+                    try { File.Delete(file); wiped++; } catch { }
+                }
+            }
+            catch { }
+        }
+
+        try
+        {
+            var temp = Path.Combine(root, "engine-tmp");
+            if (Directory.Exists(temp)) { Directory.Delete(temp, true); wiped++; }
+        }
+        catch { }
+
+        return (wiped, kept);
+    }
+
     public static string Install(string root, Action<string> log, string lang = "ru")
     {
         Directory.CreateDirectory(root);

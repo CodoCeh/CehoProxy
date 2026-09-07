@@ -25,8 +25,10 @@ public static class Cli
                 ("chp add-app [path]", "isolate a program (no path — pick from a list)"),
                 ("chp apps · chp remove-app", "list and remove"),
                 ("chp sub-add [name link]", "add a subscription (no arguments — I will ask)"),
-                ("chp subs · chp sub-remove", "list and remove"),
+                ("chp subs · chp sub-remove", "list, expiry, traffic and removal"),
+                ("chp sub-off · sub-on <name>", "keep a subscription out of the pool without deleting it"),
                 ("chp countries · chp country", "exit countries"),
+                ("chp node · node off|on <what>", "turn a single node off without touching its country"),
                 ("chp speed <ms> · speed off", "drop nodes slower than this"),
                 ("chp passwd · lang · set-port", "password, language, panel port"),
                 ("chp timeout <sec>", "network and subscription request timeout"),
@@ -43,6 +45,7 @@ public static class Cli
             ]),
             ("Other", [
                 ("chp doctor", "check what is missing before start"),
+                ("chp log [engine|crash|clear]", "the journal: the program, the engine and crashes"),
                 ("chp detect", "find installed AI tools"),
                 ("chp apply", "rebuild the rules"),
                 ("chp update · version", "update and version"),
@@ -61,8 +64,10 @@ public static class Cli
                 ("chp add-app [путь]", "изолировать программу (без пути — выбор из списка)"),
                 ("chp apps · chp remove-app", "список и удаление"),
                 ("chp sub-add [имя ссылка]", "добавить подписку (без аргументов — спрошу)"),
-                ("chp subs · chp sub-remove", "список и удаление"),
+                ("chp subs · chp sub-remove", "список, срок, трафик и удаление"),
+                ("chp sub-off · sub-on <имя>", "убрать подписку из пула, не удаляя её"),
                 ("chp countries · chp country", "страны выхода"),
+                ("chp node · node off|on <что>", "выключить одну ноду, не трогая её страну"),
                 ("chp speed <мс> · speed off", "отсеять ноды медленнее порога"),
                 ("chp passwd · lang · set-port", "пароль, язык, порт панели"),
                 ("chp timeout <сек>", "таймаут сетевых запросов и подписок"),
@@ -79,6 +84,7 @@ public static class Cli
             ]),
             ("Прочее", [
                 ("chp doctor", "проверить, всё ли готово к запуску"),
+                ("chp log [движок|падения|очистить]", "журнал: программа, движок и падения"),
                 ("chp detect", "найти установленные ИИ-инструменты"),
                 ("chp apply", "пересобрать правила"),
                 ("chp update · version", "обновление и версия"),
@@ -162,9 +168,9 @@ public static class Cli
     private static readonly HashSet<string> RemoteAllowed = new(StringComparer.Ordinal)
     {
         "status", "doctor", "verify", "apps", "add-app", "remove-app",
-        "subs", "sub-add", "sub-remove", "countries", "country", "nodes",
+        "subs", "sub-add", "sub-remove", "sub-on", "sub-off", "countries", "country", "nodes", "node",
         "browser", "detect", "apply", "lang", "set-port", "autostart", "speed",
-        "restart", "stop", "off", "timeout", "set-timeout",
+        "restart", "stop", "off", "timeout", "set-timeout", "log",
     };
 
     public static bool CanRunRemotely(string command) => RemoteAllowed.Contains(command);
@@ -193,7 +199,7 @@ public static class Cli
 
     private static readonly HashSet<string> Mutating = new(StringComparer.Ordinal)
     {
-        "add-app", "remove-app", "sub-add", "sub-remove", "country", "set-port",
+        "add-app", "remove-app", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
         "lang", "passwd", "apply", "autostart", "uninstall", "speed", "timeout", "set-timeout",
     };
 
@@ -439,6 +445,75 @@ public static class Cli
                               S(cfg, "col_nodes").ToLowerInvariant() + $": {count}");
     }
 
+    /// <summary>
+    /// Ноды в том же порядке, в каком их печатает chp node: по стране, потом по имени.
+    /// Порядок обязан быть устойчивым — по номерам из этого списка ноды и выключают.
+    /// </summary>
+    public static List<ProxyNode> NodeList(IReadOnlyList<ProxyNode> nodes) =>
+        nodes.Where(n => !n.IsMeta)
+            .OrderBy(n => n.CountryCode ?? CountryResolver.Unknown, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(n => n.Remark, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(n => n.Server, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    public static string NodeLine(CehoConfig cfg, ProxyNode node)
+    {
+        var code = node.CountryCode ?? CountryResolver.Unknown;
+        var mark = SingBoxConfigGenerator.IsBlockedByHand(node, cfg) ? " " : "x";
+
+        // Флаг у имени убираем: он уже стоит отдельной колонкой, а в консоли занимает
+        // две клетки и разъезжает всю таблицу.
+        var name = WithoutFlag(node.Remark.Length > 0 ? node.Remark : node.Tag);
+        if (name.Length > 26) name = name[..25] + "…";
+
+        var address = $"{node.Server}:{node.Port}";
+        var ms = cfg.NodeLatency.TryGetValue(node.Key, out var value) ? value + " ms" : "-";
+        return $"[{mark}] {FlagCell(code)} {code,-3} {name,-26} {address,-28} " +
+               $"{node.Protocol,-11} {ms,-8} {node.Source}";
+    }
+
+    private static string WithoutFlag(string remark)
+    {
+        var i = 0;
+        while (i < remark.Length && (char.IsSurrogate(remark[i]) || char.IsWhiteSpace(remark[i]))) i++;
+        var rest = remark[i..];
+        return rest.Length > 0 ? rest : remark;
+    }
+
+    public static void PrintNodes(CehoConfig cfg, List<ProxyNode> nodes)
+    {
+        Console.WriteLine(S(cfg, "nodes_title"));
+        Console.WriteLine();
+        for (var i = 0; i < nodes.Count; i++)
+            Console.WriteLine($"  {i + 1,3}. {NodeLine(cfg, nodes[i])}");
+
+        Console.WriteLine();
+        var off = nodes.Count(n => SingBoxConfigGenerator.IsBlockedByHand(n, cfg));
+        if (off > 0) Console.WriteLine(S(cfg, "nodes_off_now", off));
+        Console.WriteLine(S(cfg, "node_usage"));
+    }
+
+    /// <summary>
+    /// Нода по номеру из списка или по куску имени, адреса и порта. Кусок ищется во всех
+    /// подходящих: «chp node off Amsterdam» должно убрать все амстердамские сразу.
+    /// </summary>
+    public static List<ProxyNode> FindNodes(List<ProxyNode> nodes, string what)
+    {
+        var text = what.Trim();
+        if (text.Length == 0) return new List<ProxyNode>();
+
+        if (int.TryParse(text, out var number) && number >= 1 && number <= nodes.Count)
+            return new List<ProxyNode> { nodes[number - 1] };
+
+        bool Has(string? where) =>
+            where is not null && where.Contains(text, StringComparison.OrdinalIgnoreCase);
+
+        return nodes
+            .Where(n => Has(n.Remark) || Has(n.Tag) || Has(n.Key)
+                        || Has($"{n.Server}:{n.Port}") || Has(n.CountryCode))
+            .ToList();
+    }
+
     private static List<(string Code, string Name, int Count, int Index)> CountryRows(
         CehoConfig cfg, IReadOnlyList<ProxyNode> nodes) =>
         nodes.GroupBy(n => n.CountryCode ?? CountryResolver.Unknown)
@@ -493,7 +568,7 @@ public static class Cli
 
             try
             {
-                SingBoxConfigGenerator.FilterByCountries(nodes, cfg);
+                SingBoxConfigGenerator.BuildPool(nodes, cfg);
                 cfg.Save(Ceho.ConfigPath);
             }
             catch (PoolEmptyException ex)
@@ -513,11 +588,28 @@ public static class Cli
     public static async Task<int?> MeasureAndFilterAsync(CehoConfig cfg, int limitMs)
     {
         IReadOnlyList<ProxyNode> nodes;
-        try { nodes = await Ceho.LoadAllNodesAsync(cfg); }
+        try
+        {
+            using var loading = new ConsoleSpinner(S(cfg, "job_pool"));
+            nodes = await Ceho.LoadAllNodesAsync(cfg, preferCache: false, loading.AsReport());
+            loading.Done(S(cfg, "pool_loaded", nodes.Count));
+        }
         catch (Exception ex) { Console.WriteLine("  " + ex.Message); return null; }
 
-        Console.WriteLine("  " + S(cfg, "speed_measuring"));
-        var measured = await Task.WhenAll(nodes.Select(n => NodeProbe.MeasureAsync(n)));
+        NodeProbe.Measured[] measured;
+        using (var spinner = new ConsoleSpinner(S(cfg, "speed_measuring")))
+        {
+            var done = 0;
+            measured = await Task.WhenAll(nodes.Select(async n =>
+            {
+                var result = await NodeProbe.MeasureAsync(n);
+                var ready = Interlocked.Increment(ref done);
+                spinner.Update($"{S(cfg, "speed_measuring")} {ready}/{nodes.Count}",
+                    ready * 100 / nodes.Count);
+                return result;
+            }));
+            spinner.Done(S(cfg, "speed_measuring"));
+        }
 
         if (NodeProbe.LooksLikeLocalAccept(measured))
         {
@@ -541,7 +633,11 @@ public static class Cli
 
     public static async Task RebuildQuietlyAsync(CehoConfig cfg)
     {
-        try { Console.WriteLine(await Ceho.ApplyAsync()); }
+        try
+        {
+            using var spinner = new ConsoleSpinner(S(cfg, "job_apply"));
+            spinner.Done(await Ceho.ApplyAsync(spinner.AsReport()));
+        }
         catch (Exception ex) { Stuck(cfg, ex.Message); return; }
 
         if (!DaemonControl.IsRunning(Ceho.Root)) return;

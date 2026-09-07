@@ -71,11 +71,12 @@ public static class Ceho
     }
 
     private static async Task<IReadOnlyList<ProxyNode>> LoadOneAsync(
-        SubscriptionEntry sub, string lang, bool preferCache = false, Action<string>? onProgress = null, int timeoutSeconds = 15)
+        SubscriptionEntry sub, string lang, bool preferCache = false,
+        IStageReport? report = null, int timeoutSeconds = 15)
     {
         if (ReadWithoutNetwork(sub.Url, lang) is { Count: > 0 } local)
         {
-            Mark(sub, true);
+            Mark(sub, true, local.Count, null, ExpiryFrom(null, local));
             return Tag(local, sub.Name);
         }
 
@@ -87,59 +88,77 @@ public static class Ceho
             if (saved.Count > 0) return Tag(saved, sub.Name);
         }
 
-        var (fresh, failure) = await FetchWithRetriesAsync(sub.Url, onProgress, lang, timeoutSeconds);
-        if (fresh is not null)
+        var fetched = await FetchWithRetriesAsync(sub.Url, report, lang, timeoutSeconds);
+        if (fetched.Body is not null)
         {
-            onProgress?.Invoke(Strings.T(lang, "sub_parsing_nodes"));
-            var freshNodes = SubscriptionParser.Parse(fresh, lang);
+            report?.Note(Strings.T(lang, "sub_parsing_nodes"));
+            var freshNodes = SubscriptionParser.Parse(fetched.Body, lang);
             if (freshNodes.Count > 0)
             {
                 Directory.CreateDirectory(Root);
-                await File.WriteAllTextAsync(cache, fresh);
-                Mark(sub, true);
+                await File.WriteAllTextAsync(cache, fetched.Body);
+                Mark(sub, true, freshNodes.Count, null, ExpiryFrom(fetched.UserInfo, freshNodes));
                 return Tag(freshNodes, sub.Name);
             }
+            Log.Warn($"подписка «{sub.Name}» ответила, но нод в ответе нет");
             if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» ответила, но нод в ответе нет");
         }
-        else if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» не скачалась: {failure}");
+        else
+        {
+            Log.Warn($"подписка «{sub.Name}» не скачалась: {fetched.Failure}");
+            if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» не скачалась: {fetched.Failure}");
+        }
 
         if (File.Exists(cache))
         {
             var cached = SubscriptionParser.Parse(await File.ReadAllTextAsync(cache), lang);
             if (cached.Count > 0)
             {
-                Console.Error.WriteLine($"использую сохранённую копию подписки «{sub.Name}»");
+                Log.Info($"использую сохранённую копию подписки «{sub.Name}»");
+                Mark(sub, false, cached.Count, fetched.Failure, null);
                 return Tag(cached, sub.Name);
             }
         }
 
-        Mark(sub, false);
+        Mark(sub, false, 0, fetched.Failure, null);
         return Array.Empty<ProxyNode>();
+    }
+
+    private static SubscriptionInfo? ExpiryFrom(string? userInfo, IReadOnlyList<ProxyNode> nodes)
+    {
+        var fromHeader = SubscriptionInfo.FromHeader(userInfo);
+        if (fromHeader is not null) return fromHeader;
+
+        var fromRemarks = SubscriptionInfo.ExpiryFromRemarks(nodes.Select(n => n.Remark ?? ""));
+        return fromRemarks is null ? null : new SubscriptionInfo(fromRemarks, null, null, null);
     }
 
     private const int FetchAttempts = 3;
 
-    private static async Task<(string? Body, string? Failure)> FetchWithRetriesAsync(
-        string url, Action<string>? onProgress = null, string lang = "ru", int timeoutSeconds = 15)
+    private readonly record struct Fetched(string? Body, string? Failure, string? UserInfo);
+
+    private static async Task<Fetched> FetchWithRetriesAsync(
+        string url, IStageReport? report = null, string lang = "ru", int timeoutSeconds = 15)
     {
         string? failure = null;
         string? webPage = null;
         for (var attempt = 1; attempt <= FetchAttempts; attempt++)
         {
             var asBrowser = attempt > 1;
-            onProgress?.Invoke(Strings.T(lang, "sub_fetch_attempt", attempt, FetchAttempts));
+            report?.Note(Strings.T(lang, "sub_fetch_attempt", attempt, FetchAttempts));
             try
             {
                 using var http = MakeClient(null, asBrowser, timeoutSeconds);
                 using var response = await http.GetAsync(url);
+                var userInfo = UserInfoHeader(response);
                 if (response.IsSuccessStatusCode)
                 {
-                    onProgress?.Invoke(Strings.T(lang, "sub_reading_data"));
+                    report?.Note(Strings.T(lang, "sub_reading_data"));
                     var body = await response.Content.ReadAsStringAsync();
                     if (body.Trim().Length == 0)
                     {
                         failure = $"пустой ответ (попытка {attempt})";
-                        onProgress?.Invoke(failure);
+                        report?.Note(failure);
                     }
                     else if (LooksLikeWebPage(body))
                     {
@@ -148,15 +167,15 @@ public static class Ceho
                     else
                     {
                         var kb = Math.Max(1, body.Length / 1024);
-                        onProgress?.Invoke(Strings.T(lang, "sub_parsing", kb));
-                        return (body, null);
+                        report?.Note(Strings.T(lang, "sub_parsing", kb));
+                        return new Fetched(body, null, userInfo);
                     }
                 }
                 else
                 {
                     failure = $"HTTP {(int)response.StatusCode}";
                     if (attempt < FetchAttempts)
-                        onProgress?.Invoke(Strings.T(lang, "sub_fetch_retry", attempt, failure));
+                        report?.Note(Strings.T(lang, "sub_fetch_retry", attempt, failure));
                 }
             }
             catch (Exception ex)
@@ -164,14 +183,22 @@ public static class Ceho
                 var msg = ex is TaskCanceledException ? Strings.T(lang, "sub_timeout") : ex.Message;
                 failure = msg;
                 if (attempt < FetchAttempts)
-                    onProgress?.Invoke(Strings.T(lang, "sub_fetch_retry", attempt, failure));
+                    report?.Note(Strings.T(lang, "sub_fetch_retry", attempt, failure));
             }
 
             if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(1));
         }
 
-        return webPage is not null ? (webPage, null) : (null, failure);
+        return webPage is not null
+            ? new Fetched(webPage, null, null)
+            : new Fetched(null, failure, null);
     }
+
+    private static string? UserInfoHeader(HttpResponseMessage response) =>
+        response.Headers.TryGetValues(SubscriptionInfo.HeaderName, out var values)
+        || response.Content.Headers.TryGetValues(SubscriptionInfo.HeaderName, out values)
+            ? values.FirstOrDefault()
+            : null;
 
     private static IReadOnlyList<ProxyNode>? ReadWithoutNetwork(string source, string lang)
     {
@@ -188,15 +215,28 @@ public static class Ceho
         return null;
     }
 
-    private static void Mark(SubscriptionEntry sub, bool ok)
+    private static void Mark(
+        SubscriptionEntry sub, bool ok, int nodes, string? error, SubscriptionInfo? info)
     {
         try
         {
             var cfg = CehoConfig.Load(ConfigPath);
             var entry = cfg.Subscriptions.FirstOrDefault(s => s.Name == sub.Name);
             if (entry is null) return;
+
             entry.LastCheckOk = ok;
             entry.LastCheckedUtc = DateTime.UtcNow.ToString("u");
+            entry.LastNodes = nodes;
+            entry.LastError = ok ? null : error;
+
+            // Годный ответ обновляет срок и трафик; неудачная попытка прежние цифры не стирает.
+            if (info is not null)
+            {
+                if (info.ExpiresUtc is not null) entry.ExpiresUtc = info.ExpiresUtc;
+                if (info.UsedBytes is not null) entry.UsedBytes = info.UsedBytes;
+                if (info.TotalBytes is not null) entry.TotalBytes = info.TotalBytes;
+            }
+
             cfg.Save(ConfigPath);
         }
         catch { }
@@ -209,13 +249,27 @@ public static class Ceho
     }
 
     public static async Task<IReadOnlyList<ProxyNode>> LoadAllNodesAsync(
-        CehoConfig cfg, bool preferCache = false, Action<string>? onProgress = null)
+        CehoConfig cfg, bool preferCache = false, IStageReport? report = null)
     {
         if (cfg.Subscriptions.Count == 0)
             throw new InvalidOperationException(Strings.T(cfg.Language, "pf_no_subs"));
 
-        var lists = await Task.WhenAll(
-            cfg.Subscriptions.Select(s => LoadOneAsync(s, cfg.Language, preferCache, onProgress, cfg.TimeoutSeconds)));
+        var active = cfg.Subscriptions.Where(s => s.Enabled).ToList();
+        if (active.Count == 0)
+            throw new PoolEmptyException(Strings.T(cfg.Language, "subs_all_off"));
+
+        var done = 0;
+        var lists = await Task.WhenAll(active.Select(async s =>
+        {
+            var nodes = await LoadOneAsync(s, cfg.Language, preferCache, report, cfg.TimeoutSeconds);
+            var ready = Interlocked.Increment(ref done);
+            report?.Stage(
+                Strings.T(cfg.Language, "sub_progress", s.Name, nodes.Count, ready, active.Count),
+                ready * 90 / active.Count);
+            return nodes;
+        }));
+
+        report?.Stage(Strings.T(cfg.Language, "sub_building_pool"), 95);
 
         var pool = new List<ProxyNode>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -234,10 +288,11 @@ public static class Ceho
         return pool;
     }
 
-    public static async Task<string> ApplyAsync()
+    public static async Task<string> ApplyAsync(IStageReport? report = null)
     {
         var cfg = CehoConfig.Load(ConfigPath);
-        var nodes = await LoadAllNodesAsync(cfg);
+        var nodes = await LoadAllNodesAsync(cfg, preferCache: false, report);
+        report?.Stage(Strings.T(cfg.Language, "stage_writing_rules"), 97);
         var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg);
         Directory.CreateDirectory(Root);
         await File.WriteAllTextAsync(RuntimeConfigPath, json);

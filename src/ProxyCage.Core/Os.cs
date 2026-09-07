@@ -26,6 +26,21 @@ public static class Os
 
     public static string SingBoxFileName => IsWindows ? "sing-box.exe" : "sing-box";
 
+    /// <summary>
+    /// Система коротко: на macOS полное описание ядра занимает пол-строки журнала,
+    /// а для разбора хватает названия, версии и разрядности.
+    /// </summary>
+    public static string Describe()
+    {
+        var name = Kind switch
+        {
+            OsKind.Windows => "Windows",
+            OsKind.Mac => "macOS",
+            _ => "Linux",
+        };
+        return $"{name} {Environment.OSVersion.Version} ({RuntimeInformation.OSArchitecture})";
+    }
+
     public static string? ResolveSingBox(string root)
     {
         var candidates = new List<string> { Path.Combine(root, SingBoxFileName) };

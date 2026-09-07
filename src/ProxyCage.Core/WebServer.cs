@@ -8,6 +8,13 @@ public sealed class WebServer
 {
     private const string CookieName = "ceho";
 
+    private const string JobPool = "pool";
+    private const string JobMeasure = "measure";
+    private const string JobApply = "apply";
+    private const string JobPower = "power";
+    private const string JobUpdate = "update";
+    private const string JobSubs = "subs";
+
     private readonly string _configPath;
     private readonly Func<ControlState> _state;
     private readonly Action<string> _log;
@@ -16,19 +23,24 @@ public sealed class WebServer
     public sealed record ControlState(
         bool Running, string? ExitCountry, string? ExitIp, string? LastError, bool Probed);
 
-    public Func<Task<IReadOnlyList<NodeProbe.CountryRow>>>? OnCountries { get; set; }
+    public Func<IStageReport, Task<IReadOnlyList<NodeProbe.CountryRow>>>? OnCountries { get; set; }
     private IReadOnlyList<NodeProbe.CountryRow>? _countries;
 
-    public Func<Task<IReadOnlyList<ProxyNode>>>? OnPool { get; set; }
+    public Func<IStageReport, Task<IReadOnlyList<ProxyNode>>>? OnPool { get; set; }
 
-    public Func<Task<string?>>? OnStart { get; set; }
+    // Пул держим здесь: страницу нельзя заставлять ждать скачивания подписок.
+    private IReadOnlyList<ProxyNode>? _pool;
+    private DateTime _poolAtUtc;
+    private string? _poolError;
+
+    public Func<IStageReport, Task<string?>>? OnStart { get; set; }
     public Func<Task<string?>>? OnStop { get; set; }
-    public Func<Task<string?>>? OnRestart { get; set; }
-    public Func<Task<string?>>? OnApply { get; set; }
+    public Func<IStageReport, Task<string?>>? OnRestart { get; set; }
+    public Func<IStageReport, Task<string>>? OnApply { get; set; }
 
-    public Func<bool, Task<string>>? OnUpdate { get; set; }
+    public Func<bool, IStageReport, Task<string>>? OnUpdate { get; set; }
 
-    public Func<Task<string>>? OnCheckSubs { get; set; }
+    public Func<IStageReport, Task<string>>? OnCheckSubs { get; set; }
     public Func<Task<string>>? OnUninstall { get; set; }
 
     public Func<IReadOnlyList<string>>? WrappedNames { get; set; }
@@ -65,12 +77,20 @@ public sealed class WebServer
             try { ctx = await _listener.GetContextAsync(); }
             catch { return; }
 
-            try { await HandleAsync(ctx); }
-            catch (Exception ex)
-            {
-                _log($"ошибка панели: {ex.Message}");
-                try { ctx.Response.StatusCode = 500; ctx.Response.Close(); } catch { }
-            }
+            // Каждый запрос — сам по себе. Раньше страница ждала, пока закончится
+            // предыдущее долгое действие, и панель выглядела зависшей.
+            _ = ServeAsync(ctx);
+        }
+    }
+
+    private async Task ServeAsync(HttpListenerContext ctx)
+    {
+        try { await HandleAsync(ctx); }
+        catch (Exception ex)
+        {
+            Log.Error($"панель не смогла ответить на {ctx.Request.Url?.AbsolutePath}", ex);
+            _log($"ошибка панели: {ex.Message}");
+            try { ctx.Response.StatusCode = 500; ctx.Response.Close(); } catch { }
         }
     }
 
@@ -91,13 +111,26 @@ public sealed class WebServer
             return;
         }
 
+        if (path == "/job")
+        {
+            await HandleJobAsync(ctx);
+            return;
+        }
+
+        if (path.StartsWith("/log/", StringComparison.Ordinal))
+        {
+            await HandleLogFileAsync(ctx, path);
+            return;
+        }
+
         if (ctx.Request.HttpMethod == "POST")
         {
             var form = await ReadFormAsync(ctx.Request);
-            var (msg, isError) = await ApplyPostAsync(path, form, cfg);
+            var (msg, isError, jobId) = await ApplyPostAsync(path, form, cfg);
             var tab = form.GetValueOrDefault("tab", "state");
             var q = $"?tab={Uri.EscapeDataString(tab)}";
             if (msg is not null) q += $"&m={Uri.EscapeDataString(msg)}&e={(isError ? 1 : 0)}";
+            if (jobId is not null) q += $"&job={Uri.EscapeDataString(jobId)}";
             Redirect(ctx, "/" + q);
             return;
         }
@@ -105,7 +138,9 @@ public sealed class WebServer
         var flash = ctx.Request.QueryString["m"];
         var flashErr = ctx.Request.QueryString["e"] == "1";
         var current = ctx.Request.QueryString["tab"] ?? "state";
-        await WriteHtmlAsync(ctx, RenderPage(cfg, _state(), current, flash, flashErr));
+        var job = Jobs.Find(ctx.Request.QueryString["job"]);
+        var view = ViewFromQuery(ctx.Request.QueryString["view"]);
+        await WriteHtmlAsync(ctx, RenderPage(cfg, _state(), current, flash, flashErr, job, view));
     }
 
     private static bool Authorized(HttpListenerContext ctx, CehoConfig cfg)
@@ -168,6 +203,74 @@ public sealed class WebServer
         await WriteJsonAsync(ctx, ok, text);
     }
 
+    private async Task HandleJobAsync(HttpListenerContext ctx)
+    {
+        var job = Jobs.Find(ctx.Request.QueryString["id"]);
+        var payload = job is null
+            ? new { state = "gone", percent = 100, stage = "", result = (string?)null, isError = false, seconds = 0.0 }
+            : new
+            {
+                state = job.State switch
+                {
+                    JobState.Running => "running",
+                    JobState.Done => "done",
+                    _ => "failed",
+                },
+                percent = job.Percent,
+                stage = job.Stage,
+                result = job.Result,
+                isError = job.IsError,
+                seconds = Math.Round(job.Elapsed.TotalSeconds, 1),
+            };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        var bytes = Encoding.UTF8.GetBytes(json);
+        ctx.Response.ContentType = "application/json; charset=utf-8";
+        ctx.Response.Headers.Add("Cache-Control", "no-store");
+        ctx.Response.ContentLength64 = bytes.Length;
+        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.Close();
+    }
+
+    /// <summary>
+    /// Журнал текстом. Файл на диске один, поэтому «скачать» — это его нужная часть,
+    /// а не отдельный файл под каждый вид записей.
+    /// </summary>
+    private async Task HandleLogFileAsync(HttpListenerContext ctx, string path)
+    {
+        if (path != "/log/download")
+        {
+            ctx.Response.StatusCode = 404;
+            ctx.Response.Close();
+            return;
+        }
+
+        var view = ViewFromQuery(ctx.Request.QueryString["view"]);
+        var text = string.Join(Environment.NewLine, Log.Tail(5000, view));
+        var bytes = Encoding.UTF8.GetBytes(text.Length == 0 ? "журнал пуст" : text);
+
+        var name = view switch
+        {
+            LogView.Engine => "cehoproxy-движок.log",
+            LogView.Crashes => "cehoproxy-падения.log",
+            _ => "cehoproxy.log",
+        };
+
+        ctx.Response.ContentType = "text/plain; charset=utf-8";
+        ctx.Response.Headers.Add("Content-Disposition", $"attachment; filename=\"{name}\"");
+        ctx.Response.ContentLength64 = bytes.Length;
+        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.Close();
+    }
+
+    private static LogView ViewFromQuery(string? value) => value switch
+    {
+        "engine" => LogView.Engine,
+        "ours" => LogView.Ours,
+        "crashes" => LogView.Crashes,
+        _ => LogView.All,
+    };
+
     private static async Task WriteJsonAsync(HttpListenerContext ctx, bool ok, string text)
     {
         var json = System.Text.Json.JsonSerializer.Serialize(new { ok, text });
@@ -194,7 +297,14 @@ public sealed class WebServer
         ctx.Response.Close();
     }
 
-    private async Task<(string? Message, bool IsError)> ApplyPostAsync(
+    private Job ApplyJob(CehoConfig cfg, string? doneMessage = null) =>
+        Jobs.Start(JobApply, Strings.T(cfg.Language, "job_apply"), async p =>
+        {
+            var applied = OnApply is null ? Strings.T(cfg.Language, "rules_rebuilt") : await OnApply(p);
+            return doneMessage is null ? applied : $"{doneMessage} {applied}";
+        });
+
+    private async Task<(string? Message, bool IsError, string? JobId)> ApplyPostAsync(
         string path, Dictionary<string, string> f, CehoConfig cfg)
     {
         string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
@@ -206,13 +316,13 @@ public sealed class WebServer
                 case "/apps/add":
                 {
                     var raw = f.GetValueOrDefault("path", "").Trim();
-                    if (raw.Length == 0) return (S("err_need_path"), true);
+                    if (raw.Length == 0) return (S("err_need_path"), true, null);
                     if (!File.Exists(raw) && !Directory.Exists(raw))
-                        return (S("err_no_such_path", raw), true);
+                        return (S("err_no_such_path", raw), true, null);
 
                     var d = AppDetector.Detect(raw, cfg.Language);
                     if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
-                        return (S("err_already_added"), true);
+                        return (S("err_already_added"), true, null);
 
                     cfg.Apps.Add(new AppEntry
                     {
@@ -222,31 +332,28 @@ public sealed class WebServer
                         Launch = File.Exists(raw) ? raw : null,
                     });
                     Save(cfg);
-                    var applied = OnApply is null ? null : await OnApply();
-                    return ($"{S("added_name", d.Name)}. {d.Explanation}" +
-                            (applied is null ? "" : $" {applied}"), false);
+                    return ($"{S("added_name", d.Name)}. {d.Explanation}", false, ApplyJob(cfg).Id);
                 }
 
                 case "/apps/detected":
                 {
                     var raw = f.GetValueOrDefault("path", "").Trim();
-                    if (raw.Length == 0) return (S("err_need_path"), true);
+                    if (raw.Length == 0) return (S("err_need_path"), true, null);
 
                     var d = AppDetector.Detect(raw, cfg.Language);
                     if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
-                        return (S("err_already_added"), true);
+                        return (S("err_already_added"), true, null);
 
+                    var name = f.GetValueOrDefault("name", d.Name);
                     cfg.Apps.Add(new AppEntry
                     {
-                        Name = f.GetValueOrDefault("name", d.Name),
+                        Name = name,
                         Folder = d.Folder,
                         VersionAgnostic = d.VersionAgnostic,
                         SingleFile = d.SingleFile,
                     });
                     Save(cfg);
-                    var applied = OnApply is null ? null : await OnApply();
-                    return ($"{S("added_name", f.GetValueOrDefault("name", d.Name))}. {d.Explanation}" +
-                            (applied is null ? "" : $" {applied}"), false);
+                    return ($"{S("added_name", name)}. {d.Explanation}", false, ApplyJob(cfg).Id);
                 }
 
                 case "/apps/remove":
@@ -254,31 +361,51 @@ public sealed class WebServer
                     var folder = f.GetValueOrDefault("folder", "");
                     cfg.Apps.RemoveAll(a => a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
                     Save(cfg);
-                    if (OnApply is not null) await OnApply();
-                    return (S("removed"), false);
+                    return (S("removed"), false, cfg.Apps.Count > 0 ? ApplyJob(cfg).Id : null);
                 }
 
                 case "/subs/add":
                 {
                     var url = f.GetValueOrDefault("url", "").Trim();
                     var name = f.GetValueOrDefault("name", "").Trim();
-                    if (url.Length == 0) return (S("pf_no_subs_fix"), true);
+                    if (url.Length == 0) return (S("pf_no_subs_fix"), true, null);
                     if (name.Length == 0) name = $"sub{cfg.Subscriptions.Count + 1}";
                     if (cfg.Subscriptions.Any(s => s.Name == name))
-                        return (S("err_sub_exists", name), true);
+                        return (S("err_sub_exists", name), true, null);
 
                     cfg.Subscriptions.Add(new SubscriptionEntry { Name = name, Url = url });
                     cfg.ActiveSubscription ??= name;
                     Save(cfg);
-                    var applied = OnApply is null ? null : await OnApply();
-                    return ($"{S("sub_added", name)}" + (applied is null ? "" : $" {applied}"), false);
+                    _pool = null;
+                    return (S("sub_added", name), false, ApplyJob(cfg).Id);
                 }
 
                 case "/subs/check":
                 {
-                    if (OnCheckSubs is null) return ("no control", true);
-                    if (!NodeProbe.TunnelIsUp(cfg.TunAddress)) return (S("sub_check_off"), true);
-                    return (await OnCheckSubs(), false);
+                    if (OnCheckSubs is null) return ("no control", true, null);
+                    var job = Jobs.Start(JobSubs, S("job_check_subs"), async p =>
+                    {
+                        var text = await OnCheckSubs(p);
+                        _pool = null;
+                        return text;
+                    });
+                    return (null, false, job.Id);
+                }
+
+                case "/subs/toggle":
+                {
+                    var name = f.GetValueOrDefault("name", "");
+                    var entry = cfg.Subscriptions.FirstOrDefault(s => s.Name == name);
+                    if (entry is null) return (S("err_no_such_sub", name), true, null);
+
+                    var wanted = !entry.Enabled;
+                    if (!wanted && cfg.Subscriptions.Count(s => s.Enabled) <= 1)
+                        return (S("subs_last_one"), true, null);
+
+                    entry.Enabled = wanted;
+                    Save(cfg);
+                    _pool = null;
+                    return (S(wanted ? "sub_turned_on" : "sub_turned_off", name), false, ApplyJob(cfg).Id);
                 }
 
                 case "/subs/remove":
@@ -288,13 +415,14 @@ public sealed class WebServer
                     if (cfg.ActiveSubscription == name)
                         cfg.ActiveSubscription = cfg.Subscriptions.FirstOrDefault()?.Name;
                     Save(cfg);
+                    _pool = null;
                     try
                     {
                         var cache = Path.Combine(Root, $"sub-{name}.txt");
                         if (File.Exists(cache)) File.Delete(cache);
                     }
                     catch { }
-                    return (S("sub_removed", name), false);
+                    return (S("sub_removed", name), false, null);
                 }
 
                 case "/subs/timeout":
@@ -303,9 +431,9 @@ public sealed class WebServer
                     {
                         cfg.TimeoutSeconds = tSec;
                         Save(cfg);
-                        return (S("timeout_set", tSec), false);
+                        return (S("timeout_set", tSec), false, null);
                     }
-                    return (S("err_need_timeout"), true);
+                    return (S("err_need_timeout"), true, null);
                 }
 
                 case "/countries/save":
@@ -322,38 +450,97 @@ public sealed class WebServer
                     cfg.PreferredCountries.RemoveAll(c => cfg.ExcludedCountries.Contains(c, StringComparer.OrdinalIgnoreCase));
                     Save(cfg);
 
-                    try
+                    var job = Jobs.Start(JobApply, S("job_apply"), async p =>
                     {
-                        var applied = OnApply is null ? null : await OnApply();
-                        return (applied ?? S("rules_rebuilt"), false);
-                    }
-                    catch (PoolEmptyException ex)
+                        try
+                        {
+                            return OnApply is null ? S("rules_rebuilt") : await OnApply(p);
+                        }
+                        catch (PoolEmptyException ex)
+                        {
+                            var back = CehoConfig.Load(_configPath);
+                            back.ExcludedCountries = prevExcluded;
+                            back.PreferredCountries = prevPreferred;
+                            Save(back);
+                            throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
+                        }
+                    });
+                    return (null, false, job.Id);
+                }
+
+                case "/nodes/save":
+                {
+                    // Ключи нод, показанных на странице: только про них и решаем.
+                    // Ноды выключенных подписок в форму не попали — их выбор остаётся как был.
+                    var shown = (f.GetValueOrDefault("all", "") ?? "")
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(k => k.Trim())
+                        .Where(k => k.Length > 0)
+                        .ToList();
+                    var keep = f.Keys.Where(k => k.StartsWith("n_", StringComparison.Ordinal))
+                        .Select(k => k[2..]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    var prevBlocked = new List<string>(cfg.BlockedNodes);
+
+                    var offScreen = cfg.BlockedNodes
+                        .Where(k => !shown.Contains(k, StringComparer.OrdinalIgnoreCase));
+                    var justBlocked = shown.Where(k => !keep.Contains(k));
+                    cfg.BlockedNodes = offScreen.Concat(justBlocked)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                    if (cfg.BlockedNodes.Count == prevBlocked.Count
+                        && cfg.BlockedNodes.All(k => prevBlocked.Contains(k, StringComparer.OrdinalIgnoreCase)))
+                        return (S("nodes_unchanged"), false, null);
+
+                    Save(cfg);
+
+                    var job = Jobs.Start(JobApply, S("job_apply"), async p =>
                     {
-                        cfg.ExcludedCountries = prevExcluded;
-                        cfg.PreferredCountries = prevPreferred;
-                        Save(cfg);
-                        return ($"{ex.Message} {S("change_reverted")}", true);
-                    }
-                    catch (Exception ex)
-                    {
-                        return (ex.Message, true);
-                    }
+                        try
+                        {
+                            var text = OnApply is null ? S("rules_rebuilt") : await OnApply(p);
+                            var off = CehoConfig.Load(_configPath).BlockedNodes.Count;
+                            return off > 0 ? $"{text} · {S("nodes_off_now", off)}" : text;
+                        }
+                        catch (PoolEmptyException ex)
+                        {
+                            var back = CehoConfig.Load(_configPath);
+                            back.BlockedNodes = prevBlocked;
+                            Save(back);
+                            throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
+                        }
+                    });
+                    return (null, false, job.Id);
                 }
 
                 case "/countries/refresh":
                 {
-                    if (OnCountries is null) return (S("measure_blocked"), true);
-                    if (NodeProbe.TunnelIsUp(cfg.TunAddress)) return (S("measure_blocked"), true);
-                    _countries = await OnCountries();
+                    if (OnCountries is null) return (S("measure_blocked"), true, null);
+                    if (NodeProbe.TunnelIsUp(cfg.TunAddress)) return (S("measure_blocked"), true, null);
 
-                    var items = _countries.SelectMany(c => c.Items).ToList();
-                    if (NodeProbe.LooksLikeLocalAccept(items))
-                        return (S("speed_local_accept"), true);
+                    var job = Jobs.Start(JobMeasure, S("job_measure"), async p =>
+                    {
+                        var rows = await OnCountries(p);
 
-                    foreach (var m in items)
-                        if (m.LatencyMs is { } ms) cfg.NodeLatency[m.Node.Key] = ms;
-                    Save(cfg);
-                    return (S("measure_done", _countries.Count), false);
+                        var items = rows.SelectMany(c => c.Items).ToList();
+                        if (NodeProbe.LooksLikeLocalAccept(items))
+                            throw new InvalidOperationException(S("speed_local_accept"));
+
+                        p.Stage(S("stage_saving"), 95);
+                        var fresh = CehoConfig.Load(_configPath);
+                        foreach (var m in items)
+                            if (m.LatencyMs is { } ms) fresh.NodeLatency[m.Node.Key] = ms;
+                        Save(fresh);
+
+                        _countries = rows;
+                        return S("measure_done", rows.Count);
+                    });
+                    return (null, false, job.Id);
+                }
+
+                case "/pool/refresh":
+                {
+                    return (null, false, StartPoolJob(cfg).Id);
                 }
 
                 case "/settings":
@@ -370,28 +557,44 @@ public sealed class WebServer
                     cfg.MaxLatencyMs = int.TryParse(speed, out var limit) && limit > 0 ? limit : null;
                     Save(cfg);
 
-                    try
+                    var job = Jobs.Start(JobApply, S("job_apply"), async p =>
                     {
-                        var appliedNow = OnApply is null ? null : await OnApply();
-                        return (appliedNow ?? S("rules_rebuilt"), false);
-                    }
-                    catch (PoolEmptyException ex)
-                    {
-                        cfg.MaxLatencyMs = prevLimit;
-                        Save(cfg);
-                        return ($"{ex.Message} {S("change_reverted")}", true);
-                    }
-                    catch (Exception ex)
-                    {
-                        return (ex.Message, true);
-                    }
+                        try
+                        {
+                            return OnApply is null ? S("rules_rebuilt") : await OnApply(p);
+                        }
+                        catch (PoolEmptyException ex)
+                        {
+                            var back = CehoConfig.Load(_configPath);
+                            back.MaxLatencyMs = prevLimit;
+                            Save(back);
+                            throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
+                        }
+                    });
+                    return (null, false, job.Id);
+                }
+
+                case "/log/level":
+                {
+                    var level = f.GetValueOrDefault("level", "warn").Trim().ToLowerInvariant();
+                    if (level is not ("debug" or "info" or "warn" or "error"))
+                        return (S("log_level_bad"), true, null);
+                    cfg.EngineLogLevel = level;
+                    Save(cfg);
+                    return (S("log_level_set", level), false, null);
+                }
+
+                case "/log/clear":
+                {
+                    Log.Clear();
+                    return (S("log_cleared"), false, null);
                 }
 
                 case "/lang":
                 {
                     cfg.Language = Strings.Normalize(f.GetValueOrDefault("lang", "ru"));
                     Save(cfg);
-                    return (Strings.T(cfg.Language, "lang_set", cfg.Language), false);
+                    return (Strings.T(cfg.Language, "lang_set", cfg.Language), false, null);
                 }
 
                 case "/password":
@@ -403,25 +606,23 @@ public sealed class WebServer
                         Auth.ClearPassword(cfg);
                         Save(cfg);
                         Auth.DropAllSessions();
-                        return (S("auth_cleared"), false);
+                        return (S("auth_cleared"), false, null);
                     }
-                    if (pass.Length < 4) return (S("setup_password_short"), true);
-                    if (pass != again) return (S("setup_password_mismatch"), true);
+                    if (pass.Length < 4) return (S("setup_password_short"), true, null);
+                    if (pass != again) return (S("setup_password_mismatch"), true, null);
                     Auth.SetPassword(cfg, pass);
                     Save(cfg);
                     Auth.DropAllSessions();
-                    return (S("auth_set_ok"), false);
+                    return (S("auth_set_ok"), false, null);
                 }
 
                 case "/update":
                 {
-                    if (OnUpdate is null) return ("no control", true);
+                    if (OnUpdate is null) return ("no control", true, null);
                     var install = f.ContainsKey("install");
-                    try { return (await OnUpdate(install), false); }
-                    catch (Exception ex)
-                    {
-                        return (S(install ? "upd_failed" : "upd_check_failed", ex.Message), true);
-                    }
+                    var job = Jobs.Start(JobUpdate, S(install ? "job_update" : "job_update_check"),
+                        p => OnUpdate(install, p));
+                    return (null, false, job.Id);
                 }
 
                 case "/autostart":
@@ -433,29 +634,51 @@ public sealed class WebServer
                             Root)
                         : Autostart.Disable();
                     return err is null
-                        ? (S(on ? "autostart_state_on" : "autostart_state_off"), false)
-                        : (err, true);
+                        ? (S(on ? "autostart_state_on" : "autostart_state_off"), false, null)
+                        : (err, true, null);
                 }
 
                 case "/control/start":
                 {
-                    var err = OnStart is null ? "no control" : await OnStart();
-                    return err is null ? (S("state_on"), false) : (err, true);
+                    var job = Jobs.Start(JobPower, S("job_start"), async p =>
+                    {
+                        var err = OnStart is null ? "no control" : await OnStart(p);
+                        if (err is not null) throw new InvalidOperationException(err);
+                        return S("state_on");
+                    });
+                    return (null, false, job.Id);
                 }
 
                 case "/control/stop":
                 {
-                    var err = OnStop is null ? "no control" : await OnStop();
-                    return err is null ? (S("state_off"), false) : (err, true);
+                    var job = Jobs.Start(JobPower, S("job_stop"), async p =>
+                    {
+                        p.Stage(S("stage_stopping"), 40);
+                        var err = OnStop is null ? "no control" : await OnStop();
+                        if (err is not null) throw new InvalidOperationException(err);
+                        return S("state_off");
+                    });
+                    return (null, false, job.Id);
                 }
 
                 case "/control/restart":
                 {
-                    string? err;
-                    if (OnRestart is not null) err = await OnRestart();
-                    else if (OnStop is not null && OnStart is not null) { await OnStop(); err = await OnStart(); }
-                    else err = "no control";
-                    return err is null ? (S("rules_applied"), false) : (err, true);
+                    var job = Jobs.Start(JobPower, S("job_restart"), async p =>
+                    {
+                        string? err;
+                        if (OnRestart is not null) err = await OnRestart(p);
+                        else if (OnStop is not null && OnStart is not null)
+                        {
+                            p.Stage(S("stage_stopping"), 20);
+                            await OnStop();
+                            err = await OnStart(p);
+                        }
+                        else err = "no control";
+
+                        if (err is not null) throw new InvalidOperationException(err);
+                        return S("rules_applied");
+                    });
+                    return (null, false, job.Id);
                 }
 
                 case "/uninstall":
@@ -463,18 +686,38 @@ public sealed class WebServer
                     if (OnUninstall is not null)
                     {
                         var msg = await OnUninstall();
-                        return (msg, false);
+                        return (msg, false, null);
                     }
-                    return ("no control", true);
+                    return ("no control", true, null);
                 }
             }
-            return (null, false);
+            return (null, false, null);
         }
         catch (Exception ex)
         {
-            return (ex.Message, true);
+            Log.Error($"панель: действие {path}", ex);
+            return (ex.Message, true, null);
         }
     }
+
+    private Job StartPoolJob(CehoConfig cfg) =>
+        Jobs.Start(JobPool, Strings.T(cfg.Language, "job_pool"), async p =>
+        {
+            try
+            {
+                var nodes = OnPool is null ? Array.Empty<ProxyNode>() : await OnPool(p);
+                _pool = nodes;
+                _poolAtUtc = DateTime.UtcNow;
+                _poolError = null;
+                return Strings.T(cfg.Language, "pool_loaded", nodes.Count);
+            }
+            catch (Exception ex)
+            {
+                _poolError = ex.Message;
+                _poolAtUtc = DateTime.UtcNow;
+                throw;
+            }
+        });
 
     private void Save(CehoConfig cfg)
     {
@@ -501,7 +744,7 @@ public sealed class WebServer
     private static string RenderGate(CehoConfig cfg, string? error)
     {
         var sb = new StringBuilder();
-        Head(sb, cfg);
+        Head(sb, cfg, null);
         sb.Append("<div class=gate>");
         sb.Append("<img class=logo src=\"").Append(Brand.LogoDataUri).Append("\" alt=\"КодоЦех\">");
         sb.Append("<h1>CehoProxy</h1>");
@@ -516,18 +759,26 @@ public sealed class WebServer
         return sb.ToString();
     }
 
-    private static void Head(StringBuilder sb, CehoConfig cfg)
+    private static void Head(StringBuilder sb, CehoConfig cfg, Job? job)
     {
         sb.Append("<!doctype html><html lang=").Append(cfg.Language).Append("><head><meta charset=utf-8>");
         sb.Append("<meta name=viewport content=\"width=device-width,initial-scale=1\">");
+
+        // Без JavaScript страница с идущей операцией обновляется сама: панель управления
+        // сетью обязана работать и в браузере с отключёнными скриптами.
+        if (job is { Running: true })
+            sb.Append("<noscript><meta http-equiv=refresh content=2></noscript>");
+
         sb.Append("<title>CehoProxy</title><style>").Append(WebUi.Css).Append("</style></head><body>");
     }
 
-    private string RenderPage(CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr)
+    private string RenderPage(
+        CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr, Job? job,
+        LogView logView = LogView.All)
     {
         string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
         var sb = new StringBuilder();
-        Head(sb, cfg);
+        Head(sb, cfg, job);
         sb.Append("<div class=wrap>");
 
         sb.Append("<header>");
@@ -538,7 +789,8 @@ public sealed class WebServer
         var tabs = new (string Id, string Key)[]
         {
             ("state", "nav_state"), ("apps", "nav_apps"), ("subs", "nav_subs"),
-            ("exit", "nav_exit"), ("browser", "nav_browser"), ("access", "nav_access"), ("help", "nav_help"),
+            ("exit", "nav_exit"), ("browser", "nav_browser"), ("log", "nav_log"),
+            ("access", "nav_access"), ("help", "nav_help"),
         };
         sb.Append("<nav class=tabs>");
         foreach (var (id, key) in tabs)
@@ -550,12 +802,15 @@ public sealed class WebServer
             sb.Append("<div class=\"flash ").Append(flashErr ? "err" : "ok").Append("\">")
               .Append(E(flash)).Append("</div>");
 
+        RenderJob(sb, cfg, job, tab, S);
+
         switch (tab)
         {
             case "apps": RenderApps(sb, cfg, S); break;
             case "subs": RenderSubs(sb, cfg, S); break;
             case "exit": RenderExit(sb, cfg, S); break;
             case "browser": RenderBrowser(sb, cfg, S); break;
+            case "log": RenderLog(sb, cfg, logView, S); break;
             case "access": RenderAccess(sb, cfg, S); break;
             case "help": RenderHelp(sb, cfg, S); break;
             default: RenderState(sb, cfg, st, S); break;
@@ -569,8 +824,50 @@ public sealed class WebServer
           .Append("<a href=\"").Append(E(Brand.RepoUrl(cfg.UpdateRepo)))
           .Append("\" target=_blank rel=noopener>").Append(E(S("product_page"))).Append("</a>")
           .Append("<span>").Append(E(S("footer_local"))).Append("</span></span></footer>");
-        sb.Append("</div></body></html>");
+        sb.Append("</div>");
+
+        if (job is { Running: true }) sb.Append(WebUi.JobScript);
+        sb.Append("</body></html>");
         return sb.ToString();
+    }
+
+    /// <summary>Полоса и этап: видно, что операция идёт и на чём именно она стоит.</summary>
+    private static void RenderJob(
+        StringBuilder sb, CehoConfig cfg, Job? job, string tab, Func<string, object[], string> S)
+    {
+        if (job is null) return;
+
+        var cls = job.State switch
+        {
+            JobState.Running => "run",
+            JobState.Done => "ok",
+            _ => "err",
+        };
+
+        sb.Append("<div class=\"job ").Append(cls).Append("\" id=jp data-job=\"").Append(E(job.Id)).Append("\">");
+        sb.Append("<div class=job-head><b>").Append(E(job.Title)).Append("</b>")
+          .Append("<span class=job-num id=jn>").Append(job.Percent).Append("%</span></div>");
+        sb.Append("<div class=bar><span id=jf style=\"width:").Append(job.Percent).Append("%\"></span></div>");
+        sb.Append("<div class=job-stage id=js>").Append(E(job.Stage)).Append("</div>");
+        sb.Append("<div class=job-foot>")
+          .Append(E(S(job.Running ? "job_running" : job.IsError ? "job_failed" : "job_done",
+              new object[] { job.Elapsed.TotalSeconds.ToString("F1") })));
+
+        if (!job.Running)
+            sb.Append(" · <a href=\"/?tab=").Append(E(tab)).Append("\">").Append(E(S("job_hide", [])))
+              .Append("</a>");
+        sb.Append("</div>");
+
+        var steps = job.Steps;
+        if (steps.Count > 1)
+        {
+            sb.Append("<details class=job-steps><summary>").Append(E(S("job_steps", [])))
+              .Append("</summary><ol>");
+            foreach (var step in steps) sb.Append("<li>").Append(E(step)).Append("</li>");
+            sb.Append("</ol></details>");
+        }
+
+        sb.Append("</div>");
     }
 
     private void RenderState(StringBuilder sb, CehoConfig cfg, ControlState st, Func<string, object[], string> S)
@@ -598,7 +895,11 @@ public sealed class WebServer
             .ToList();
 
         if (st.LastError is not null && !problems.Any(c => st.LastError.Contains(c.Title, StringComparison.Ordinal)))
-            sb.Append("<div class=\"flash err\">").Append(E(st.LastError)).Append("</div>");
+        {
+            sb.Append("<div class=\"flash err\"><b>").Append(E(S("state_last_error", [])))
+              .Append("</b>").Append(E(st.LastError))
+              .Append("<br><a href=\"/?tab=log\">").Append(E(S("log_open", []))).Append("</a></div>");
+        }
 
         foreach (var c in problems)
         {
@@ -638,16 +939,28 @@ public sealed class WebServer
         sb.Append("<dt>").Append(E(S("nav_apps", []))).Append("</dt><dd>")
           .Append(cfg.Apps.Count(a => a.Enabled)).Append("</dd>");
         sb.Append("<dt>").Append(E(S("nav_subs", []))).Append("</dt><dd>")
-          .Append(cfg.Subscriptions.Count).Append("</dd>");
+          .Append(E(S("subs_on_of", new object[] { cfg.Subscriptions.Count(s => s.Enabled), cfg.Subscriptions.Count })))
+          .Append("</dd>");
         sb.Append("<dt>").Append(E(S("nav_exit", []))).Append("</dt><dd>")
           .Append(E(cfg.PreferredCountries.Count > 0
               ? string.Join(", ", cfg.PreferredCountries)
               : cfg.ExcludedCountries.Count > 0
                   ? S("country_any_but", [string.Join(", ", cfg.ExcludedCountries)])
-                  : S("country_any", [])))
-          .Append("</dd>");
+                  : S("country_any", [])));
+        if (cfg.BlockedNodes.Count > 0)
+            sb.Append(" · ").Append(E(S("nodes_off_now", new object[] { cfg.BlockedNodes.Count })));
+        sb.Append("</dd>");
         sb.Append("<dt>").Append(E(S("nav_browser", []))).Append("</dt><dd>127.0.0.1:")
           .Append(cfg.MixedPort).Append("</dd>");
+
+        var soonest = cfg.Subscriptions
+            .Where(s => s.Enabled && s.ExpiresUtc is not null)
+            .OrderBy(s => s.ExpiresUtc)
+            .FirstOrDefault();
+        if (soonest?.ExpiresUtc is { } when)
+            sb.Append("<dt>").Append(E(S("subs_expiry_short", []))).Append("</dt><dd>")
+              .Append(E(ExpiryText(when, S))).Append("</dd>");
+
         sb.Append("</dl></section>");
 
         sb.Append("<section><h2>").Append(E(S("upd_title", []))).Append("</h2>");
@@ -797,6 +1110,15 @@ public sealed class WebServer
         sb.Append("</table>");
     }
 
+    private static string ExpiryText(DateTime expiresUtc, Func<string, object[], string> S)
+    {
+        var days = SubscriptionInfo.DaysLeft(expiresUtc);
+        var date = expiresUtc.ToLocalTime().ToString("dd.MM.yyyy");
+        return days < 0
+            ? S("sub_expired_on", new object[] { date })
+            : S("sub_expires_on", new object[] { date, days });
+    }
+
     private static void RenderSubs(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
         sb.Append("<section><h2>").Append(E(S("nav_subs", []))).Append("</h2>");
@@ -806,31 +1128,84 @@ public sealed class WebServer
             sb.Append("<p class=empty>").Append(E(S("subs_empty", []))).Append("</p>");
         else
         {
-            sb.Append("<table><tr><th>").Append(E(S("col_name", []))).Append("</th><th>")
-              .Append(E(S("col_link", []))).Append("</th><th>").Append(E(S("col_state", [])))
-              .Append("</th><th></th></tr>");
+            sb.Append("<table><tr><th>").Append(E(S("col_use", []))).Append("</th><th>")
+              .Append(E(S("col_name", []))).Append("</th><th>")
+              .Append(E(S("col_until", []))).Append("</th><th>")
+              .Append(E(S("col_traffic", []))).Append("</th><th>")
+              .Append(E(S("col_state", []))).Append("</th><th></th></tr>");
+
             foreach (var s in cfg.Subscriptions)
             {
-                sb.Append("<tr><td>").Append(E(s.Name)).Append("</td><td class=path>").Append(E(s.Url))
-                  .Append("</td><td>").Append(E(s.LastCheckOk switch
-                  {
-                      true => S("sub_ok", []),
-                      false => S("sub_bad", []),
-                      null => S("sub_unchecked", []),
-                  }));
-                if (s.LastCheckedUtc is not null && DateTime.TryParse(s.LastCheckedUtc,
-                        null, System.Globalization.DateTimeStyles.RoundtripKind, out var when))
-                    sb.Append("<br><span class=tag>")
-                      .Append(E(S("sub_checked_at", new object[] { when.ToLocalTime().ToString("dd.MM HH:mm") })))
+                sb.Append("<tr").Append(s.Enabled ? "" : " class=dim").Append('>');
+
+                sb.Append("<td><form method=post action=/subs/toggle>")
+                  .Append("<input type=hidden name=tab value=subs>")
+                  .Append("<input type=hidden name=name value=\"").Append(E(s.Name)).Append("\">")
+                  .Append("<button class=\"pill ").Append(s.Enabled ? "yes" : "no").Append("\">")
+                  .Append(E(s.Enabled ? S("on_word", []) : S("off_word", [])))
+                  .Append("</button></form></td>");
+
+                sb.Append("<td>").Append(E(s.Name));
+                if (s.LastNodes is { } nodes)
+                    sb.Append("<br><span class=tag>").Append(E(S("sub_nodes_n", new object[] { nodes })))
                       .Append("</span>");
-                sb.Append("</td><td class=actions>");
+                sb.Append("<div class=path>").Append(E(s.Url)).Append("</div></td>");
+
+                sb.Append("<td>");
+                if (s.ExpiresUtc is { } when)
+                {
+                    var days = SubscriptionInfo.DaysLeft(when);
+                    var cls = days < 0 ? "danger" : days <= 7 ? "warn" : "";
+                    sb.Append("<span class=\"until ").Append(cls).Append("\">")
+                      .Append(E(when.ToLocalTime().ToString("dd.MM.yyyy"))).Append("</span>");
+                    sb.Append("<br><span class=tag>").Append(E(days < 0
+                        ? S("sub_expired", [])
+                        : S("sub_days_left", new object[] { days }))).Append("</span>");
+                }
+                else sb.Append("<span class=tag>").Append(E(S("sub_no_expiry", []))).Append("</span>");
+                sb.Append("</td>");
+
+                sb.Append("<td>");
+                if (s.UsedBytes is { } used)
+                {
+                    sb.Append(E(SubscriptionInfo.Bytes(used)));
+                    if (s.TotalBytes is { } total && total > 0)
+                    {
+                        var share = (int)Math.Clamp(used * 100 / total, 0, 100);
+                        sb.Append(E(S("sub_of_total", new object[] { SubscriptionInfo.Bytes(total) })));
+                        sb.Append("<div class=\"bar thin\"><span style=\"width:").Append(share)
+                          .Append("%\"></span></div>");
+                    }
+                }
+                else sb.Append("<span class=tag>").Append(E(S("sub_no_traffic", []))).Append("</span>");
+                sb.Append("</td>");
+
+                sb.Append("<td>").Append(E(s.LastCheckOk switch
+                {
+                    true => S("sub_ok", []),
+                    false => S("sub_bad", []),
+                    null => S("sub_unchecked", []),
+                }));
+                if (s.LastCheckedUtc is not null && DateTime.TryParse(s.LastCheckedUtc,
+                        null, System.Globalization.DateTimeStyles.RoundtripKind, out var checked_))
+                    sb.Append("<br><span class=tag>")
+                      .Append(E(S("sub_checked_at", new object[] { checked_.ToLocalTime().ToString("dd.MM HH:mm") })))
+                      .Append("</span>");
+                if (s.LastError is not null)
+                    sb.Append("<br><span class=\"tag bad\">").Append(E(s.LastError)).Append("</span>");
+                sb.Append("</td>");
+
+                sb.Append("<td class=actions>");
                 sb.Append("<form method=post action=/subs/remove><input type=hidden name=tab value=subs>")
                   .Append("<input type=hidden name=name value=\"").Append(E(s.Name))
                   .Append("\"><button class=danger>").Append(E(S("btn_delete", []))).Append("</button></form>");
                 sb.Append("</td></tr>");
             }
             sb.Append("</table>");
+            sb.Append("<p class=hint>").Append(E(S("subs_toggle_hint", []))).Append("</p>");
+            sb.Append("<p class=hint>").Append(E(S("subs_expiry_hint", []))).Append("</p>");
         }
+
         sb.Append("<form class=row method=post action=/subs/check><input type=hidden name=tab value=subs>")
           .Append("<button class=ghost>").Append(E(S("sub_check", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("sub_checking", []))).Append("</p>");
@@ -854,22 +1229,29 @@ public sealed class WebServer
         sb.Append("<section><h2>").Append(E(S("countries_title", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("countries_hint", []))).Append("</p>");
 
-        IReadOnlyList<ProxyNode> pool = Array.Empty<ProxyNode>();
-        string? poolError = null;
-        try { if (OnPool is not null) pool = OnPool().GetAwaiter().GetResult(); }
-        catch (Exception ex) { poolError = ex.Message; }
+        // Список стран рисуется по последнему известному пулу. Скачивать подписки прямо
+        // в обработчике страницы нельзя: именно на этом панель и подвисала.
+        var pool = _pool;
+        var loading = Jobs.Active(JobPool);
 
-        if (poolError is not null)
-            sb.Append("<div class=\"flash err\">").Append(E(poolError)).Append("</div>");
+        if (pool is null && loading is null && cfg.Subscriptions.Any(s => s.Enabled))
+            loading = StartPoolJob(cfg);
 
-        var groups = pool.GroupBy(n => n.CountryCode ?? CountryResolver.Unknown)
-            .OrderByDescending(g => g.Count())
-            .ToList();
+        if (_poolError is not null)
+            sb.Append("<div class=\"flash err\">").Append(E(_poolError)).Append("</div>");
 
-        if (groups.Count == 0)
-            sb.Append("<p class=empty>").Append(E(S("pf_no_subs_detail", []))).Append("</p>");
+        if (pool is null)
+        {
+            sb.Append("<p class=empty>").Append(E(S(loading is null
+                ? "pf_no_subs_detail"
+                : "pool_loading", []))).Append("</p>");
+        }
         else
         {
+            var groups = pool.GroupBy(n => n.CountryCode ?? CountryResolver.Unknown)
+                .OrderByDescending(g => g.Count())
+                .ToList();
+
             var measured = _countries?.ToDictionary(c => c.Code, StringComparer.OrdinalIgnoreCase);
 
             sb.Append("<form method=post action=/countries/save><input type=hidden name=tab value=exit>");
@@ -902,7 +1284,17 @@ public sealed class WebServer
             }
             sb.Append("</table>");
             sb.Append("<button>").Append(E(S("btn_save", []))).Append("</button></form>");
+
+            sb.Append("<p class=hint>").Append(E(S("pool_from", new object[]
+            {
+                pool.Count, _poolAtUtc.ToLocalTime().ToString("HH:mm:ss"),
+            }))).Append("</p>");
+
+            RenderNodes(sb, cfg, groups, S);
         }
+
+        sb.Append("<form class=row method=post action=/pool/refresh><input type=hidden name=tab value=exit>")
+          .Append("<button class=ghost>").Append(E(S("btn_pool_refresh", []))).Append("</button></form>");
 
         sb.Append("<form class=row method=post action=/countries/refresh><input type=hidden name=tab value=exit>")
           .Append("<button class=ghost>").Append(E(S("btn_measure", []))).Append("</button></form>");
@@ -927,6 +1319,75 @@ public sealed class WebServer
         sb.Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></section>");
     }
 
+    /// <summary>
+    /// Отдельные ноды: страна может быть разрешена целиком, а одну ноду из неё
+    /// нужно убрать — например, она отвечает, но работает плохо.
+    /// </summary>
+    private static void RenderNodes(
+        StringBuilder sb, CehoConfig cfg,
+        List<IGrouping<string, ProxyNode>> groups, Func<string, object[], string> S)
+    {
+        var blocked = cfg.BlockedNodes.Count;
+
+        sb.Append("<h2>").Append(E(S("nodes_title", []))).Append("</h2>");
+        sb.Append("<p class=lede>").Append(E(S("nodes_hint", []))).Append("</p>");
+        if (blocked > 0)
+            sb.Append("<p class=hint>").Append(E(S("nodes_off_now", new object[] { blocked }))).Append("</p>");
+
+        sb.Append("<form method=post action=/nodes/save><input type=hidden name=tab value=exit>");
+        sb.Append("<input type=hidden name=all value=\"")
+          .Append(E(string.Join("\n", groups.SelectMany(g => g).Select(n => n.Key)))).Append("\">");
+
+        foreach (var g in groups)
+        {
+            var countryName = g.Key == CountryResolver.Unknown
+                ? S("country_unknown", [])
+                : g.First().CountryName ?? g.Key;
+            var offHere = g.Count(n => SingBoxConfigGenerator.IsBlockedByHand(n, cfg));
+            var countryOff = cfg.ExcludedCountries.Contains(g.Key, StringComparer.OrdinalIgnoreCase)
+                || (cfg.PreferredCountries.Count > 0
+                    && !cfg.PreferredCountries.Contains(g.Key, StringComparer.OrdinalIgnoreCase));
+
+            // Страны с выключенными нодами раскрыты сразу: иначе выбор не найти.
+            sb.Append("<details class=nodes").Append(offHere > 0 && !countryOff ? " open" : "")
+              .Append("><summary>");
+            sb.Append("<span class=flag>").Append(CountryResolver.Flag(g.Key)).Append("</span> ")
+              .Append(E(countryName)).Append(" · ").Append(g.Count());
+            if (offHere > 0)
+                sb.Append(" · ").Append(E(S("nodes_off_here", new object[] { offHere })));
+            // Иначе непонятно, почему галочка стоит, а нода всё равно не работает.
+            if (countryOff)
+                sb.Append(" · ").Append(E(S("nodes_country_off", [])));
+            sb.Append("</summary><table>");
+            sb.Append("<tr><th>").Append(E(S("col_use", []))).Append("</th><th>")
+              .Append(E(S("col_node", []))).Append("</th><th>").Append(E(S("col_address", [])))
+              .Append("</th><th>").Append(E(S("col_protocols", []))).Append("</th><th>")
+              .Append(E(S("col_best", []))).Append("</th><th>").Append(E(S("col_source", [])))
+              .Append("</th></tr>");
+
+            foreach (var n in g.OrderBy(n => n.Remark, StringComparer.OrdinalIgnoreCase))
+            {
+                var on = !SingBoxConfigGenerator.IsBlockedByHand(n, cfg);
+                var slow = SingBoxConfigGenerator.IsTooSlow(n, cfg);
+                var ms = cfg.NodeLatency.TryGetValue(n.Key, out var value) ? value : (int?)null;
+
+                sb.Append("<tr").Append(on ? "" : " class=off").Append("><td><label class=check>")
+                  .Append("<input type=checkbox name=\"n_").Append(E(n.Key)).Append('"')
+                  .Append(on ? " checked" : "").Append("></label></td>");
+                sb.Append("<td>").Append(E(n.Remark.Length > 0 ? n.Remark : n.Tag)).Append("</td>");
+                sb.Append("<td class=tag>").Append(E($"{n.Server}:{n.Port}")).Append("</td>");
+                sb.Append("<td class=tag>").Append(E(n.Protocol.ToString())).Append("</td>");
+                sb.Append("<td class=num>")
+                  .Append(ms is null ? E(S("not_measured", [])) : ms + " ms")
+                  .Append(slow ? " · " + E(S("node_slow", [])) : "").Append("</td>");
+                sb.Append("<td class=tag>").Append(E(n.Source ?? "—")).Append("</td></tr>");
+            }
+            sb.Append("</table></details>");
+        }
+
+        sb.Append("<button>").Append(E(S("btn_save", []))).Append("</button></form>");
+    }
+
     private static void RenderBrowser(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
         sb.Append("<section><h2>").Append(E(S("browser_title", []))).Append("</h2>");
@@ -937,6 +1398,70 @@ public sealed class WebServer
         sb.Append("</dl>");
         sb.Append("<p class=hint>").Append(E(S("browser_howto", new object[] { cfg.MixedPort }))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("browser_note", []))).Append("</p></section>");
+    }
+
+    private static readonly (LogView View, string Key, string Query)[] LogViews =
+    {
+        (LogView.All, "log_view_all", "all"),
+        (LogView.Ours, "log_view_ours", "ours"),
+        (LogView.Engine, "log_view_engine", "engine"),
+        (LogView.Crashes, "log_view_crashes", "crashes"),
+    };
+
+    private static void RenderLog(
+        StringBuilder sb, CehoConfig cfg, LogView view, Func<string, object[], string> S)
+    {
+        sb.Append("<section><h2>").Append(E(S("log_title", []))).Append("</h2>");
+        sb.Append("<p class=lede>").Append(E(S("log_lede", []))).Append("</p>");
+
+        var crashes = Log.Crashes();
+        if (crashes.Count > 0)
+        {
+            var last = crashes[0];
+            sb.Append("<div class=\"flash err\"><b>")
+              .Append(E(S("log_crashes", new object[] { crashes.Count }))).Append("</b><br>")
+              .Append(E(S("log_crash_last", new object[] { last.When.ToString("dd.MM HH:mm"), last.Context })))
+              .Append("</div>");
+            sb.Append("<pre class=logbox>");
+            foreach (var line in last.Lines.Take(20)) sb.Append(E(line)).Append('\n');
+            sb.Append("</pre>");
+        }
+        else sb.Append("<p class=hint>").Append(E(S("log_no_crashes", []))).Append("</p>");
+
+        // Журнал один, поэтому вид — это фильтр по нему, а не другой файл.
+        sb.Append("<div class=row>");
+        foreach (var (v, key, query) in LogViews)
+            sb.Append("<a class=\"pill").Append(v == view ? " on" : "")
+              .Append("\" href=\"/?tab=log&view=").Append(query).Append("\">")
+              .Append(E(S(key, []))).Append("</a>");
+        sb.Append("</div>");
+
+        var lines = Log.Tail(200, view);
+        if (lines.Count == 0)
+            sb.Append("<p class=empty>").Append(E(S("log_empty", []))).Append("</p>");
+        else
+        {
+            sb.Append("<pre class=logbox>");
+            foreach (var line in lines) sb.Append(E(line)).Append('\n');
+            sb.Append("</pre>");
+        }
+
+        var current = LogViews.First(v => v.View == view).Query;
+        sb.Append("<p class=hint><a href=\"/log/download?view=").Append(current).Append("\">")
+          .Append(E(S("log_download", []))).Append("</a> · ").Append(E(Log.FilePath ?? "")).Append("</p>");
+
+        sb.Append("<form class=row method=post action=/log/clear><input type=hidden name=tab value=log>")
+          .Append("<button class=danger>").Append(E(S("log_clear", []))).Append("</button></form>");
+
+        sb.Append("<form class=row method=post action=/log/level><input type=hidden name=tab value=log>");
+        sb.Append("<span style=\"align-self:center\">").Append(E(S("log_level", []))).Append(":</span>");
+        sb.Append("<select name=level style=\"flex:0 0 160px\">");
+        foreach (var level in new[] { "warn", "info", "debug", "error" })
+            sb.Append("<option value=").Append(level)
+              .Append(cfg.EngineLogLevel == level ? " selected" : "").Append('>')
+              .Append(level).Append("</option>");
+        sb.Append("</select><button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form>");
+        sb.Append("<p class=hint>").Append(E(S("log_level_hint", []))).Append("</p></section>");
     }
 
     private static void RenderAccess(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)

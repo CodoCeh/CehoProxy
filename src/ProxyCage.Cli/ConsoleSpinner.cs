@@ -11,6 +11,8 @@ public sealed class ConsoleSpinner : IDisposable
     private volatile string _currentStatus;
     private readonly bool _cursorWasVisible = true;
     private bool _done;
+    private bool _stopped;
+    private volatile int _percent = -1;
 
     private static readonly string[] Frames = Os.IsWindows
         ? new[] { "|", "/", "-", "\\" }
@@ -39,7 +41,7 @@ public sealed class ConsoleSpinner : IDisposable
                 {
                     var frame = Frames[i++ % Frames.Length];
                     var sec = _sw.Elapsed.Seconds;
-                    var text = $"  {frame} {_currentStatus} ({sec}с)";
+                    var text = $"  {frame} {Bar(_percent)}{_currentStatus} ({sec}с)";
                     try
                     {
                         var width = 79;
@@ -60,6 +62,18 @@ public sealed class ConsoleSpinner : IDisposable
         }
     }
 
+    private static string Bar(int percent)
+    {
+        if (percent < 0) return "";
+
+        const int width = 10;
+        var filled = Math.Clamp(percent * width / 100, 0, width);
+        var glyphs = Os.IsWindows
+            ? new string('#', filled) + new string('.', width - filled)
+            : new string('█', filled) + new string('░', width - filled);
+        return $"[{glyphs}] {percent,3}%  ";
+    }
+
     public void Update(string status)
     {
         _currentStatus = status;
@@ -67,6 +81,30 @@ public sealed class ConsoleSpinner : IDisposable
         {
             Console.WriteLine("  " + status);
         }
+    }
+
+    public void Update(string status, int percent)
+    {
+        _percent = Math.Clamp(percent, 0, 100);
+        _currentStatus = status;
+        if (Console.IsOutputRedirected)
+        {
+            Console.WriteLine($"  {percent,3}%  {status}");
+        }
+    }
+
+    /// <summary>Тот же способ рассказывать об этапах, что и у панели.</summary>
+    public IStageReport AsReport() => new SpinnerReport(this);
+
+    private sealed class SpinnerReport : IStageReport
+    {
+        private readonly ConsoleSpinner _spinner;
+
+        public SpinnerReport(ConsoleSpinner spinner) => _spinner = spinner;
+
+        public void Stage(string text, int percent) => _spinner.Update(text, percent);
+
+        public void Note(string text) => _spinner.Update(text);
     }
 
     public void Done(string message)
@@ -83,6 +121,10 @@ public sealed class ConsoleSpinner : IDisposable
 
     private void Stop()
     {
+        // Done и Dispose оба гасят спиннер: второй заход не должен ронять команду.
+        if (_stopped) return;
+        _stopped = true;
+
         _cts.Cancel();
         try { _task.Wait(150); } catch { }
         _cts.Dispose();
