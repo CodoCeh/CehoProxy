@@ -59,90 +59,141 @@ public static class TunCleanup
     public static int RemoveGhostAdapters(Action<string>? log = null, string? tunAddress = null)
     {
         var removed = 0;
-        foreach (var (name, instanceId) in OurAdapters(log, tunAddress))
+        foreach (var (name, instanceId) in Removable(WintunDevices(), Adapter(tunAddress), log))
         {
             var (code, _) = Os.Run("pnputil", $"/remove-device \"{instanceId}\"", 15000);
-            if (code == 0)
-            {
-                removed++;
-                log?.Invoke($"удалён залипший TUN-адаптер {name}: {instanceId}");
-                // Устройство исчезает не мгновенно, а движок сразу за нами создаёт свой
-                // с тем же именем — без паузы он ловит «файл уже существует».
-                Thread.Sleep(1500);
-            }
+            if (code != 0) continue;
+
+            removed++;
+            log?.Invoke($"удалён залипший TUN-адаптер {name}: {instanceId}");
+
+            if (!WaitUntilGone(instanceId))
+                log?.Invoke($"устройство {instanceId} ещё держится — движок может не встать");
         }
         return removed;
     }
 
     /// <summary>
-    /// На той же Wintun работают и другие клиенты (Happ, Nekoray и прочие), а их адаптеры
-    /// с виду не отличаются от нашего. Поэтому берём только наш: по имени интерфейса,
-    /// а для туннелей, поднятых старыми версиями, — по адресу. Не узнали своего — не трогаем ничего.
+    /// pnputil отвечает раньше, чем Windows успевает убрать устройство, а движок сразу за нами
+    /// создаёт своё с тем же именем и ловит «файл уже существует». Поэтому ждём по-настоящему.
     /// </summary>
-    private static IEnumerable<(string Name, string InstanceId)> OurAdapters(
-        Action<string>? log, string? tunAddress) =>
-        Removable(WindowsNetAdapters(log),
-            tunAddress is null ? null : InterfaceWithAddress(tunAddress),
-            IsLive, log);
+    private static bool WaitUntilGone(string instanceId, int timeoutMs = 15000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (!WintunDevices().Contains(instanceId, StringComparer.OrdinalIgnoreCase)) return true;
+            Thread.Sleep(500);
+        }
+        return false;
+    }
+
+    /// <summary>Сетевой интерфейс за Wintun-устройством, если он вообще есть.</summary>
+    public sealed record Nic(string Name, bool Up, bool Ours);
+
+    /// <summary>Все Wintun-устройства системы, включая те, у которых адаптера уже нет.</summary>
+    private static IReadOnlyList<string> WintunDevices()
+    {
+        var (_, output) = Os.Run("pnputil", "/enum-devices /class Net", 20000);
+        var ids = new List<string>();
+        foreach (var rawLine in output.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            var at = line.IndexOf(@"SWD\Wintun\", StringComparison.OrdinalIgnoreCase);
+            if (at >= 0) ids.Add(line[at..].Trim());
+        }
+        return ids;
+    }
 
     /// <summary>
-    /// Что из адаптеров системы можно убрать. Свой — по имени или по адресу туннеля.
-    /// Чужой работающий туннель не трогаем никогда: за ним живой клиент. А вот мёртвый
-    /// адаптер трафика не несёт, зато мешает поднять свой — такой снимаем, чей бы он ни был.
+    /// Что можно убрать. Своё — по адресу туннеля или по имени интерфейса. Чужой работающий
+    /// туннель не трогаем никогда: за ним живой клиент и чей-то трафик. А устройство без
+    /// живого адаптера трафика не несёт, зато мешает поднять свой туннель — такое снимаем,
+    /// чьим бы оно ни было: клиент, которому оно нужно, создаст его заново.
     /// </summary>
     public static IReadOnlyList<(string Name, string InstanceId)> Removable(
-        IEnumerable<(string Name, string InstanceId)> adapters,
-        string? ourInterface,
-        Func<string, bool> isLive,
-        Action<string>? log = null)
+        IEnumerable<string> deviceIds, Func<string, Nic?> adapter, Action<string>? log = null)
     {
         var removable = new List<(string, string)>();
-        foreach (var (name, id) in adapters)
+        foreach (var id in deviceIds)
         {
             if (!id.Contains(@"SWD\WINTUN\", StringComparison.OrdinalIgnoreCase)) continue;
 
-            var ours = name.StartsWith(InterfaceName, StringComparison.OrdinalIgnoreCase)
-                       || string.Equals(name, ourInterface, StringComparison.OrdinalIgnoreCase);
+            var nic = adapter(id);
+            if (nic is null) { removable.Add(("без адаптера", id)); continue; }
 
-            if (ours || !isLive(name)) removable.Add((name, id));
-            else log?.Invoke($"чужой туннель {name} работает, не трогаю");
+            if (nic.Ours || !nic.Up) removable.Add((nic.Name, id));
+            else log?.Invoke($"чужой туннель {nic.Name} работает, не трогаю");
         }
         return removable;
     }
 
-    /// <summary>Живой ли интерфейс: по нему видно, что за адаптером есть работающий туннель.</summary>
-    public static bool IsLive(string name)
+    /// <summary>
+    /// Wintun даёт устройству и сетевому интерфейсу один и тот же GUID — по нему устройство
+    /// из pnputil и находит свой интерфейс. Имена для этого не нужны: они локализованные
+    /// и в консоли приезжают битыми.
+    /// </summary>
+    private static Func<string, Nic?> Adapter(string? tunAddress)
+    {
+        var ourIp = tunAddress?.Split('/')[0].Trim();
+
+        return deviceId =>
+        {
+            var guid = GuidOf(deviceId);
+            if (guid is null) return null;
+
+            // Устройство без интерфейса — самый опасный вывод: если система просто не успела
+            // показать интерфейс, мы снесём живой чужой туннель. Поэтому спрашиваем дважды.
+            return Look(guid, ourIp) ?? Again(guid, ourIp);
+        };
+    }
+
+    private static Nic? Again(string guid, string? ourIp)
+    {
+        Thread.Sleep(700);
+        return Look(guid, ourIp);
+    }
+
+    private static Nic? Look(string guid, string? ourIp)
     {
         try
         {
-            return NetworkInterface.GetAllNetworkInterfaces()
-                .Any(n => n.OperationalStatus == OperationalStatus.Up
-                          && string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase));
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (!string.Equals(nic.Id, guid, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var ours = nic.Name.StartsWith(InterfaceName, StringComparison.OrdinalIgnoreCase)
+                           || (ourIp is not null && HasAddress(nic, ourIp));
+
+                return new Nic(nic.Name, nic.OperationalStatus == OperationalStatus.Up, ours);
+            }
         }
         catch
         {
-            return true;
+            // Не смогли спросить систему — считаем туннель чужим и живым, чтобы не снести лишнее.
+            return new Nic("неизвестный", true, false);
         }
+        return null;
     }
 
-    private static IEnumerable<(string Name, string InstanceId)> WindowsNetAdapters(Action<string>? log)
+    private static string? GuidOf(string deviceId)
     {
-        const string script = "Get-NetAdapter -IncludeHidden | ForEach-Object { $_.Name + '|' + $_.PnPDeviceID }";
-        var (code, output) = Os.Run("powershell", $"-NoProfile -NonInteractive -Command \"{script}\"", 20000);
-        if (code != 0)
-        {
-            log?.Invoke("не удалось перечислить сетевые адаптеры, следы оставляю как есть");
-            return Array.Empty<(string, string)>();
-        }
+        var at = deviceId.LastIndexOf('{');
+        return at < 0 ? null : deviceId[at..].Trim();
+    }
 
-        var found = new List<(string, string)>();
-        foreach (var raw in output.Split('\n'))
+    private static bool HasAddress(NetworkInterface nic, string ip)
+    {
+        try
         {
-            var parts = raw.Trim().Split('|', 2);
-            if (parts.Length == 2 && parts[0].Length > 0 && parts[1].Length > 0)
-                found.Add((parts[0].Trim(), parts[1].Trim()));
+            return nic.GetIPProperties().UnicastAddresses
+                .Any(a => a.Address.AddressFamily == AddressFamily.InterNetwork
+                          && a.Address.ToString() == ip);
         }
-        return found;
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>Имя интерфейса, на котором висит этот адрес: так узнаётся наш старый туннель.</summary>

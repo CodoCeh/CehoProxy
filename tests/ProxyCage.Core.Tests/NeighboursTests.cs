@@ -5,29 +5,29 @@ namespace ProxyCage.Core.Tests;
 
 /// <summary>
 /// Живой случай: на машине рядом с нами стоял Happ на той же Wintun. Наша уборка следов
-/// сносила его адаптер, Happ поднимался заново уже без своего прокси, а браузер оставался
-/// настроен на мёртвый порт — и выглядело это как «cehoproxy убил интернет».
+/// сносила его работающий туннель, Happ поднимался заново уже без своего прокси, а браузер
+/// оставался настроен на мёртвый порт — и выглядело это как «cehoproxy убил интернет».
 /// </summary>
 public class NeighboursTests
 {
-    private static (string Name, string InstanceId) Wintun(string name) =>
-        (name, @"SWD\WINTUN\{0DCCC63E-5622-3880-1E09-7CC9C46AD7B4}");
+    private const string Alien = @"SWD\Wintun\{830F7916-3A43-C3E7-CDDE-4E56048896B0}";
+    private const string Ours = @"SWD\Wintun\{0E62885F-8AB7-F41A-DDA4-80DC8653A8F1}";
 
-    private static bool Live(string name) => true;
-
-    private static bool Dead(string name) => false;
+    private static Func<string, TunCleanup.Nic?> Adapters(params (string Id, TunCleanup.Nic? Nic)[] map) =>
+        id => map.FirstOrDefault(m => m.Id == id).Nic;
 
     [Fact]
     public void A_working_tunnel_of_another_client_is_never_touched()
     {
         var seen = new List<string>();
         var removable = TunCleanup.Removable(
-            new[] { Wintun("happ-tun"), Wintun(TunCleanup.InterfaceName) },
-            ourInterface: null,
-            isLive: Live,
+            new[] { Alien, Ours },
+            Adapters(
+                (Alien, new TunCleanup.Nic("happ-tun", Up: true, Ours: false)),
+                (Ours, new TunCleanup.Nic("tun0", Up: true, Ours: true))),
             seen.Add);
 
-        Assert.Equal(new[] { TunCleanup.InterfaceName }, removable.Select(a => a.Name));
+        Assert.Equal(new[] { Ours }, removable.Select(a => a.InstanceId));
         Assert.Contains(seen, m => m.Contains("happ-tun"));
     }
 
@@ -37,38 +37,29 @@ public class NeighboursTests
         // Трафика за ним нет, а свой туннель поднять он мешает: движок упирается
         // в «файл уже существует». Клиент, которому он нужен, создаст его заново.
         var removable = TunCleanup.Removable(
-            new[] { Wintun("happ-tun") }, ourInterface: null, isLive: Dead);
+            new[] { Alien },
+            Adapters((Alien, new TunCleanup.Nic("happ-tun", Up: false, Ours: false))));
 
-        Assert.Equal(new[] { "happ-tun" }, removable.Select(a => a.Name));
+        Assert.Single(removable);
     }
 
     [Fact]
-    public void Our_own_tunnel_is_removed_even_while_it_works()
+    public void A_device_left_without_an_adapter_is_removed_too()
     {
-        var removable = TunCleanup.Removable(
-            new[] { Wintun("happ-tun"), Wintun("tun0") }, ourInterface: "tun0", isLive: Live);
+        // Такие оставляет неудачная попытка запуска движка: адаптера уже нет, а устройство
+        // ещё держит имя и GUID.
+        var removable = TunCleanup.Removable(new[] { Ours }, Adapters());
 
-        Assert.Equal(new[] { "tun0" }, removable.Select(a => a.Name));
+        Assert.Equal(new[] { Ours }, removable.Select(a => a.InstanceId));
     }
 
     [Fact]
-    public void Adapters_that_are_not_tunnels_are_out_of_scope()
+    public void Devices_that_are_not_tunnels_are_out_of_scope()
     {
         var removable = TunCleanup.Removable(
-            new[] { (TunCleanup.InterfaceName, @"PCI\VEN_8086&DEV_51F0") },
-            ourInterface: null, isLive: Dead);
+            new[] { @"PCI\VEN_8086&DEV_51F0&SUBSYS_02448086&REV_01\{0E62885F}" }, Adapters());
 
         Assert.Empty(removable);
-    }
-
-    [Fact]
-    public void A_live_interface_is_recognised_by_the_system()
-    {
-        var loopback = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-            .First(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up);
-
-        Assert.True(TunCleanup.IsLive(loopback.Name));
-        Assert.False(TunCleanup.IsLive("такого-адаптера-нет"));
     }
 
     [Fact]

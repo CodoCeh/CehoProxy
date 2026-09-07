@@ -112,19 +112,17 @@ public class PlatformTests
         Assert.Equal("gvisor", (string?)tun["stack"]);
 
         if (Os.IsMac)
-        {
             Assert.Null(tun["strict_route"]);
-            Assert.Null(tun["interface_name"]);
-        }
         else
-        {
             Assert.True((bool?)tun["strict_route"]);
-            // Своё имя интерфейса — чтобы уборка следов узнавала наш адаптер среди чужих.
-            Assert.Equal(TunCleanup.InterfaceName, (string?)tun["interface_name"]);
-        }
+
+        // Имя своё только на Linux: на Windows оно закрепляет GUID адаптера, а вместе с ним
+        // и адрес прошлого запуска — движок потом не может его добавить.
+        if (!Os.IsLinux) Assert.Null(tun["interface_name"]);
 
         if (Os.IsLinux)
         {
+            Assert.Equal(TunCleanup.InterfaceName, (string?)tun["interface_name"]);
             Assert.Equal(TunCleanup.Iproute2TableIndex, (int?)tun["iproute2_table_index"]);
             Assert.Equal(TunCleanup.Iproute2RuleIndex, (int?)tun["iproute2_rule_index"]);
         }
