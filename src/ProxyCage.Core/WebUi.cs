@@ -27,11 +27,11 @@ public static class WebUi
     }
     .wrap{max-width:900px;margin:0 auto;padding:28px 20px 72px}
 
-    @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-    section,header,footer{animation:rise .45s cubic-bezier(.2,.7,.3,1) both}
-    section:nth-of-type(1){animation-delay:.03s} section:nth-of-type(2){animation-delay:.06s}
-    section:nth-of-type(3){animation-delay:.09s} section:nth-of-type(4){animation-delay:.12s}
-    section:nth-of-type(5){animation-delay:.15s} section:nth-of-type(6){animation-delay:.18s}
+    /* Появление только прозрачностью. Страница перерисовывается сама, пока идёт операция,
+       и любой сдвиг на этих перерисовках выглядит как пляска строк. */
+    @keyframes rise{from{opacity:0}to{opacity:1}}
+    section,header,footer{animation:rise .3s ease both}
+    body.busy section,body.busy header,body.busy footer{animation:none}
     @media (prefers-reduced-motion:reduce){
       section,header,footer{animation:none}
       *{transition:none!important}
@@ -67,9 +67,34 @@ public static class WebUi
     .status .detail{color:var(--muted);font-size:13px;margin-left:auto;text-align:right;
       font-variant-numeric:tabular-nums}
 
-    table{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:14px}
-    th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
-    th{font-size:12px;font-weight:600;color:var(--muted)}
+    /* Ширины столбцов задаём сами: иначе браузер считает их от содержимого,
+       и на каждом обновлении страницы черты столбцов уезжают в сторону. */
+    table{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:14px;table-layout:fixed}
+    th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:middle;
+      overflow-wrap:anywhere}
+    /* Заголовки переносим только по пробелу: разорванное посередине слово читается как опечатка. */
+    th{font-size:12px;font-weight:600;color:var(--muted);overflow-wrap:normal}
+    table.t-apps th:nth-child(1){width:26%}
+    table.t-apps th:nth-child(3){width:124px}
+    table.t-subs th:nth-child(1){width:118px}
+    table.t-subs th:nth-child(3){width:108px}
+    table.t-subs th:nth-child(4){width:112px}
+    table.t-subs th:nth-child(5){width:21%}
+    table.t-subs th:nth-child(6){width:124px}
+    table.t-countries th:nth-child(1){width:118px}
+    table.t-countries th:nth-child(3){width:74px}
+    table.t-countries th:nth-child(4){width:88px}
+    table.t-countries th:nth-child(5){width:116px}
+    table.t-countries th:nth-child(6){width:24%}
+    table.t-nodes th:nth-child(1){width:118px}
+    table.t-nodes th:nth-child(3){width:26%}
+    table.t-nodes th:nth-child(4){width:98px}
+    table.t-nodes th:nth-child(5){width:116px}
+    table.t-nodes th:nth-child(6){width:15%}
+    /* На узком экране заданные ширины не влезают. Тогда таблица едет вбок внутри своей
+       обёртки, а не сминает столбцы до переноса по буквам. */
+    .scroll{overflow-x:auto}
+    @media (max-width:760px){table{min-width:720px}}
     tbody tr{transition:background .15s ease}
     tbody tr:hover{background:var(--panel)}
     td.path{font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:12.5px;
@@ -105,27 +130,34 @@ public static class WebUi
     button[disabled]:hover{background:transparent}
     button[disabled]:active{transform:none}
     label.check{display:inline-flex;align-items:center;gap:8px;min-height:40px;cursor:pointer}
-    label.field{display:inline-flex;align-items:center;gap:8px;min-height:40px}
+    label.field{display:inline-flex;align-items:center;gap:8px;min-height:40px;max-width:100%}
     label.field span{color:var(--muted);font-size:13px;white-space:nowrap}
-    label.field input{width:9ch}
+    /* Поле обязано ужиматься вместе с окном: минимальная ширина из общего правила
+       вылезала за край страницы и тянула за собой полосу прокрутки. */
+    label.field input{flex:1;min-width:0}
+    label.field input[inputmode=numeric]{flex:none;width:9ch}
     input[type=checkbox]{accent-color:var(--brand-ink);width:17px;height:17px;cursor:pointer}
     td:last-child{white-space:nowrap;text-align:right}
-    .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-    .actions form{margin:0}
-    .actions button{min-height:34px;padding:7px 14px}
+    /* Ячейку с кнопками нельзя делать flex-контейнером: тогда она выпадает из табличной
+       раскладки, перестаёт тянуться на высоту строки — и её черта висит выше соседних. */
+    td.actions{text-align:right;white-space:nowrap}
+    td.actions form{display:inline-block;margin:0 0 0 6px;vertical-align:middle}
+    td.actions button{min-height:34px;padding:7px 14px}
     .flash{padding:12px 15px;border:1px solid var(--line);border-radius:var(--radius);
       margin-bottom:16px;background:var(--surface)}
     .flash.err{border-color:var(--danger-ink);color:var(--danger-ink)}
     .flash.ok{border-color:var(--ok-ink);color:var(--ok-ink)}
     .flash b{display:block;margin-bottom:2px}
 
-    ol.steps{margin:0;padding-left:20px;color:var(--subtext);max-width:70ch}
-    ol.steps li{margin-bottom:8px}
+    ol.steps,ul.steps{margin:0;padding-left:20px;color:var(--subtext);max-width:70ch}
+    ol.steps li,ul.steps li{margin-bottom:8px}
     code,.mono{font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:12.5px;
       background:var(--panel2);padding:2px 6px;border-radius:6px}
-    .kv{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:10px 0;
+    .kv{display:grid;grid-template-columns:190px 1fr;gap:8px 16px;margin:10px 0;
       font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:13px}
-    .kv dt{color:var(--muted)} .kv dd{margin:0}
+    .kv dt{color:var(--muted)} .kv dd{margin:0;overflow-wrap:anywhere}
+    @media (max-width:520px){.kv{grid-template-columns:1fr;gap:2px 0}
+      .kv dd{margin-bottom:8px}}
 
     footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
       color:var(--muted);font-size:13px;display:flex;gap:14px;align-items:center;
@@ -155,8 +187,11 @@ public static class WebUi
     .job.run .bar>span{background:linear-gradient(90deg,var(--brand-ink),var(--brand-strong))}
     .job.err .bar>span{background:var(--danger-ink)}
     .bar.thin{height:5px;margin:5px 0 0;max-width:170px}
-    .job-stage{font-size:13.5px;color:var(--subtext)}
-    .job-foot{font-size:12.5px;color:var(--muted);margin-top:4px}
+    /* Этап меняется каждые полсекунды. Разрешить ему перенос — значит дёргать вверх-вниз
+       всё, что ниже, поэтому строка ровно одна, а длинное имя прячется за многоточие. */
+    .job-stage{font-size:13.5px;color:var(--subtext);min-height:21px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .job-foot{font-size:12.5px;color:var(--muted);margin-top:4px;min-height:19px}
     .job-foot a{color:var(--muted)}
     .job-steps{margin-top:8px;font-size:12.5px;color:var(--muted)}
     .job-steps summary{cursor:pointer}

@@ -68,7 +68,6 @@ public static class SingBoxConfigGenerator
                     ["tag"] = "tun-in",
                     ["address"] = new JsonArray { settings.TunAddress },
                     ["auto_route"] = true,
-                    ["strict_route"] = true,
                     ["stack"] = "gvisor",
                 },
                 new JsonObject
@@ -233,7 +232,24 @@ public static class SingBoxConfigGenerator
                 ["rules"] = new JsonArray
                 {
                     new JsonObject { ["action"] = "sniff" },
-                    new JsonObject { ["protocol"] = "dns", ["action"] = "hijack-dns" },
+
+                    // Перехватываем только запросы имён от выбранных программ. Запросы остальной
+                    // системы проходят насквозь к её обычному серверу имён: чужие имена не наше дело.
+                    new JsonObject
+                    {
+                        ["protocol"] = "dns",
+                        ["process_path_regex"] = appRegexes.DeepClone(),
+                        ["action"] = "hijack-dns",
+                    },
+
+                    // Windows видит наш адаптер и заодно спрашивает имена у него. Молчать в ответ
+                    // нельзя — система будет ждать и тормозить, поэтому отвечаем через её же сервер.
+                    new JsonObject
+                    {
+                        ["protocol"] = "dns",
+                        ["ip_cidr"] = new JsonArray { cfg.TunAddress },
+                        ["action"] = "hijack-dns",
+                    },
                     new JsonObject { ["inbound"] = new JsonArray { "mixed-in" }, ["outbound"] = ProxyTag },
                     new JsonObject { ["process_path_regex"] = appRegexes.DeepClone(), ["outbound"] = ProxyTag },
                 },
@@ -302,6 +318,10 @@ public static class SingBoxConfigGenerator
 
     private static JsonObject BuildTun(CehoConfig cfg)
     {
+        // strict_route не включаем нигде. Он ставит на всю машину правила брандмауэра, которые
+        // запрещают трафику идти мимо туннеля, — от этого ломаются чужие VPN, локальная сеть
+        // и принтеры. Нам чужой трафик держать не надо: свои программы мы узнаём по процессу,
+        // а домены берём из подсматривания имени в соединении, поэтому чужой резолвер нам не мешает.
         var tun = new JsonObject
         {
             ["type"] = "tun",
@@ -311,12 +331,10 @@ public static class SingBoxConfigGenerator
             ["stack"] = "gvisor",
         };
 
-        if (!Os.IsMac) tun["strict_route"] = true;
-
         // На Windows имя не задаём намеренно. Своё имя даёт адаптеру устойчивый GUID, Windows
         // помнит для него адрес прошлого запуска и возвращает его при создании — движок падает
         // на «Cannot create a file when that file already exists». Свой адаптер уборка следов
-        // узнаёт по адресу туннеля, а чужой работающий не трогает по признаку живого интерфейса.
+        // узнаёт по записи, сделанной при запуске, и по адресу туннеля.
         if (Os.IsLinux)
         {
             tun["interface_name"] = TunCleanup.InterfaceName;
@@ -416,7 +434,18 @@ public static class SingBoxConfigGenerator
         var rules = new JsonArray
         {
             new JsonObject { ["action"] = "sniff" },
-            new JsonObject { ["protocol"] = "dns", ["action"] = "hijack-dns" },
+            new JsonObject
+            {
+                ["protocol"] = "dns",
+                ["process_path_regex"] = new JsonArray { folderRegex },
+                ["action"] = "hijack-dns",
+            },
+            new JsonObject
+            {
+                ["protocol"] = "dns",
+                ["ip_cidr"] = new JsonArray { settings.TunAddress },
+                ["action"] = "hijack-dns",
+            },
             new JsonObject
             {
                 ["inbound"] = new JsonArray { "mixed-in" },

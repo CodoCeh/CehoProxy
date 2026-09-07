@@ -15,7 +15,7 @@ public sealed class ProxyCageSettings
 
     public int MixedPort { get; set; } = 2080;
 
-    public string TunAddress { get; set; } = "172.19.0.1/30";
+    public string TunAddress { get; set; } = CehoConfig.DefaultTunAddress;
     public string UrlTestUrl { get; set; } = "https://www.gstatic.com/generate_204";
     public string LogLevel { get; set; } = "warn";
 }

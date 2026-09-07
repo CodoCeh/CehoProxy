@@ -96,10 +96,17 @@ public class PlatformTests
     }
 
     [Fact]
-    public void System_dns_is_hijacked_not_routed()
+    public void Only_the_chosen_apps_have_their_names_resolved_by_us()
     {
-        var rules = Runtime()["route"]!["rules"]!.AsArray();
-        Assert.Contains(rules, r => (string?)r?["action"] == "hijack-dns");
+        // Запросы имён от остальной системы через нас не идут: там чужие программы,
+        // и подменять им ответы мы не вправе. Исключение — запрос, присланный прямо
+        // на наш адаптер: молчать в ответ значит подвесить систему.
+        var hijack = Runtime()["route"]!["rules"]!.AsArray()
+            .Where(r => (string?)r?["action"] == "hijack-dns").ToList();
+
+        Assert.All(hijack, r => Assert.Equal("dns", (string?)r!["protocol"]));
+        Assert.Single(hijack, r => r!["process_path_regex"] is not null);
+        Assert.Single(hijack, r => (string?)r!["ip_cidr"]?[0] == new CehoConfig().TunAddress);
     }
 
     [Fact]
@@ -111,10 +118,9 @@ public class PlatformTests
         Assert.True((bool?)tun["auto_route"]);
         Assert.Equal("gvisor", (string?)tun["stack"]);
 
-        if (Os.IsMac)
-            Assert.Null(tun["strict_route"]);
-        else
-            Assert.True((bool?)tun["strict_route"]);
+        // Правил брандмауэра на всю машину не ставим ни на одной системе: они ломают
+        // чужие туннели и локальную сеть, а нам для своих программ не нужны.
+        Assert.Null(tun["strict_route"]);
 
         // Имя своё только на Linux: на Windows оно закрепляет GUID адаптера, а вместе с ним
         // и адрес прошлого запуска — движок потом не может его добавить.

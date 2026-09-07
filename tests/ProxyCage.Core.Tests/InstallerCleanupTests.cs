@@ -35,6 +35,7 @@ public class InstallerCleanupTests : IDisposable
         Touch("panel.port", "8777");
         Touch("cehoproxy.pid", "4242");
         Touch("chp.cmd");
+        Touch("tun-devices.txt", "SWD\\Wintun\\{old}");
         Touch("sing-box-1.9.0-windows-amd64.zip");
         Touch("engine-tmp/sing-box.exe");
 
@@ -50,9 +51,10 @@ public class InstallerCleanupTests : IDisposable
         Assert.False(Exists("panel.port"));
         Assert.False(Exists("cehoproxy.pid"));
         Assert.False(Exists("chp.cmd"));
+        Assert.False(Exists("tun-devices.txt"));
         Assert.False(Exists("sing-box-1.9.0-windows-amd64.zip"));
         Assert.False(Directory.Exists(Path.Combine(_root, "engine-tmp")));
-        Assert.Equal(8, wiped);
+        Assert.Equal(9, wiped);
     }
 
     [Fact]
@@ -60,11 +62,13 @@ public class InstallerCleanupTests : IDisposable
     {
         Touch("cehoproxy.log", "старые записи");
         Touch("sing-box.exe", "движок");
+        Touch("ceho-engine.exe", "свой движок");
 
         Installer.WipeVersionLeftovers(_root);
 
         Assert.Equal("старые записи", File.ReadAllText(Path.Combine(_root, "cehoproxy.log")));
         Assert.True(Exists("sing-box.exe"));
+        Assert.True(Exists("ceho-engine.exe"));
     }
 
     [Fact]

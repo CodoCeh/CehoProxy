@@ -17,17 +17,26 @@ public static class TunCleanup
     {
         if (Os.IsWindows)
         {
-            var (_, list) = Os.Run("wmic",
-                "process where \"name='sing-box.exe'\" get processid,commandline /format:csv", 15000);
+            var home = Path.GetDirectoryName(runtimeConfigPath) ?? "";
             var killed = 0;
-            foreach (var line in list.Split('\n'))
+            foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
             {
-                if (!line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)) continue;
-                var pid = line.Split(',').LastOrDefault()?.Trim();
-                if (int.TryParse(pid, out var id) && Os.Run("taskkill", $"/PID {id} /F", 10000).Code == 0)
+                var (_, list) = Os.Run("wmic",
+                    $"process where \"name='{name}'\" get processid,commandline /format:csv", 15000);
+                foreach (var line in list.Split('\n'))
                 {
-                    killed++;
-                    log?.Invoke($"остановлен движок, процесс {id}");
+                    // Happ тоже запускает sing-box.exe. Убиваем только процесс из нашей папки.
+                    var ours = line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
+                               || (home.Length > 0 && line.Contains(home, StringComparison.OrdinalIgnoreCase)
+                                   && line.Contains(Os.EngineFileName, StringComparison.OrdinalIgnoreCase));
+                    if (!ours) continue;
+
+                    var pid = line.Split(',').LastOrDefault()?.Trim();
+                    if (int.TryParse(pid, out var id) && Os.Run("taskkill", $"/PID {id} /F", 10000).Code == 0)
+                    {
+                        killed++;
+                        log?.Invoke($"остановлен движок, процесс {id}");
+                    }
                 }
             }
             return killed;
@@ -49,17 +58,19 @@ public static class TunCleanup
         return stopped;
     }
 
-    public static int RemoveLeftovers(Action<string>? log = null, string? tunAddress = null) => Os.Kind switch
-    {
-        OsKind.Windows => RemoveGhostAdapters(log, tunAddress),
-        OsKind.Linux => CleanLinux(log),
-        _ => CleanMac(log),
-    };
+    public static int RemoveLeftovers(Action<string>? log = null, string? tunAddress = null, string? root = null)
+        => Os.Kind switch
+        {
+            OsKind.Windows => RemoveGhostAdapters(log, tunAddress, root),
+            OsKind.Linux => CleanLinux(log),
+            _ => CleanMac(log),
+        };
 
-    public static int RemoveGhostAdapters(Action<string>? log = null, string? tunAddress = null)
+    public static int RemoveGhostAdapters(
+        Action<string>? log = null, string? tunAddress = null, string? root = null)
     {
         var removed = 0;
-        foreach (var (name, instanceId) in Removable(WintunDevices(), Adapter(tunAddress), log))
+        foreach (var (name, instanceId) in Removable(WintunDevices(), Adapter(tunAddress), Ours(root), log))
         {
             var (code, _) = Os.Run("pnputil", $"/remove-device \"{instanceId}\"", 15000);
             if (code != 0) continue;
@@ -92,6 +103,55 @@ public static class TunCleanup
     public sealed record Nic(string Name, bool Up, bool Ours);
 
     /// <summary>Все Wintun-устройства системы, включая те, у которых адаптера уже нет.</summary>
+    public static IReadOnlyList<string> Devices() => Os.IsWindows ? WintunDevices() : Array.Empty<string>();
+
+    /// <summary>
+    /// Убирать можно только то, что создали сами, поэтому запоминаем устройство после
+    /// запуска движка: то, что держит наш адрес, и то, что уже было записано.
+    /// </summary>
+    public static void Remember(string root, string? tunAddress = null, Action<string>? log = null)
+    {
+        if (!Os.IsWindows) return;
+
+        var adapter = Adapter(tunAddress);
+        var mine = Mine(WintunDevices(), Ours(root), id => adapter(id)?.Ours == true);
+
+        try { File.WriteAllLines(OursFile(root), mine); }
+        catch (Exception ex) { log?.Invoke($"не запомнил свой TUN-адаптер: {ex.Message}"); }
+    }
+
+    /// <summary>
+    /// Своё — то, что уже записано, или то, что сейчас держит наш адрес. Адрес должен быть
+    /// своим, не заводским 172.19.0.1: иначе Happ на том же адресе попадёт в список.
+    /// </summary>
+    public static IReadOnlyList<string> Mine(
+        IEnumerable<string> known,
+        IEnumerable<string> recorded, Func<string, bool> ours)
+    {
+        var written = recorded.ToList();
+
+        return known
+            .Where(id => written.Contains(id, StringComparer.OrdinalIgnoreCase) || ours(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>Устройства, записанные нами как свои. Всё остальное — чужое имущество.</summary>
+    public static IReadOnlyList<string> Ours(string? root)
+    {
+        if (root is null) return Array.Empty<string>();
+        try
+        {
+            var file = OursFile(root);
+            return File.Exists(file)
+                ? File.ReadAllLines(file).Select(l => l.Trim()).Where(l => l.Length > 0).ToList()
+                : Array.Empty<string>();
+        }
+        catch { return Array.Empty<string>(); }
+    }
+
+    private static string OursFile(string root) => Path.Combine(root, "tun-devices.txt");
+
     private static IReadOnlyList<string> WintunDevices()
     {
         var (_, output) = Os.Run("pnputil", "/enum-devices /class Net", 20000);
@@ -106,24 +166,27 @@ public static class TunCleanup
     }
 
     /// <summary>
-    /// Что можно убрать. Своё — по адресу туннеля или по имени интерфейса. Чужой работающий
-    /// туннель не трогаем никогда: за ним живой клиент и чей-то трафик. А устройство без
-    /// живого адаптера трафика не несёт, зато мешает поднять свой туннель — такое снимаем,
-    /// чьим бы оно ни было: клиент, которому оно нужно, создаст его заново.
+    /// Что можно убрать. Только то, что записано как своё. Совпадение адреса или «адаптер
+    /// появился, пока мы стартовали» — не доказательство: Happ живёт на том же Wintun
+    /// и на заводском адресе движка, и мы уже сносили его туннель именно так.
     /// </summary>
     public static IReadOnlyList<(string Name, string InstanceId)> Removable(
-        IEnumerable<string> deviceIds, Func<string, Nic?> adapter, Action<string>? log = null)
+        IEnumerable<string> deviceIds, Func<string, Nic?> adapter,
+        IReadOnlyCollection<string> ours, Action<string>? log = null)
     {
         var removable = new List<(string, string)>();
         foreach (var id in deviceIds)
         {
             if (!id.Contains(@"SWD\WINTUN\", StringComparison.OrdinalIgnoreCase)) continue;
 
-            var nic = adapter(id);
-            if (nic is null) { removable.Add(("без адаптера", id)); continue; }
+            if (!ours.Contains(id, StringComparer.OrdinalIgnoreCase))
+            {
+                log?.Invoke($"чужое устройство {id} не наше, не трогаю");
+                continue;
+            }
 
-            if (nic.Ours || !nic.Up) removable.Add((nic.Name, id));
-            else log?.Invoke($"чужой туннель {nic.Name} работает, не трогаю");
+            var nic = adapter(id);
+            removable.Add((nic?.Name ?? "наш след без адаптера", id));
         }
         return removable;
     }
@@ -163,7 +226,9 @@ public static class TunCleanup
                 if (!string.Equals(nic.Id, guid, StringComparison.OrdinalIgnoreCase)) continue;
 
                 var ours = nic.Name.StartsWith(InterfaceName, StringComparison.OrdinalIgnoreCase)
-                           || (ourIp is not null && HasAddress(nic, ourIp));
+                           || (ourIp is not null
+                               && !CehoConfig.SharesSingBoxTun($"{ourIp}/30")
+                               && HasAddress(nic, ourIp));
 
                 return new Nic(nic.Name, nic.OperationalStatus == OperationalStatus.Up, ours);
             }

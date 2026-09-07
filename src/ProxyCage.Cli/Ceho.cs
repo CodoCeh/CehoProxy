@@ -14,7 +14,7 @@ public static class Ceho
     public static string RuntimeConfigPath => Path.Combine(Root, "singbox.json");
 
     public static string SingBoxPath =>
-        Os.ResolveSingBox(Root) ?? Path.Combine(Root, Os.SingBoxFileName);
+        Os.ResolveSingBox(Root) ?? Path.Combine(Root, Os.EngineFileName);
 
     private static string SubCachePath(string name) => Path.Combine(Root, $"sub-{name}.txt");
 

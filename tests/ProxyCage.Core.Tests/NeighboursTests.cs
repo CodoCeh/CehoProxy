@@ -16,6 +16,8 @@ public class NeighboursTests
     private static Func<string, TunCleanup.Nic?> Adapters(params (string Id, TunCleanup.Nic? Nic)[] map) =>
         id => map.FirstOrDefault(m => m.Id == id).Nic;
 
+    private static readonly string[] Nobodys = Array.Empty<string>();
+
     [Fact]
     public void A_working_tunnel_of_another_client_is_never_touched()
     {
@@ -25,41 +27,143 @@ public class NeighboursTests
             Adapters(
                 (Alien, new TunCleanup.Nic("happ-tun", Up: true, Ours: false)),
                 (Ours, new TunCleanup.Nic("tun0", Up: true, Ours: true))),
-            seen.Add);
+            new[] { Ours }, seen.Add);
 
         Assert.Equal(new[] { Ours }, removable.Select(a => a.InstanceId));
-        Assert.Contains(seen, m => m.Contains("happ-tun"));
+        Assert.Contains(seen, m => m.Contains(Alien, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public void A_dead_adapter_is_removed_whoever_left_it()
+    public void The_engine_file_does_not_share_happ_s_process_name()
     {
-        // Трафика за ним нет, а свой туннель поднять он мешает: движок упирается
-        // в «файл уже существует». Клиент, которому он нужен, создаст его заново.
+        if (!Os.IsWindows) return;
+        Assert.Equal("ceho-engine.exe", Os.EngineFileName);
+        Assert.NotEqual(Os.SingBoxFileName, Os.EngineFileName);
+    }
+
+    [Fact]
+    public void Matching_the_old_shared_address_is_not_enough_to_remove()
+    {
+        // Happ и заводской sing-box живут на 172.19.0.1/30. Совпадение адреса раньше
+        // считалось доказательством «это мы» — и Happ терял свой туннель.
         var removable = TunCleanup.Removable(
             new[] { Alien },
-            Adapters((Alien, new TunCleanup.Nic("happ-tun", Up: false, Ours: false))));
+            Adapters((Alien, new TunCleanup.Nic("sing-tun", Up: true, Ours: true))),
+            Nobodys);
 
-        Assert.Single(removable);
+        Assert.Empty(removable);
     }
 
     [Fact]
-    public void A_device_left_without_an_adapter_is_removed_too()
+    public void A_dead_adapter_of_a_stranger_stays_where_it_is()
     {
-        // Такие оставляет неудачная попытка запуска движка: адаптера уже нет, а устройство
-        // ещё держит имя и GUID.
-        var removable = TunCleanup.Removable(new[] { Ours }, Adapters());
+        // Соблазн убрать велик: мёртвый адаптер мешает поднять свой туннель. Но он чужой,
+        // и мы в системе гости — жалуемся в осмотре, а руками не трогаем.
+        var removable = TunCleanup.Removable(
+            new[] { Alien },
+            Adapters((Alien, new TunCleanup.Nic("happ-tun", Up: false, Ours: false))),
+            Nobodys);
+
+        Assert.Empty(removable);
+    }
+
+    [Fact]
+    public void Our_own_device_is_removed_even_without_an_adapter()
+    {
+        // Такое оставляет неудачная попытка запуска движка: адаптера уже нет, а устройство
+        // ещё держит GUID. Своим мы его знаем по записи, сделанной при запуске.
+        var removable = TunCleanup.Removable(new[] { Ours }, Adapters(), new[] { Ours });
 
         Assert.Equal(new[] { Ours }, removable.Select(a => a.InstanceId));
+    }
+
+    [Fact]
+    public void An_unknown_device_without_an_adapter_is_not_ours_to_remove()
+    {
+        var removable = TunCleanup.Removable(new[] { Alien }, Adapters(), Nobodys);
+
+        Assert.Empty(removable);
     }
 
     [Fact]
     public void Devices_that_are_not_tunnels_are_out_of_scope()
     {
         var removable = TunCleanup.Removable(
-            new[] { @"PCI\VEN_8086&DEV_51F0&SUBSYS_02448086&REV_01\{0E62885F}" }, Adapters());
+            new[] { @"PCI\VEN_8086&DEV_51F0&SUBSYS_02448086&REV_01\{0E62885F}" }, Adapters(), Nobodys);
 
         Assert.Empty(removable);
+    }
+
+    [Fact]
+    public void Our_adapter_is_recognised_by_its_address()
+    {
+        var mine = TunCleanup.Mine(
+            known: new[] { Alien, Ours },
+            recorded: Nobodys, ours: id => id == Ours);
+
+        Assert.Equal(new[] { Ours }, mine);
+    }
+
+    [Fact]
+    public void A_neighbour_is_not_claimed_just_because_it_appeared()
+    {
+        // Раньше всё новое за два секунды старта считалось нашим. Если за это время
+        // Happ поднимал свой туннель, мы записывали его GUID и потом удаляли.
+        var mine = TunCleanup.Mine(
+            known: new[] { Alien, Ours },
+            recorded: Nobodys, ours: _ => false);
+
+        Assert.Empty(mine);
+    }
+
+    [Fact]
+    public void A_device_that_disappeared_is_forgotten()
+    {
+        var mine = TunCleanup.Mine(
+            known: new[] { Alien },
+            recorded: new[] { Ours }, ours: _ => false);
+
+        Assert.Empty(mine);
+    }
+
+    [Fact]
+    public void The_shared_sing_box_address_is_not_ours_to_keep()
+    {
+        Assert.True(CehoConfig.SharesSingBoxTun("172.19.0.1/30"));
+        Assert.False(CehoConfig.SharesSingBoxTun(CehoConfig.DefaultTunAddress));
+        Assert.NotEqual(CehoConfig.SharedSingBoxTun, CehoConfig.DefaultTunAddress);
+    }
+
+    [Fact]
+    public void An_old_config_moves_off_the_shared_address()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ceho-tun-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "config.json");
+        File.WriteAllText(path, """{"TunAddress":"172.19.0.1/30","WebPort":8899}""");
+
+        try
+        {
+            var loaded = CehoConfig.Load(path);
+            Assert.Equal(CehoConfig.DefaultTunAddress, loaded.TunAddress);
+            Assert.Equal(CehoConfig.DefaultTunAddress, CehoConfig.Load(path).TunAddress);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void A_busy_tunnel_address_is_explained_in_human_words()
+    {
+        // Раз чужие адаптеры мы больше не сносим, человек должен узнать из панели,
+        // что именно ему мешает и что с этим делать.
+        var hint = SingBoxProcess.Hint(
+            "FATAL create tun interface: Cannot create a file when that file already exists.", "ru");
+
+        Assert.Equal(Strings.T("ru", "engine_tun_busy"), hint);
+        Assert.Null(SingBoxProcess.Hint("ERROR connection reset by peer", "ru"));
     }
 
     [Fact]

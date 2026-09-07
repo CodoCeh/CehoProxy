@@ -43,7 +43,16 @@ public sealed class CehoConfig
 
     public int MixedPort { get; set; } = 2080;
 
-    public string TunAddress { get; set; } = "172.19.0.1/30";
+    /// <summary>
+    /// Свой адрес туннеля. Не 172.19.0.1: это заводской адрес sing-box, его же ставит Happ
+    /// и другие клиенты. Если совпасть, уборка следов принимает чужой адаптер за свой.
+    /// </summary>
+    public const string DefaultTunAddress = "172.31.211.1/30";
+
+    /// <summary>Заводской адрес движка: его нельзя считать нашим только по совпадению.</summary>
+    public const string SharedSingBoxTun = "172.19.0.1/30";
+
+    public string TunAddress { get; set; } = DefaultTunAddress;
 
     public List<AppEntry> Apps { get; set; } = new();
     public List<SubscriptionEntry> Subscriptions { get; set; } = new();
@@ -90,10 +99,28 @@ public sealed class CehoConfig
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    public static CehoConfig Load(string path) =>
-        File.Exists(path)
+    public static CehoConfig Load(string path)
+    {
+        var cfg = File.Exists(path)
             ? JsonSerializer.Deserialize<CehoConfig>(File.ReadAllText(path), Json) ?? new CehoConfig()
             : new CehoConfig();
+
+        // Старые установки жили на заводском адресе движка — том же, что у Happ.
+        if (SharesSingBoxTun(cfg.TunAddress))
+        {
+            cfg.TunAddress = DefaultTunAddress;
+            if (File.Exists(path))
+            {
+                try { cfg.Save(path); }
+                catch { /* адрес всё равно уже в памяти, движок получит его при сборке правил */ }
+            }
+        }
+
+        return cfg;
+    }
+
+    public static bool SharesSingBoxTun(string? address) =>
+        string.Equals(address?.Trim(), SharedSingBoxTun, StringComparison.OrdinalIgnoreCase);
 
     public void Save(string path)
     {

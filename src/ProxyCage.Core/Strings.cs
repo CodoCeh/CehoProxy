@@ -673,6 +673,33 @@ public static class Strings
             "машину, а правило смотрит на путь программы, поэтому оно действует для всех, кто её запускает.",
             "On a multi-user server one installation is enough: there is a single tunnel per machine, " +
             "and the rule matches the program path, so it applies to everyone who runs it."),
+        ["touch_title"] = new("Что мы меняем в системе", "What we change in the system"),
+        ["touch_lede"] = new(
+            "Вне выбранных программ система должна жить так, будто нас нет. Вот весь наш след:",
+            "Outside the chosen programs the system must live as if we were not there. "
+            + "Here is our whole footprint:"),
+        ["touch_1"] = new(
+            "Свой сетевой адаптер и общий маршрут через него. Иначе увидеть трафик выбранных программ "
+            + "невозможно: система умеет направлять пакеты по адресу, но не по программе.",
+            "Our own network adapter and the default route through it. Without that we cannot see the "
+            + "chosen programs at all: the system routes by address, never by program."),
+        ["touch_2"] = new(
+            "Трафик всех остальных программ проходит насквозь и уходит тем же путём, что и раньше: "
+            + "мы его не шифруем, не заворачиваем и не считаем.",
+            "Traffic of every other program passes straight through and leaves the same way as before: "
+            + "we do not encrypt it, redirect it or count it."),
+        ["touch_3"] = new(
+            "Имена через нас разрешают только выбранные программы. Остальная система спрашивает свой "
+            + "обычный сервер имён, как и до установки.",
+            "Only the chosen programs resolve names through us. The rest of the system asks its usual "
+            + "name server, exactly as before we were installed."),
+        ["touch_not"] = new(
+            "Чего мы не делаем: не ставим правил брандмауэра, не трогаем системные настройки прокси, "
+            + "не удаляем и не выключаем адаптеры других VPN-клиентов. Выключенная защита не оставляет "
+            + "в системе ничего своего.",
+            "What we never do: we add no firewall rules, we do not touch the system proxy settings, and "
+            + "we never remove or disable other VPN clients' adapters. Once protection is off, nothing "
+            + "of ours is left in the system."),
         ["help_title"] = new("Как пользоваться", "How to use"),
         ["help_1"] = new(
             "Добавьте подписку VPN-сервиса.", "Add your VPN service subscription."),
@@ -718,6 +745,11 @@ public static class Strings
             "Protection is already off."),
         ["engine_died"] = new(
             "Движок завершился сразу после запуска.", "The engine exited right after start."),
+        ["engine_tun_busy"] = new(
+            "адрес туннеля держит адаптер другого VPN-клиента. Чужие адаптеры мы не удаляем: "
+            + "отключите лишний клиент или его адаптер в «Сетевых подключениях» и включите защиту снова.",
+            "the tunnel address is held by another VPN client's adapter. We never delete adapters that "
+            + "are not ours: turn that client off, or disable its adapter in Network Connections, and start again."),
         ["start_failed"] = new("Защита не включилась", "Protection did not start"),
         ["engine_gone"] = new(
             "Движок остановился сам, поднимаю заново", "The engine stopped on its own, starting it again"),

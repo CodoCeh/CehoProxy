@@ -27,7 +27,7 @@ def refuse_engine():
     Движок под GPL и в наши архивы не едет (PUBLISH.md). Он скачивается при установке,
     а лежащая рядом копия — след ручной сборки, а не повод её выложить.
     """
-    for name in ("sing-box.exe", "sing-box"):
+    for name in ("sing-box.exe", "sing-box", "ceho-engine.exe"):
         path = os.path.join(BIN, name)
         if os.path.exists(path):
             raise SystemExit(

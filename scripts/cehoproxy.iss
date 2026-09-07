@@ -1,5 +1,5 @@
 #define AppName "CehoProxy"
-#define AppVersion "1.2.3"
+#define AppVersion "1.2.5"
 #define AppPublisher "КодоЦех"
 #define AppUrl "https://codoceh.ru"
 #define RepoUrl "https://github.com/CodoCeh/CehoProxy"
@@ -59,6 +59,7 @@ Filename: "{app}\cehoproxy.exe"; Parameters: "uninstall --yes"; \
 
 [UninstallDelete]
 Type: files; Name: "{app}\chp.cmd"
+Type: files; Name: "{app}\ceho-engine.exe"
 Type: files; Name: "{app}\sing-box.exe"
 Type: files; Name: "{app}\singbox.json"
 Type: files; Name: "{app}\config.json"

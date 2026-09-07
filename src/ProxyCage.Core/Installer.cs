@@ -13,6 +13,9 @@ public static class Installer
         // Прошлые версии вели отдельный лог движка и файл на каждое падение;
         // теперь всё это в одном журнале, а файлы только мусорят в папке.
         "sing-box.log", "sing-box.log.1", "crash-*.log",
+        // Список «своих» адаптеров мог содержать чужой GUID, пока мы жили
+        // на заводском адресе движка. При обновлении лучше записать заново.
+        "tun-devices.txt",
     };
 
     /// <summary>Данные пользователя: настройки и сохранённые копии подписок.</summary>
@@ -42,7 +45,8 @@ public static class Installer
             if (DaemonControl.IsRunning(root))
             {
                 TunCleanup.KillOurProcesses(Path.Combine(root, "singbox.json"), _ => { });
-                TunCleanup.RemoveLeftovers(log, CehoConfig.Load(Path.Combine(root, "config.json")).TunAddress);
+                TunCleanup.RemoveLeftovers(
+                    log, CehoConfig.Load(Path.Combine(root, "config.json")).TunAddress, root);
                 DaemonControl.ClearRunning(root);
             }
         }
@@ -109,8 +113,9 @@ public static class Installer
         var ownDir = Path.GetDirectoryName(self);
         if (!string.IsNullOrEmpty(ownDir))
         {
-            var nearbyEngine = Path.Combine(ownDir, Os.SingBoxFileName);
-            var targetEngine = Path.Combine(root, Os.SingBoxFileName);
+            var nearbyEngine = Path.Combine(ownDir, Os.EngineFileName);
+            if (!File.Exists(nearbyEngine)) nearbyEngine = Path.Combine(ownDir, Os.SingBoxFileName);
+            var targetEngine = Path.Combine(root, Os.EngineFileName);
             if (File.Exists(nearbyEngine) && !Os.RealPath(nearbyEngine).Equals(Os.RealPath(targetEngine), StringComparison.OrdinalIgnoreCase))
             {
                 File.Copy(nearbyEngine, targetEngine, overwrite: true);
@@ -118,6 +123,8 @@ public static class Installer
                 log(Strings.T(lang, "inst_engine_at", targetEngine));
             }
         }
+
+        Os.AdoptOwnEngine(root);
 
         MakeShortcut(root, target, log, lang);
         AddToPath(root, log, lang);
@@ -270,12 +277,14 @@ public static class Installer
         await using (var file = File.Create(archive))
             await stream.CopyToAsync(file);
 
-        var engine = Path.Combine(root, Os.SingBoxFileName);
+        var engine = Path.Combine(root, Os.EngineFileName);
         Extract(archive, root, engine);
         try { File.Delete(archive); } catch { }
 
         if (!File.Exists(engine))
             throw new InvalidOperationException("движок скачался, но распаковать его не удалось");
+
+        Os.AdoptOwnEngine(root);
 
         if (!Os.IsWindows) Os.Run("chmod", $"755 {engine}", 5000);
         log(Strings.T(lang, "inst_engine_at", engine));
