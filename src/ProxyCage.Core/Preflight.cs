@@ -6,7 +6,8 @@ public static class Preflight
 {
     public enum Level { Ok, Warning, Blocker }
 
-    public sealed record Check(Level Level, string Title, string? Detail, string? Fix);
+    /// <summary><see cref="Repair"/> заполнен, если это умеет починить доктор сам.</summary>
+    public sealed record Check(Level Level, string Title, string? Detail, string? Fix, Repair Repair = Repair.None);
 
     public static bool IsElevated() => Os.IsElevated();
 
@@ -34,7 +35,8 @@ public static class Preflight
                 S("pf_engine_detail", root),
                 Os.IsWindows
                     ? S("pf_engine_fix_win", Os.SingBoxFileName)
-                    : S("pf_engine_fix_unix", root)));
+                    : S("pf_engine_fix_unix", root),
+                Repair.Engine));
 
         if (Os.ResolveCurl() is not null)
             checks.Add(new Check(Level.Ok, S("pf_curl_ok"), null, null));
@@ -131,7 +133,8 @@ public static class Preflight
             return new Check(Level.Blocker,
                 Strings.T(lang, panel ? "pf_port_busy" : "pf_proxy_port_busy", port),
                 Strings.T(lang, panel ? "pf_port_detail" : "pf_proxy_port_detail"),
-                Strings.T(lang, panel ? "pf_port_fix" : "pf_proxy_port_fix", NextFreePort(port)));
+                Strings.T(lang, panel ? "pf_port_fix" : "pf_proxy_port_fix", NextFreePort(port)),
+                panel ? Repair.PanelPort : Repair.ProxyPort);
         }
         catch
         {

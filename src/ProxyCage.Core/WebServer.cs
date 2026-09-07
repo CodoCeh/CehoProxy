@@ -15,6 +15,7 @@ public sealed class WebServer
     private const string JobUpdate = "update";
     private const string JobSubs = "subs";
     private const string JobEngine = "engine";
+    private const string JobDoctor = "doctor";
 
     private readonly string _configPath;
     private readonly Func<ControlState> _state;
@@ -43,6 +44,13 @@ public sealed class WebServer
 
     public Func<IStageReport, Task<string>>? OnCheckSubs { get; set; }
     public Func<Task<string>>? OnUninstall { get; set; }
+
+    /// <summary>Спросить у выхода страну и адрес: нужно доктору, чтобы убедиться, что защита работает.</summary>
+    public Func<Task<(string? Country, string? Ip)>>? OnExit { get; set; }
+
+    // Последний осмотр держим здесь: страница показывает его сразу, без ожидания проверок.
+    private Doctor.Result? _doctor;
+    private DateTime _doctorAtUtc;
 
     public Func<IReadOnlyList<string>>? WrappedNames { get; set; }
 
@@ -529,6 +537,30 @@ public sealed class WebServer
                     return (null, false, job.Id);
                 }
 
+                case "/doctor/check":
+                {
+                    var job = Jobs.Start(JobDoctor, S("job_doctor"), async p =>
+                    {
+                        var r = await Doctor.CheckAsync(CehoConfig.Load(_configPath), Root, Tools(), p);
+                        Remember(r);
+                        return r.Healthy
+                            ? (r.Warnings > 0 ? $"{S("doc_all_ok")} · {S("doc_warnings", r.Warnings)}" : S("doc_all_ok"))
+                            : S("pf_blockers", r.Blockers);
+                    });
+                    return (null, false, job.Id);
+                }
+
+                case "/doctor/fix":
+                {
+                    var job = Jobs.Start(JobDoctor, S("job_heal"), async p =>
+                    {
+                        var r = await Doctor.HealAsync(CehoConfig.Load(_configPath), _configPath, Root, Tools(), p);
+                        Remember(r);
+                        return Doctor.Say(r, cfg.Language);
+                    });
+                    return (null, false, job.Id);
+                }
+
                 case "/countries/refresh":
                 {
                     if (OnCountries is null) return (S("measure_blocked"), true, null);
@@ -716,6 +748,20 @@ public sealed class WebServer
         }
     }
 
+    /// <summary>Руки доктора — те же действия, что у кнопок панели: подписки, сборка правил, опрос выхода.</summary>
+    private DoctorTools Tools() => new()
+    {
+        Pool = OnPool,
+        Rebuild = OnApply,
+        Exit = OnExit,
+    };
+
+    private void Remember(Doctor.Result result)
+    {
+        _doctor = result;
+        _doctorAtUtc = DateTime.UtcNow;
+    }
+
     private Job StartPoolJob(CehoConfig cfg) =>
         Jobs.Start(JobPool, Strings.T(cfg.Language, "job_pool"), async p =>
         {
@@ -805,8 +851,8 @@ public sealed class WebServer
         var tabs = new (string Id, string Key)[]
         {
             ("state", "nav_state"), ("apps", "nav_apps"), ("subs", "nav_subs"),
-            ("exit", "nav_exit"), ("browser", "nav_browser"), ("log", "nav_log"),
-            ("access", "nav_access"), ("help", "nav_help"),
+            ("exit", "nav_exit"), ("browser", "nav_browser"), ("doctor", "nav_doctor"),
+            ("log", "nav_log"), ("access", "nav_access"), ("help", "nav_help"),
         };
         sb.Append("<nav class=tabs>");
         foreach (var (id, key) in tabs)
@@ -826,6 +872,7 @@ public sealed class WebServer
             case "subs": RenderSubs(sb, cfg, S); break;
             case "exit": RenderExit(sb, cfg, S); break;
             case "browser": RenderBrowser(sb, cfg, S); break;
+            case "doctor": RenderDoctor(sb, cfg, S); break;
             case "log": RenderLog(sb, cfg, logView, S); break;
             case "access": RenderAccess(sb, cfg, S); break;
             case "help": RenderHelp(sb, cfg, S); break;
@@ -934,6 +981,12 @@ public sealed class WebServer
             sb.Append("</div>");
         }
 
+        // Мешает что-то — не заставляем разбираться самому: доктор сначала осмотрит, потом починит.
+        if (problems.Count > 0)
+            sb.Append("<form class=row method=post action=\"/doctor/fix\">")
+              .Append("<input type=hidden name=tab value=doctor>")
+              .Append("<button class=ghost>").Append(E(S("doc_heal", []))).Append("</button></form>");
+
         if (st.Running)
         {
             sb.Append("<form class=row method=post>")
@@ -1004,6 +1057,84 @@ public sealed class WebServer
         if (!auto) sb.Append("<input type=hidden name=enable value=1>");
         sb.Append("<button class=ghost>").Append(E(auto ? S("autostart_del", []) : S("autostart_add", [])))
           .Append("</button></form></section>");
+    }
+
+    /// <summary>
+    /// Осмотр в панели: одна кнопка проверяет всё разом, вторая чинит то, что чинится без человека.
+    /// Итог держится в памяти, поэтому страница открывается сразу, а не ждёт проверок.
+    /// </summary>
+    private void RenderDoctor(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
+    {
+        sb.Append("<section><h2>").Append(E(S("doc_title", []))).Append("</h2>");
+        sb.Append("<p class=hint>").Append(E(S("doc_hint", []))).Append("</p>");
+        sb.Append("<form class=row method=post><input type=hidden name=tab value=doctor>")
+          .Append("<button type=submit formaction=\"/doctor/check\">").Append(E(S("doc_check", [])))
+          .Append("</button>")
+          .Append("<button type=submit formaction=\"/doctor/fix\" class=ghost>").Append(E(S("doc_heal", [])))
+          .Append("</button></form>");
+
+        var report = _doctor;
+        if (report is null)
+        {
+            sb.Append("<p class=hint>").Append(E(S("doc_never", []))).Append("</p></section>");
+            return;
+        }
+
+        var head = report.Healthy
+            ? (report.Warnings > 0 ? S("doc_warnings", [report.Warnings]) : S("doc_all_ok", []))
+            : S("pf_blockers", [report.Blockers]);
+
+        sb.Append("<div class=\"status ").Append(report.Healthy ? report.Warnings > 0 ? "wait" : "on" : "bad")
+          .Append("\"><span class=dot></span><b>").Append(E(head)).Append("</b><span class=detail>")
+          .Append(E(S("doc_when", [_doctorAtUtc.ToLocalTime().ToString("dd.MM HH:mm")])))
+          .Append("</span></div>");
+
+        if (report.Done.Count > 0)
+        {
+            sb.Append("<h2>").Append(E(S("doc_did_title", []))).Append("</h2><ul class=did>");
+            foreach (var line in report.Done) sb.Append("<li>").Append(E(line)).Append("</li>");
+            sb.Append("</ul>");
+        }
+
+        if (report.Left.Count > 0)
+        {
+            sb.Append("<h2>").Append(E(S("doc_left_title", []))).Append("</h2><ol class=steps>");
+            foreach (var line in report.Left) sb.Append("<li>").Append(E(line)).Append("</li>");
+            sb.Append("</ol>");
+        }
+
+        RenderChecks(sb, report.Checks, S);
+        sb.Append("</section>");
+    }
+
+    private static void RenderChecks(
+        StringBuilder sb, IReadOnlyList<Preflight.Check> checks, Func<string, object[], string> S)
+    {
+        sb.Append("<ul class=checks>");
+        foreach (var c in checks.OrderBy(c => c.Level switch
+                 {
+                     Preflight.Level.Blocker => 0,
+                     Preflight.Level.Warning => 1,
+                     _ => 2,
+                 }))
+        {
+            var (cls, mark) = c.Level switch
+            {
+                Preflight.Level.Ok => ("ok", "✓"),
+                Preflight.Level.Warning => ("warn", "!"),
+                _ => ("stop", "✕"),
+            };
+
+            sb.Append("<li class=").Append(cls).Append("><span class=mk>").Append(mark)
+              .Append("</span><div><b>").Append(E(c.Title)).Append("</b>");
+            if (c.Detail is not null) sb.Append("<span class=why>").Append(E(c.Detail)).Append("</span>");
+            if (c.Fix is not null)
+                sb.Append("<span class=\"why").Append(c.Repair != Repair.None ? " can" : "").Append("\">")
+                  .Append(E(c.Repair != Repair.None ? c.Fix : S("doc_what_to_do", [c.Fix])))
+                  .Append("</span>");
+            sb.Append("</div></li>");
+        }
+        sb.Append("</ul>");
     }
 
     private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
@@ -1542,6 +1673,7 @@ public sealed class WebServer
         sb.Append("<li>").Append(E(S("help_4", []))).Append("</li></ol>");
         var sudo = Os.IsWindows ? "" : "sudo ";
         sb.Append("<p class=hint>").Append(E(S("help_cli", new object[] { sudo }))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(S("help_doctor", new object[] { sudo }))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("help_multiuser", []))).Append("</p></section>");
     }
 }

@@ -184,6 +184,21 @@ public static class WebUi
     details.nodes table{margin:0 0 6px}
     tr.off td{opacity:.5}
 
+    ul.checks{list-style:none;margin:12px 0 0;padding:0;border:1px solid var(--line);
+      border-radius:var(--radius);background:var(--surface)}
+    ul.checks li{display:flex;gap:11px;padding:12px 15px;border-bottom:1px solid var(--line)}
+    ul.checks li:last-child{border-bottom:0}
+    ul.checks .mk{flex:none;width:16px;text-align:center;font-weight:700;line-height:1.5}
+    ul.checks li.ok .mk{color:var(--ok-ink)}
+    ul.checks li.warn .mk{color:var(--warn-ink)}
+    ul.checks li.stop .mk{color:var(--danger-ink)}
+    ul.checks b{font-weight:620;display:block}
+    ul.checks .why{display:block;color:var(--muted);font-size:13px}
+    ul.checks .why.can{color:var(--brand-ink)}
+    ul.did{list-style:none;margin:10px 0 0;padding:0;color:var(--subtext);font-size:14px}
+    ul.did li{padding:5px 0 5px 20px;position:relative}
+    ul.did li::before{content:"✓";position:absolute;left:0;color:var(--ok-ink);font-weight:700}
+
     pre.logbox{margin:6px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius);
       background:var(--panel);color:var(--subtext);font-family:ui-monospace,Consolas,"SF Mono",monospace;
       font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}

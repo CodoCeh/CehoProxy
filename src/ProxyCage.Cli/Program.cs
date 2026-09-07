@@ -1099,12 +1099,51 @@ switch (cmd)
     case "doctor":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
-        var checks = Preflight.Run(cfg, Ceho.Root);
-        Cli.PrintChecks(cfg, checks);
-        var blockers = checks.Count(c => c.Level == Preflight.Level.Blocker);
+        var tools = Cli.DoctorTools();
+
+        var wantFix = args.Length >= 2 && args[1] is "fix" or "--fix" or "heal" or "--heal";
+        var quiet = args.Contains("--yes") || !Assistant.Interactive;
+
+        Doctor.Result report;
+        using (var spinner = new ConsoleSpinner(Cli.S(cfg, wantFix ? "job_heal" : "job_doctor")))
+        {
+            report = wantFix
+                ? await Doctor.HealAsync(cfg, Ceho.ConfigPath, Ceho.Root, tools, spinner.AsReport())
+                : await Doctor.CheckAsync(cfg, Ceho.Root, tools, spinner.AsReport());
+            spinner.Done(wantFix
+                ? Doctor.Say(report, cfg.Language)
+                : Cli.S(cfg, report.Healthy ? "doc_all_ok" : "pf_blockers", report.Blockers));
+        }
+
         Console.WriteLine();
-        Console.WriteLine(blockers == 0 ? Cli.S(cfg, "pf_all_ready") : Cli.S(cfg, "pf_blockers", blockers));
-        return blockers == 0 ? 0 : 1;
+        Cli.PrintChecks(cfg, report.Checks);
+
+        Cli.PrintDoctorDeeds(cfg, report);
+
+        // Осмотр сам ничего не меняет: чинить — только по слову хозяина или по «doctor fix».
+        if (!wantFix && report.Fixable)
+        {
+            Console.WriteLine();
+            if (quiet)
+            {
+                Console.WriteLine(Cli.S(cfg, "doc_offer", Os.IsWindows ? "" : "sudo "));
+            }
+            else if (Cli.AskYes(Cli.S(cfg, "doc_ask_fix"), true))
+            {
+                using var spinner = new ConsoleSpinner(Cli.S(cfg, "job_heal"));
+                report = await Doctor.HealAsync(
+                    CehoConfig.Load(Ceho.ConfigPath), Ceho.ConfigPath, Ceho.Root, tools, spinner.AsReport());
+                spinner.Done(Doctor.Say(report, cfg.Language));
+
+                Console.WriteLine();
+                Cli.PrintChecks(cfg, report.Checks);
+                Cli.PrintDoctorDeeds(cfg, report);
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine(report.Healthy ? Cli.S(cfg, "doc_all_ok") : Cli.S(cfg, "pf_blockers", report.Blockers));
+        return report.Healthy ? 0 : 1;
     }
 
     case "verify":
@@ -1364,6 +1403,7 @@ if (cmd is "daemon" or "web")
     };
     web.OnPool = report =>
         Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath), preferCache: false, report);
+    web.OnExit = () => Ceho.ProbeExitAsync(CehoConfig.Load(Ceho.ConfigPath).MixedPort);
     web.OnCountries = async report =>
     {
         var nodes = await Ceho.LoadAllNodesAsync(
