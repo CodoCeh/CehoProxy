@@ -76,6 +76,24 @@ public class NeighboursTests
     }
 
     [Fact]
+    public void A_warning_is_never_swallowed_by_the_verdict()
+    {
+        var report = new Doctor.Result(
+            new[]
+            {
+                new Preflight.Check(Preflight.Level.Ok, "движок на месте", null, null),
+                new Preflight.Check(Preflight.Level.Warning, "прокси в никуда", null, "выключите"),
+            },
+            Array.Empty<string>(), Array.Empty<string>());
+
+        var verdict = Doctor.Headline(report, "ru");
+
+        Assert.True(report.Healthy);
+        Assert.Contains(Strings.T("ru", "doc_warnings", 1), verdict);
+        Assert.Equal(verdict, Doctor.Say(report, "ru"));
+    }
+
+    [Fact]
     public void A_proxy_on_another_machine_is_none_of_our_business()
     {
         Assert.Null(SystemProxy.DeadAmong("0x1", "http=10.0.0.5:3128", 2080, _ => false));

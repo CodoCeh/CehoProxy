@@ -1112,7 +1112,7 @@ switch (cmd)
                 : await Doctor.CheckAsync(cfg, Ceho.Root, tools, spinner.AsReport());
             spinner.Done(wantFix
                 ? Doctor.Say(report, cfg.Language)
-                : Cli.S(cfg, report.Healthy ? "doc_all_ok" : "pf_blockers", report.Blockers));
+                : Doctor.Headline(report, cfg.Language));
         }
 
         Console.WriteLine();
@@ -1142,7 +1142,7 @@ switch (cmd)
         }
 
         Console.WriteLine();
-        Console.WriteLine(report.Healthy ? Cli.S(cfg, "doc_all_ok") : Cli.S(cfg, "pf_blockers", report.Blockers));
+        Console.WriteLine(Doctor.Headline(report, cfg.Language));
         return report.Healthy ? 0 : 1;
     }
 
