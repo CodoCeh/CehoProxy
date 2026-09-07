@@ -254,18 +254,42 @@ public static class WebUi
       var box=document.getElementById('jp');
       if(!box||!box.dataset.job)return;
       var id=box.dataset.job,fill=document.getElementById('jf'),
-          stage=document.getElementById('js'),num=document.getElementById('jn');
+          stage=document.getElementById('js'),num=document.getElementById('jn'),
+          fails=0, waiting=false;
+      function waitPanel(){
+        if(waiting)return;
+        waiting=true;
+        if(stage)stage.textContent=box.dataset.wait||'';
+        if(num)num.textContent='';
+        var sawDown=false, started=Date.now();
+        function probe(){
+          fetch('/?tab=state',{cache:'no-store'})
+            .then(function(r){
+              if(!r.ok){sawDown=true;setTimeout(probe,800);return}
+              if(sawDown||Date.now()-started>25000){location.replace('/?tab=state');return}
+              setTimeout(probe,800);
+            })
+            .catch(function(){sawDown=true;setTimeout(probe,800)});
+        }
+        setTimeout(probe,800);
+      }
       function tick(){
         fetch('/job?id='+encodeURIComponent(id),{cache:'no-store'})
           .then(function(r){return r.json()})
           .then(function(j){
+            fails=0;
             if(fill)fill.style.width=j.percent+'%';
             if(num)num.textContent=j.percent+'%';
             if(stage&&j.stage)stage.textContent=j.stage;
             if(j.state==='running'){setTimeout(tick,700);return}
+            if((j.relaunch||box.dataset.relaunch)&&!j.isError){waitPanel();return}
             location.reload();
           })
-          .catch(function(){setTimeout(tick,2500)});
+          .catch(function(){
+            fails++;
+            if(box.dataset.relaunch && fails>=3){waitPanel();return}
+            setTimeout(tick,800);
+          });
       }
       setTimeout(tick,600);
     })();

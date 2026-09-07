@@ -590,7 +590,13 @@ public static class Strings
         ["upd_found"] = new("Доступна версия {0}.", "Version {0} is available."),
         ["upd_apply"] = new("Обновить и перезапустить", "Update and restart"),
         ["upd_done"] = new(
-            "Обновлено до {0}. Защита перезапущена.", "Updated to {0}. Protection restarted."),
+            "Обновлено до {0}.", "Updated to {0}."),
+        ["upd_relaunch"] = new(
+            "Программа записана, панель сейчас перезапустится.",
+            "The program is in place, the panel will restart now."),
+        ["job_wait_panel"] = new(
+            "Жду, пока панель вернётся…",
+            "Waiting for the panel to come back…"),
         ["upd_check_failed"] = new(
             "Не удалось проверить обновления: {0}", "Could not check for updates: {0}"),
         ["upd_failed"] = new("Обновиться не удалось: {0}", "Update failed: {0}"),

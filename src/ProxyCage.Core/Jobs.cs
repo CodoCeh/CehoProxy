@@ -24,6 +24,12 @@ public sealed class Job
     public string? Result { get; internal set; }
     public bool IsError { get; internal set; }
 
+    /// <summary>
+    /// После успеха панель сама выйдет и поднимется заново. Браузер не перезагружает
+    /// страницу сразу, а ждёт, пока интерфейс ответит.
+    /// </summary>
+    public bool RelaunchPanel { get; set; }
+
     private readonly List<string> _steps = new();
 
     public IReadOnlyList<string> Steps
