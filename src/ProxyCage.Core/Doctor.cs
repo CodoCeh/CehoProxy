@@ -134,13 +134,25 @@ public static class Doctor
         return after with { Done = done, Left = left };
     }
 
+    /// <summary>
+    /// Итог осмотра одной строкой. Замечания в него попадают обязательно: «всё в порядке»
+    /// рядом с замечанием про мёртвый прокси человек просто пролистывает.
+    /// </summary>
+    public static string Headline(Result r, string l)
+    {
+        string S(string key, params object[] a) => Strings.T(l, key, a);
+
+        if (!r.Healthy) return S("pf_blockers", r.Blockers);
+        return r.Warnings > 0 ? $"{S("doc_all_ok")} · {S("doc_warnings", r.Warnings)}" : S("doc_all_ok");
+    }
+
     /// <summary>Итог починки одной фразой: её показывают и панель, и терминал.</summary>
     public static string Say(Result r, string l)
     {
         string S(string key, params object[] a) => Strings.T(l, key, a);
 
         if (r.Healthy)
-            return r.Done.Count == 0 ? S("doc_all_ok") : $"{string.Join(" ", r.Done)} {S("doc_all_ok")}";
+            return r.Done.Count == 0 ? Headline(r, l) : $"{string.Join(" ", r.Done)} {Headline(r, l)}";
 
         if (r.Done.Count == 0)
             return r.Left.Count == 0 ? S("doc_nothing_to_fix") : S("doc_left_n", r.Left.Count);

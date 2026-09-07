@@ -543,9 +543,7 @@ public sealed class WebServer
                     {
                         var r = await Doctor.CheckAsync(CehoConfig.Load(_configPath), Root, Tools(), p);
                         Remember(r);
-                        return r.Healthy
-                            ? (r.Warnings > 0 ? $"{S("doc_all_ok")} · {S("doc_warnings", r.Warnings)}" : S("doc_all_ok"))
-                            : S("pf_blockers", r.Blockers);
+                        return Doctor.Headline(r, CehoConfig.Load(_configPath).Language);
                     });
                     return (null, false, job.Id);
                 }
