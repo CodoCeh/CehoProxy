@@ -286,6 +286,15 @@ public static class Strings
             + "странно, оставьте один.",
             "We leave its adapter alone, but two tunnels at once share the routes: if the network "
             + "behaves oddly, keep just one."),
+        ["doc_tool_unadded"] = new(
+            "Программа {0} не изолирована",
+            "{0} is not isolated"),
+        ["doc_tool_unadded_detail"] = new(
+            "{0} установлена ({1}), но не добавлена в список программ — её трафик идёт напрямую без прокси.",
+            "{0} is installed ({1}) but not added to programs — its traffic goes directly without proxy."),
+        ["doc_tool_unadded_fix"] = new(
+            "Добавьте её во вкладке «Программы» или командой: chp apps add \"{0}\"",
+            "Add it on the Programs tab or with: chp apps add \"{0}\""),
         ["doc_crash"] = new("Было падение {0}", "There was a crash on {0}"),
         ["doc_crash_fix"] = new(
             "Подробности в журнале, раздел «Падения».",

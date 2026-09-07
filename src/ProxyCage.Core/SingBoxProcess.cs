@@ -301,7 +301,7 @@ public sealed class SingBoxProcess : IDisposable
         }
     }
 
-    public bool Stop(int gracefulTimeoutMs = 10000)
+    public bool Stop(int gracefulTimeoutMs = 2500)
     {
         if (_unix is not null) return StopUnix(gracefulTimeoutMs);
 
@@ -313,7 +313,7 @@ public sealed class SingBoxProcess : IDisposable
             return true;
 
         TerminateProcess(_hProcess, 1);
-        WaitForSingleObject(_hProcess, 5000);
+        WaitForSingleObject(_hProcess, 2000);
         return false;
     }
 

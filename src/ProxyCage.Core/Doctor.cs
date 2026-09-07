@@ -68,6 +68,7 @@ public static class Doctor
         p?.Stage(S("doc_stage_traces"), 75);
         checks.AddRange(Traces(cfg, root, l));
         checks.AddRange(Neighbours(cfg, l));
+        checks.AddRange(UnmanagedAiTools(cfg, l));
 
         var running = DaemonControl.IsRunning(root) && NodeProbe.TunnelIsUp(cfg.TunAddress);
         if (running && tools?.Exit is not null)
@@ -366,6 +367,35 @@ public static class Doctor
         foreach (var alien in SystemProxy.OtherTunnels(ours))
             yield return new Preflight.Check(Preflight.Level.Warning,
                 S("doc_alien_tun", alien), S("doc_alien_tun_detail"), null);
+    }
+
+    private static IEnumerable<Preflight.Check> UnmanagedAiTools(CehoConfig cfg, string l)
+    {
+        IReadOnlyList<AiTools.Found> found;
+        try { found = AiTools.Detect(); }
+        catch { yield break; }
+
+        string S(string key, params object[] a) => Strings.T(l, key, a);
+
+        var addedFolders = cfg.Apps
+            .Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+            .Select(a => a.Folder.TrimEnd('\\', '/'))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tool in found)
+        {
+            var folder = tool.Path.TrimEnd('\\', '/');
+            if (addedFolders.Contains(folder)) continue;
+            if (cfg.Apps.Any(a => a.Enabled && (a.Folder.Contains(tool.Name, StringComparison.OrdinalIgnoreCase)
+                                                || a.Name.Equals(tool.Name, StringComparison.OrdinalIgnoreCase))))
+                continue;
+
+            yield return new Preflight.Check(
+                Preflight.Level.Warning,
+                S("doc_tool_unadded", tool.Name),
+                S("doc_tool_unadded_detail", tool.Name, tool.Path),
+                S("doc_tool_unadded_fix", tool.Name));
+        }
     }
 
     private static Preflight.Check? FreshCrash(string l)

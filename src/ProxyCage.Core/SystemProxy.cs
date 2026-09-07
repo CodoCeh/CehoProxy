@@ -43,10 +43,13 @@ public static class SystemProxy
             foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
             {
                 if (nic.OperationalStatus != OperationalStatus.Up) continue;
-                if (nic.NetworkInterfaceType != NetworkInterfaceType.Tunnel
-                    && !nic.Description.Contains("tun", StringComparison.OrdinalIgnoreCase)) continue;
                 if (nic.Name.StartsWith(TunCleanup.InterfaceName, StringComparison.OrdinalIgnoreCase)) continue;
                 if (string.Equals(nic.Name, ourInterface, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var isVpn = nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel
+                    || IsVpnAdapter(nic.Description)
+                    || IsVpnAdapter(nic.Name);
+                if (!isVpn) continue;
 
                 found.Add(nic.Name);
             }
@@ -54,6 +57,16 @@ public static class SystemProxy
         catch { }
         return found;
     }
+
+    private static bool IsVpnAdapter(string text) =>
+        text.Contains("tun", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("tap", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("vpn", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("wireguard", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("wintun", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("softether", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("amnezia", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("tailscale", StringComparison.OrdinalIgnoreCase);
 
     private static bool Enabled(string raw)
     {
