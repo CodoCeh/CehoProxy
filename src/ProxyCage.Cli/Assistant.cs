@@ -127,10 +127,35 @@ public static class Assistant
             cfg.Subscriptions.Add(new SubscriptionEntry { Name = name, Url = url });
             cfg.ActiveSubscription ??= name;
 
-            Console.WriteLine("  " + Cli.S(cfg, "ask_sub_checking"));
-            Ceho.Quiet = true;
-            var count = await DescribePoolAsync(cfg, quiet: true);
-            Ceho.Quiet = false;
+            int count = 0;
+            using (var spinner = new ConsoleSpinner(Cli.S(cfg, "ask_sub_checking")))
+            {
+                Ceho.Quiet = true;
+                try
+                {
+                    var nodes = await Ceho.LoadAllNodesAsync(cfg, preferCache: false, msg => spinner.Update(msg));
+                    count = nodes.Count;
+                    if (count > 0)
+                    {
+                        spinner.Done(Cli.S(cfg, "sub_parsed", count));
+                        Console.WriteLine();
+                        PrintPoolBreakdown(nodes, cfg);
+                    }
+                    else
+                    {
+                        spinner.Done(Cli.S(cfg, "sub_bad"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    spinner.Done(ex.Message);
+                }
+                finally
+                {
+                    Ceho.Quiet = false;
+                }
+            }
+
             var entry = cfg.Subscriptions.First(s => s.Name == name);
             entry.LastCheckOk = count > 0;
             entry.LastCheckedUtc = DateTime.UtcNow.ToString("u");
@@ -142,7 +167,13 @@ public static class Assistant
 
             cfg.Subscriptions.RemoveAll(s => s.Name == name);
             if (cfg.ActiveSubscription == name) cfg.ActiveSubscription = cfg.Subscriptions.FirstOrDefault()?.Name;
-            Console.WriteLine("  " + await Ceho.DiagnoseSubscriptionAsync(url, cfg.Language));
+
+            using (var diagSpinner = new ConsoleSpinner(Cli.S(cfg, "sub_diag_checking")))
+            {
+                var diag = await Ceho.DiagnoseSubscriptionAsync(url, cfg.Language);
+                diagSpinner.Done(diag);
+            }
+
             if (!Cli.AskYes("  " + Cli.S(cfg, "ask_sub_retry"), true)) return false;
         }
     }
@@ -157,6 +188,12 @@ public static class Assistant
             return 0;
         }
 
+        PrintPoolBreakdown(nodes, cfg);
+        return nodes.Count;
+    }
+
+    public static void PrintPoolBreakdown(IReadOnlyList<ProxyNode> nodes, CehoConfig cfg)
+    {
         Console.WriteLine("  " + Cli.S(cfg, "ask_sub_nodes", nodes.Count));
         foreach (var g in nodes.GroupBy(n => n.CountryCode ?? CountryResolver.Unknown)
                                .OrderByDescending(g => g.Count()))
@@ -167,7 +204,6 @@ public static class Assistant
             var off = Cli.CountryEnabled(cfg, g.Key) ? "" : "  (" + Cli.S(cfg, "btn_off").ToLowerInvariant() + ")";
             Console.WriteLine($"    {Cli.FlagCell(g.Key)} {name,-22} {g.Count(),3}{off}");
         }
-        return nodes.Count;
     }
 
     private static string SuggestName(CehoConfig cfg, string url)

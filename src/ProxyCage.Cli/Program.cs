@@ -267,7 +267,20 @@ switch (cmd)
         Auth.RestrictConfigAccess(Ceho.ConfigPath);
         Console.WriteLine(Cli.S(cfg, "sub_added", args[1]));
         Console.WriteLine(Cli.S(cfg, "subs_pool"));
-        await Assistant.DescribePoolAsync(cfg);
+        using (var spinner = new ConsoleSpinner(Cli.S(cfg, "ask_sub_checking")))
+        {
+            try
+            {
+                var nodes = await Ceho.LoadAllNodesAsync(cfg, preferCache: false, msg => spinner.Update(msg));
+                spinner.Done(Cli.S(cfg, "sub_parsed", nodes.Count));
+                Console.WriteLine();
+                Assistant.PrintPoolBreakdown(nodes, cfg);
+            }
+            catch (Exception ex)
+            {
+                spinner.Done(ex.Message);
+            }
+        }
         await Cli.RebuildQuietlyAsync(cfg);
         return 0;
     }

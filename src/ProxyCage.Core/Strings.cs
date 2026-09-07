@@ -586,6 +586,30 @@ public static class Strings
             "Your VPN service gives you the link. Without it the tunnel has nowhere to connect."),
         ["ask_sub_checking"] = new("Проверяю ссылку…", "Checking the link…"),
         ["ask_sub_nodes"] = new("Нод получено: {0}", "Nodes received: {0}"),
+        ["sub_fetch_attempt"] = new(
+            "Скачиваю подписку (попытка {0}/{1})…",
+            "Fetching subscription (attempt {0}/{1})…"),
+        ["sub_fetch_retry"] = new(
+            "Попытка {0} не удалась ({1}), пробую снова…",
+            "Attempt {0} failed ({1}), retrying…"),
+        ["sub_reading_data"] = new(
+            "Сервер ответил, считываю данные…",
+            "Server responded, reading data…"),
+        ["sub_parsing"] = new(
+            "Получено {0} КБ, разбираю узлы…",
+            "Received {0} KB, parsing nodes…"),
+        ["sub_parsing_nodes"] = new(
+            "Разбираю серверы подписки…",
+            "Parsing subscription servers…"),
+        ["sub_parsed"] = new(
+            "Подписка успешно получена: найдено {0} серверов",
+            "Subscription fetched successfully: found {0} servers"),
+        ["sub_timeout"] = new(
+            "таймаут ожидания ответа",
+            "connection timed out"),
+        ["sub_diag_checking"] = new(
+            "Диагностирую причину сбоя…",
+            "Diagnosing the failure cause…"),
         ["diag_server_down"] = new(
             "Сервер подписки трижды ответил {0} — это сбой на его стороне, ссылка ни при чём. Такое проходит само; попробуйте через несколько минут.",
             "The subscription server answered {0} three times — that is a failure on its side, not a problem with your link. It usually passes; try again in a few minutes."),

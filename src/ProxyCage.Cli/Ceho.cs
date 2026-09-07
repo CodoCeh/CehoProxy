@@ -36,7 +36,7 @@ public static class Ceho
             handler.Proxy = new WebProxyStub(proxy);
             handler.UseProxy = true;
         }
-        var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+        var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(12) };
         if (asBrowser)
         {
             c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
@@ -71,7 +71,7 @@ public static class Ceho
     }
 
     private static async Task<IReadOnlyList<ProxyNode>> LoadOneAsync(
-        SubscriptionEntry sub, string lang, bool preferCache = false)
+        SubscriptionEntry sub, string lang, bool preferCache = false, Action<string>? onProgress = null)
     {
         if (ReadWithoutNetwork(sub.Url, lang) is { Count: > 0 } local)
         {
@@ -87,9 +87,10 @@ public static class Ceho
             if (saved.Count > 0) return Tag(saved, sub.Name);
         }
 
-        var (fresh, failure) = await FetchWithRetriesAsync(sub.Url);
+        var (fresh, failure) = await FetchWithRetriesAsync(sub.Url, onProgress, lang);
         if (fresh is not null)
         {
+            onProgress?.Invoke(Strings.T(lang, "sub_parsing_nodes"));
             var freshNodes = SubscriptionParser.Parse(fresh, lang);
             if (freshNodes.Count > 0)
             {
@@ -118,32 +119,55 @@ public static class Ceho
 
     private const int FetchAttempts = 3;
 
-    private static async Task<(string? Body, string? Failure)> FetchWithRetriesAsync(string url)
+    private static async Task<(string? Body, string? Failure)> FetchWithRetriesAsync(
+        string url, Action<string>? onProgress = null, string lang = "ru")
     {
         string? failure = null;
         string? webPage = null;
         for (var attempt = 1; attempt <= FetchAttempts; attempt++)
         {
             var asBrowser = attempt > 1;
+            onProgress?.Invoke(Strings.T(lang, "sub_fetch_attempt", attempt, FetchAttempts));
             try
             {
                 using var http = MakeClient(null, asBrowser);
                 using var response = await http.GetAsync(url);
                 if (response.IsSuccessStatusCode)
                 {
+                    onProgress?.Invoke(Strings.T(lang, "sub_reading_data"));
                     var body = await response.Content.ReadAsStringAsync();
-                    if (body.Trim().Length == 0) failure = $"пустой ответ (попытка {attempt})";
-                    else if (LooksLikeWebPage(body)) webPage ??= body;
-                    else return (body, null);
+                    if (body.Trim().Length == 0)
+                    {
+                        failure = $"пустой ответ (попытка {attempt})";
+                        onProgress?.Invoke(failure);
+                    }
+                    else if (LooksLikeWebPage(body))
+                    {
+                        webPage ??= body;
+                    }
+                    else
+                    {
+                        var kb = Math.Max(1, body.Length / 1024);
+                        onProgress?.Invoke(Strings.T(lang, "sub_parsing", kb));
+                        return (body, null);
+                    }
                 }
-                else failure = $"HTTP {(int)response.StatusCode} (попытка {attempt})";
+                else
+                {
+                    failure = $"HTTP {(int)response.StatusCode}";
+                    if (attempt < FetchAttempts)
+                        onProgress?.Invoke(Strings.T(lang, "sub_fetch_retry", attempt, failure));
+                }
             }
             catch (Exception ex)
             {
-                failure = $"{ex.Message} (попытка {attempt})";
+                var msg = ex is TaskCanceledException ? Strings.T(lang, "sub_timeout") : ex.Message;
+                failure = msg;
+                if (attempt < FetchAttempts)
+                    onProgress?.Invoke(Strings.T(lang, "sub_fetch_retry", attempt, failure));
             }
 
-            if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(2));
+            if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(1));
         }
 
         return webPage is not null ? (webPage, null) : (null, failure);
@@ -185,13 +209,13 @@ public static class Ceho
     }
 
     public static async Task<IReadOnlyList<ProxyNode>> LoadAllNodesAsync(
-        CehoConfig cfg, bool preferCache = false)
+        CehoConfig cfg, bool preferCache = false, Action<string>? onProgress = null)
     {
         if (cfg.Subscriptions.Count == 0)
             throw new InvalidOperationException(Strings.T(cfg.Language, "pf_no_subs"));
 
         var lists = await Task.WhenAll(
-            cfg.Subscriptions.Select(s => LoadOneAsync(s, cfg.Language, preferCache)));
+            cfg.Subscriptions.Select(s => LoadOneAsync(s, cfg.Language, preferCache, onProgress)));
 
         var pool = new List<ProxyNode>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
