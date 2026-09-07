@@ -778,8 +778,14 @@ switch (cmd)
     }
 
     case "stop":
+    case "off":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        if (Autostart.IsEnabled())
+        {
+            Autostart.StopService();
+        }
+
         if (DaemonControl.RequestStop(Ceho.Root))
         {
             Console.WriteLine(Cli.S(cfg, "stop_sent"));
@@ -797,6 +803,79 @@ switch (cmd)
 
         Console.Error.WriteLine(Cli.S(cfg, "state_off"));
         return 1;
+    }
+
+    case "restart":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+
+        try { await Ceho.ApplyAsync(); }
+        catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
+
+        if (Autostart.IsEnabled())
+        {
+            if (!Os.IsElevated())
+            {
+                Console.Error.WriteLine(Cli.S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo "));
+                return 1;
+            }
+            Autostart.Restart();
+            Console.WriteLine(Cli.S(cfg, "rules_applied"));
+            return 0;
+        }
+
+        var port = Auth.ReadPanelPointer(Ceho.Root) ?? cfg.WebPort;
+        if (DaemonControl.IsRunning(Ceho.Root))
+        {
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                var res = await http.PostAsync($"http://127.0.0.1:{port}/control/restart",
+                    new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("tab", "state") }));
+                if (res.IsSuccessStatusCode)
+                {
+                    Console.WriteLine(Cli.S(cfg, "rules_applied"));
+                    return 0;
+                }
+            }
+            catch { }
+
+            if (!Os.IsElevated())
+            {
+                Console.Error.WriteLine(Cli.S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo "));
+                return 1;
+            }
+            DaemonControl.RequestStop(Ceho.Root);
+            await Task.Delay(1000);
+            TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
+            TunCleanup.RemoveLeftovers(_ => {});
+            DaemonControl.ClearRunning(Ceho.Root);
+        }
+
+        if (Os.IsElevated())
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo(Ceho.OwnExecutablePath, "daemon")
+                {
+                    UseShellExecute = Os.IsWindows,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Ceho.Root
+                };
+                System.Diagnostics.Process.Start(psi);
+                await Task.Delay(1500);
+                if (DaemonControl.IsRunning(Ceho.Root))
+                {
+                    Console.WriteLine(Cli.S(cfg, "rules_applied"));
+                    return 0;
+                }
+            }
+            catch { }
+        }
+
+        Console.WriteLine(Cli.S(cfg, "rules_rebuilt"));
+        Console.WriteLine(Cli.S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo "));
+        return 0;
     }
 
     case "open":
@@ -873,8 +952,15 @@ if (cmd is "daemon" or "web")
         () => new WebServer.ControlState(proc is not null, exitCountry, exitIp, lastError, probed),
         m => Console.Error.WriteLine(m));
 
+    async Task<string?> RestartTunnel()
+    {
+        StopTunnel();
+        return await StartTunnel();
+    }
+
     web.OnStart = StartTunnel;
     web.OnStop = () => Task.FromResult(StopTunnel());
+    web.OnRestart = RestartTunnel;
     web.OnApply = async () => await Ceho.ApplyAsync();
     web.WrappedNames = Cli.Wrapped;
     web.OnCheckSubs = async () =>

@@ -23,6 +23,7 @@ public sealed class WebServer
 
     public Func<Task<string?>>? OnStart { get; set; }
     public Func<Task<string?>>? OnStop { get; set; }
+    public Func<Task<string?>>? OnRestart { get; set; }
     public Func<Task<string?>>? OnApply { get; set; }
 
     public Func<bool, Task<string>>? OnUpdate { get; set; }
@@ -432,6 +433,15 @@ public sealed class WebServer
                     var err = OnStop is null ? "no control" : await OnStop();
                     return err is null ? (S("state_off"), false) : (err, true);
                 }
+
+                case "/control/restart":
+                {
+                    string? err;
+                    if (OnRestart is not null) err = await OnRestart();
+                    else if (OnStop is not null && OnStart is not null) { await OnStop(); err = await OnStart(); }
+                    else err = "no control";
+                    return err is null ? (S("rules_applied"), false) : (err, true);
+                }
             }
             return (null, false);
         }
@@ -574,13 +584,29 @@ public sealed class WebServer
             sb.Append("</div>");
         }
 
-        var canStart = st.Running || Os.IsElevated();
-        sb.Append("<form class=row method=post action=\"")
-          .Append(st.Running ? "/control/stop" : "/control/start").Append("\">")
-          .Append("<input type=hidden name=tab value=state>")
-          .Append("<button").Append(canStart ? "" : " disabled").Append('>')
-          .Append(E(st.Running ? S("btn_off", []) : S("btn_on", [])))
-          .Append("</button></form>");
+        if (st.Running)
+        {
+            sb.Append("<form class=row method=post>")
+              .Append("<input type=hidden name=tab value=state>")
+              .Append("<button type=submit formaction=\"/control/stop\" class=danger>")
+              .Append(E(S("btn_off", [])))
+              .Append("</button>")
+              .Append("<button type=submit formaction=\"/control/restart\">")
+              .Append(E(S("btn_restart", [])))
+              .Append("</button></form>");
+        }
+        else
+        {
+            var canStart = Os.IsElevated();
+            sb.Append("<form class=row method=post>")
+              .Append("<input type=hidden name=tab value=state>")
+              .Append("<button type=submit formaction=\"/control/start\"").Append(canStart ? "" : " disabled").Append('>')
+              .Append(E(S("btn_on", [])))
+              .Append("</button>")
+              .Append("<button type=submit formaction=\"/control/restart\" class=ghost").Append(canStart ? "" : " disabled").Append('>')
+              .Append(E(S("btn_restart", [])))
+              .Append("</button></form>");
+        }
         sb.Append("</section>");
 
         sb.Append("<section><h2>").Append(E(S("summary_title", []))).Append("</h2><dl class=kv>");

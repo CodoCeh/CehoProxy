@@ -316,6 +316,7 @@ public static class Strings
         ["btn_save"] = new("Сохранить", "Save"),
         ["btn_on"] = new("Включить", "Turn on"),
         ["btn_off"] = new("Выключить", "Turn off"),
+        ["btn_restart"] = new("Перезагрузить", "Restart"),
         ["btn_measure"] = new("Замерить задержки", "Measure latency"),
         ["autostart_title"] = new("Автозапуск", "Autostart"),
         ["autostart_on"] = new("Включается при старте системы", "Starts with the system"),

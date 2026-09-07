@@ -37,6 +37,7 @@ public static class Autostart
         {
             case OsKind.Windows:
                 Os.Run("schtasks", $"/end /tn {TaskName}");
+                Thread.Sleep(1000);
                 Os.Run("schtasks", $"/run /tn {TaskName}");
                 break;
             case OsKind.Linux:

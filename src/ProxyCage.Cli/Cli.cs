@@ -34,7 +34,8 @@ public static class Cli
             ]),
             ("Tunnel", [
                 (sudo + "chp daemon", "turn protection and the panel on"),
-                (sudo + "chp stop", "turn protection off"),
+                (sudo + "chp restart", "restart protection"),
+                (sudo + "chp stop · off", "turn protection off"),
                 ("chp run <command>", "run a command through the tunnel once"),
                 ("chp wrap · unwrap · wrapped", "route a command permanently"),
                 ("chp browser", "proxy settings for a browser"),
@@ -68,7 +69,8 @@ public static class Cli
             ]),
             ("Туннель", [
                 (sudo + "chp daemon", "включить защиту и панель"),
-                (sudo + "chp stop", "выключить защиту"),
+                (sudo + "chp restart", "перезапустить защиту"),
+                (sudo + "chp stop · off", "выключить защиту"),
                 ("chp run <команда>", "разово запустить команду через туннель"),
                 ("chp wrap · unwrap · wrapped", "перевести команду на туннель насовсем"),
                 ("chp browser", "настройки прокси для браузера"),
@@ -160,6 +162,7 @@ public static class Cli
         "status", "doctor", "verify", "apps", "add-app", "remove-app",
         "subs", "sub-add", "sub-remove", "countries", "country", "nodes",
         "browser", "detect", "apply", "lang", "set-port", "autostart", "speed",
+        "restart", "stop", "off",
     };
 
     public static bool CanRunRemotely(string command) => RemoteAllowed.Contains(command);
