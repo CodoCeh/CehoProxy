@@ -75,7 +75,7 @@ public static class WebUi
     /* Заголовки переносим только по пробелу: разорванное посередине слово читается как опечатка. */
     th{font-size:12px;font-weight:600;color:var(--muted);overflow-wrap:normal}
     table.t-apps th:nth-child(1){width:26%}
-    table.t-apps th:nth-child(3){width:124px}
+    table.t-apps th:nth-child(3){width:210px}
     table.t-subs th:nth-child(1){width:118px}
     table.t-subs th:nth-child(3){width:108px}
     table.t-subs th:nth-child(4){width:112px}
@@ -143,6 +143,11 @@ public static class WebUi
     td.actions{text-align:right;white-space:nowrap}
     td.actions form{display:inline-block;margin:0 0 0 6px;vertical-align:middle}
     td.actions button{min-height:34px;padding:7px 14px}
+    td.actions a.ghost{display:inline-block;margin:0 0 0 6px;vertical-align:middle;
+      min-height:34px;padding:7px 14px;border:1px solid var(--line);border-radius:10px;
+      color:var(--text);text-decoration:none;font-weight:500;font-size:14px;line-height:18px;
+      box-sizing:border-box}
+    td.actions a.ghost:hover{background:var(--panel2)}
     .flash{padding:12px 15px;border:1px solid var(--line);border-radius:var(--radius);
       margin-bottom:16px;background:var(--surface)}
     .flash.err{border-color:var(--danger-ink);color:var(--danger-ink)}

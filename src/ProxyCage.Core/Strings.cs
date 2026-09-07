@@ -471,6 +471,40 @@ public static class Strings
         ["apps_hint_sysdir"] = new(
             "Программу из системного каталога изолируем по одному файлу: весь каталог трогать нельзя.",
             "A program from a system directory is isolated as a single file: the whole directory must not be touched."),
+        ["app_tunnel_title"] = new("Туннель для «{0}»", "Tunnel for \"{0}\""),
+        ["app_tunnel_lede"] = new(
+            "Отметьте ноды, через которые должна ходить эта программа. Если ничего не отмечено — " +
+            "работают общие правила пула. Если отмечены — только они, с той же маршрутизацией: " +
+            "нода не отвечает, у программы нет сети.",
+            "Tick the nodes this app should use. None ticked — the shared pool rules apply. " +
+            "Any ticked — only those, with the same routing: if a node is down, the app has no network."),
+        ["app_tunnel_general"] = new("общие правила", "shared rules"),
+        ["app_tunnel_pinned"] = new("нод: {0}", "nodes: {0}"),
+        ["app_tunnel_saved"] = new(
+            "Для «{0}» заданы ноды: {1}.",
+            "Nodes for \"{0}\" set: {1}."),
+        ["app_tunnel_cleared"] = new(
+            "Для «{0}» снова общие правила пула.",
+            "\"{0}\" is back on the shared pool rules."),
+        ["app_tunnel_back"] = new("К программам", "Back to apps"),
+        ["app_tunnel_missing"] = new(
+            "Этой программы уже нет в списке.",
+            "This app is no longer in the list."),
+        ["tunnel_ask_apps"] = new(
+            "Какие программы правим (номера через запятую)",
+            "Which apps to edit (numbers, comma-separated)"),
+        ["tunnel_ask_nodes"] = new(
+            "Через какие ноды (номера через запятую; пусто — общие правила)",
+            "Which nodes (numbers, comma-separated; empty — shared rules)"),
+        ["tunnel_done"] = new(
+            "Для {0} заданы ноды: {1}.",
+            "Nodes for {0} set: {1}."),
+        ["tunnel_cleared"] = new(
+            "Для {0} снова общие правила пула.",
+            "{0}: back on the shared pool rules."),
+        ["tunnel_need_interactive"] = new(
+            "Эта команда спрашивает номера в диалоге. Запустите её в обычном терминале: chp tunnel",
+            "This command asks for numbers in a prompt. Run it in a regular terminal: chp tunnel"),
         ["subs_empty"] = new(
             "Нет ни одной подписки. Добавьте ссылку, которую вам выдал VPN-сервис.",
             "No subscriptions yet. Add the link your VPN service gave you."),
@@ -485,6 +519,7 @@ public static class Strings
         ["col_state"] = new("Состояние", "State"),
         ["btn_add"] = new("Добавить", "Add"),
         ["btn_remove"] = new("Убрать", "Remove"),
+        ["btn_tunnel"] = new("Туннель", "Tunnel"),
         ["btn_delete"] = new("Удалить", "Delete"),
         ["btn_save"] = new("Сохранить", "Save"),
         ["btn_on"] = new("Включить", "Turn on"),
@@ -719,8 +754,8 @@ public static class Strings
             "Проверьте строку состояния наверху: там показан реальный IP и страна выхода.",
             "Check the status line at the top: it shows the real exit IP and country."),
         ["help_cli"] = new(
-            "То же самое из терминала: {0}chp add-app ПУТЬ, {0}chp verify, {0}chp status.",
-            "The same from a terminal: {0}chp add-app PATH, {0}chp verify, {0}chp status."),
+            "То же самое из терминала: {0}chp add-app ПУТЬ, {0}chp tunnel, {0}chp verify, {0}chp status.",
+            "The same from a terminal: {0}chp add-app PATH, {0}chp tunnel, {0}chp verify, {0}chp status."),
         ["help_doctor"] = new(
             "Что-то не работает — вкладка «Проверка»: осмотр пройдёт по всей цепочке, а кнопка " +
             "«Починить» исправит то, что можно без вас. В терминале это {0}chp doctor и {0}chp doctor fix.",
