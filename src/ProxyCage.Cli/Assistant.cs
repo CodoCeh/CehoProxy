@@ -223,7 +223,7 @@ public static class Assistant
         if (!Interactive) return false;
 
         var found = AiTools.Detect()
-            .Where(t => !cfg.Apps.Any(a => Covers(a, t.Path)))
+            .Where(t => !AppCoverage.IsToolCovered(cfg, t))
             .ToList();
 
         Console.WriteLine("  " + (found.Count > 0
@@ -254,10 +254,6 @@ public static class Assistant
         return added;
     }
 
-    private static bool Covers(AppEntry app, string path) =>
-        app.Folder.Equals(path, StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith(app.Folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-
     public static bool AddApp(CehoConfig cfg, string path)
     {
         if (!File.Exists(path) && !Directory.Exists(path))
@@ -286,6 +282,8 @@ public static class Assistant
         });
         Console.WriteLine("  " + Cli.S(cfg, "added_name", d.Name));
         Console.WriteLine("  " + d.Folder);
+        if (AppDetector.ToRegexes(cfg.Apps[^1]).Count > 1)
+            Console.WriteLine("  " + Cli.S(cfg, "added_companion_paths"));
         return true;
     }
 

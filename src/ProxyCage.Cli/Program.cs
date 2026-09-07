@@ -742,6 +742,15 @@ switch (cmd)
             await Updater.InstallAsync(release, Ceho.OwnExecutablePath, Console.WriteLine);
             Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
 
+            try
+            {
+                Console.WriteLine("  " + await Ceho.ApplyAsync());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("  " + ex.Message);
+            }
+
             if (DaemonControl.IsRunning(Ceho.Root))
             {
                 DaemonControl.RequestStop(Ceho.Root);
@@ -781,10 +790,7 @@ switch (cmd)
         }
         foreach (var t in found)
         {
-            var already = cfg.Apps.Any(a =>
-                a.Folder.Equals(t.Path, StringComparison.OrdinalIgnoreCase) ||
-                t.Path.StartsWith(a.Folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
-            var mark = already ? "[x]" : "[ ]";
+            var mark = AppCoverage.IsToolCovered(cfg, t) ? "[x]" : "[ ]";
             Console.WriteLine($"  {mark} {t.Name,-12} {t.Path}");
             if (t.Kind == AiTools.ToolKind.Script && t.Interpreter is not null)
                 Console.WriteLine("      " + Cli.S(cfg, "ai_script_warn", Path.GetFileName(t.Interpreter)));
@@ -1415,6 +1421,13 @@ if (cmd is "daemon" or "web")
                 // и сняли. Второй заход — чтобы человек не видел ложную «чужой VPN».
                 Log.Info("адрес туннеля был занят, снимаю свой след и пробую ещё раз");
                 reason = await BringEngineUp(c, report);
+                if (reason is not null
+                    && reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log.Info("адаптер всё ещё занят, жду и пробую в третий раз");
+                    await Task.Delay(TimeSpan.FromSeconds(3));
+                    reason = await BringEngineUp(c, report);
+                }
             }
 
             if (reason is not null)
@@ -1478,7 +1491,12 @@ if (cmd is "daemon" or "web")
         exitCountry = exitIp = null;
         probed = false;
 
-        if (!clean) Log.Warn("движок не завершился по-хорошему, снимаю следы");
+        if (!clean)
+        {
+            Log.Warn("движок не завершился по-хорошему, снимаю следы");
+            TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+            Thread.Sleep(800);
+        }
 
         // Уходя, не оставляем в системе ничего своего: даже после чистого выхода движка
         // от адаптера остаётся мёртвое устройство, и оно наше — значит, убираем его сами.

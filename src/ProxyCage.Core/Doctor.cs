@@ -377,18 +377,9 @@ public static class Doctor
 
         string S(string key, params object[] a) => Strings.T(l, key, a);
 
-        var addedFolders = cfg.Apps
-            .Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
-            .Select(a => a.Folder.TrimEnd('\\', '/'))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         foreach (var tool in found)
         {
-            var folder = tool.Path.TrimEnd('\\', '/');
-            if (addedFolders.Contains(folder)) continue;
-            if (cfg.Apps.Any(a => a.Enabled && (a.Folder.Contains(tool.Name, StringComparison.OrdinalIgnoreCase)
-                                                || a.Name.Equals(tool.Name, StringComparison.OrdinalIgnoreCase))))
-                continue;
+            if (AppCoverage.IsToolCovered(cfg, tool)) continue;
 
             yield return new Preflight.Check(
                 Preflight.Level.Warning,

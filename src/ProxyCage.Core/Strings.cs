@@ -586,6 +586,11 @@ public static class Strings
             "Nothing familiar was found. You can add a program manually by entering its path below."),
         ["ai_add"] = new("В туннель", "Send through tunnel"),
         ["ai_added"] = new("уже в туннеле", "already tunneled"),
+        ["added_companion_paths"] = new(
+            "Вместе с ней в туннель попадут CLI и вспомогательные процессы — отдельно добавлять их не нужно. "
+            + "Если правила старые: chp apply.",
+            "Its CLI and helper processes are included in the tunnel — no need to add them separately. "
+            + "If rules are stale: chp apply."),
         ["ai_script_warn"] = new(
             "Этот помощник запускает {0} — компьютер видит её, а не его, и правило по папке не сработает. Такую команду переводят на туннель отдельно: chp wrap.",
             "This helper is started by {0} — the computer sees that program, not the helper, so a folder rule will not match. Route such a command separately: chp wrap."),

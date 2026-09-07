@@ -247,4 +247,43 @@ public class PlatformTests
         Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(cursorExe, r));
         Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(dotCursorServer, r));
     }
+
+    [Fact]
+    public void Windows_codex_store_covers_cli_without_separate_entry()
+    {
+        var cfg = new CehoConfig
+        {
+            Apps =
+            {
+                new AppEntry
+                {
+                    Name = "Codex",
+                    Folder = @"C:\Program Files\WindowsApps\OpenAI.Codex_26.901.6511.0_x64__2p2nqsd0c76g0",
+                    VersionAgnostic = true,
+                    Enabled = true,
+                },
+            },
+        };
+
+        var cli = new AiTools.Found(
+            "Codex CLI",
+            @"C:\Users\s.bonich\AppData\Local\OpenAI\Codex",
+            AiTools.ToolKind.Bundle,
+            null);
+
+        Assert.True(AppCoverage.IsToolCovered(cfg, cli));
+        Assert.True(AppCoverage.IsPathCovered(
+            cfg,
+            @"C:\Users\s.bonich\AppData\Local\OpenAI\Codex\bin\8e5b6932251c2c1c\codex.exe"));
+    }
+
+    [Fact]
+    public void Msix_codex_name_is_normalized()
+    {
+        if (!Os.IsWindows) return;
+
+        var d = AppDetector.Detect(
+            @"C:\Program Files\WindowsApps\OpenAI.Codex_26.901.6511.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe");
+        Assert.Equal("Codex", d.Name);
+    }
 }
