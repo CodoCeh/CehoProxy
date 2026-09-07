@@ -97,53 +97,15 @@ if (Test-Path $nearbyEngine) {
     Write-Host "Движок sing-box установлен из локального источника: $engine"
 }
 
-if (-not (Test-Path $engine) -and -not (Get-Command 'sing-box' -ErrorAction SilentlyContinue)) {
-    Write-Host "Движок sing-box не найден. Загружаю sing-box для Windows x64..."
-    $installedEngine = $false
-
-    try {
-        $chpSbUrl = "https://github.com/$Repo/releases/latest/download/sing-box.exe"
-        Invoke-WebRequest -Uri $chpSbUrl -OutFile $engine -UseBasicParsing
-        if (Test-Path $engine) {
-            Write-Host "Движок sing-box успешно скачан из релиза $Repo."
-            $installedEngine = $true
-        }
-    } catch { }
-
-    if (-not $installedEngine) {
-        try {
-            $headers = @{ "User-Agent" = "CehoProxy-Installer" }
-            $sbRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/SagerNet/sing-box/releases/latest" -Headers $headers -UseBasicParsing
-            $sbAsset = $sbRelease.assets | Where-Object { $_.name -match 'sing-box-.*-windows-amd64\.zip$' } | Select-Object -First 1
-            if ($sbAsset) {
-                $zipTmp = Join-Path $env:TEMP 'sing-box-download.zip'
-                $unzipTmp = Join-Path $env:TEMP 'sing-box-extract'
-                Write-Host "Скачиваю $($sbAsset.name)..."
-                Invoke-WebRequest -Uri $sbAsset.browser_download_url -OutFile $zipTmp -UseBasicParsing
-                if (Test-Path $unzipTmp) { Remove-Item -Recurse -Force $unzipTmp }
-                Expand-Archive -Path $zipTmp -DestinationPath $unzipTmp -Force
-                $foundSb = Get-ChildItem -Path $unzipTmp -Filter 'sing-box.exe' -Recurse | Select-Object -First 1
-                if ($foundSb) {
-                    Copy-Item -Path $foundSb.FullName -Destination $engine -Force
-                    Write-Host "Движок sing-box успешно установлен: $engine"
-                }
-                Remove-Item -Force $zipTmp -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $unzipTmp -ErrorAction SilentlyContinue
-            }
-        } catch {
-            Write-Warning "Не удалось автоматически загрузить sing-box из сети: $_"
-        }
-    }
-} elseif (Test-Path $engine) {
-    Write-Host "Движок sing-box уже установлен."
-}
+if (Test-Path $engine) { Write-Host "Движок sing-box уже установлен." }
 
 Write-Host "Страница продукта: https://github.com/$Repo"
 
-# Команда сама затирает файлы прошлой сборки, оставляет config.json и sub-*.txt
-# и возвращает автозапуск, если он был включён.
+# Команда сама затирает файлы прошлой сборки, оставляет config.json и sub-*.txt,
+# возвращает автозапуск и скачивает движок, если его ещё нет. Скачиванием занимается
+# программа, а не скрипт: место одно, и оно одинаково работает на всех системах.
 if ($hadConfig) {
-    & $exe install --no-setup
+    & $exe install --no-setup --with-engine
     Write-Host ""
     Write-Host "Обновление завершено, прежние настройки и подписки на месте."
     Write-Host "  chp             # состояние"
@@ -151,4 +113,13 @@ if ($hadConfig) {
     Write-Host "  chp log         # журнал и падения"
 } else {
     & $exe install --with-engine
+}
+
+# Сюда попадаем, если движок скачать не вышло. На экране должна остаться
+# одна команда, а не разбор, где его искать.
+if (-not (Test-Path $engine) -and -not (Get-Command 'sing-box' -ErrorAction SilentlyContinue)) {
+    Write-Host ""
+    Write-Host "Движок sing-box скачать не удалось, без него туннель не поднимется."
+    Write-Host "Повторить одной командой (PowerShell от имени администратора):"
+    Write-Host "  chp engine"
 }

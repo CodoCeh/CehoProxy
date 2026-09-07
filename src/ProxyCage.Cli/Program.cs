@@ -104,8 +104,48 @@ if (cmd == "install")
     if (!args.Contains("--no-setup")) return await Cli.SetupAsync(Ceho.ConfigPath);
 
     if (Os.ResolveSingBox(Ceho.Root) is null)
+    {
         Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_engine_later"));
+        Console.WriteLine("  " + Strings.T(cfg0.Language, "engine_command",
+            Os.IsWindows ? "" : "sudo "));
+    }
     Console.WriteLine("  " + Strings.T(cfg0.Language, "setup_hint"));
+    return 0;
+}
+
+// Отдельная короткая команда: без неё «поставьте движок» упиралось в chp install
+// с ключом, а это выглядит как переустановка программы.
+if (cmd is "engine" or "движок")
+{
+    var already = Os.ResolveSingBox(Ceho.Root);
+    var again = args.Length >= 2 && args[1].ToLowerInvariant() is "update" or "обновить" or "--force";
+
+    if (already is not null && !again)
+    {
+        Console.WriteLine(Strings.T(cfg0.Language, "engine_already", already));
+        Console.WriteLine(Strings.T(cfg0.Language, "engine_update_hint", Os.IsWindows ? "" : "sudo "));
+        return 0;
+    }
+
+    if (!Preflight.FolderIsWritable(Ceho.Root, out _))
+    {
+        Console.Error.WriteLine(Strings.T(cfg0.Language, "engine_need_rights",
+            Os.IsWindows ? "" : "sudo "));
+        return 1;
+    }
+
+    try
+    {
+        var engine = await Installer.DownloadEngineAsync(
+            Ceho.Root, m => Console.WriteLine("  " + m), cfg0.Language);
+        Console.WriteLine(Strings.T(cfg0.Language, "engine_ready", engine));
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine(Strings.T(cfg0.Language, "inst_engine_failed", ex.Message));
+        Console.Error.WriteLine(Strings.T(cfg0.Language, "engine_by_hand", Ceho.Root));
+        return 1;
+    }
     return 0;
 }
 

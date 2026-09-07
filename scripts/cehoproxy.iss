@@ -1,5 +1,5 @@
 #define AppName "CehoProxy"
-#define AppVersion "1.2.0"
+#define AppVersion "1.2.1"
 #define AppPublisher "КодоЦех"
 #define AppUrl "https://codoceh.ru"
 #define RepoUrl "https://github.com/CodoCeh/CehoProxy"
@@ -47,8 +47,9 @@ Name: "{group}\Страница CehoProxy"; Filename: "{#RepoUrl}"
 Name: "{group}\Удалить CehoProxy"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{app}\cehoproxy.exe"; Parameters: "install --no-setup"; \
-  StatusMsg: "Регистрируем программу в системе..."; Flags: runhidden waituntilterminated
+Filename: "{app}\cehoproxy.exe"; Parameters: "install --no-setup --with-engine"; \
+  StatusMsg: "Регистрируем программу и скачиваем движок sing-box..."; \
+  Flags: runhidden waituntilterminated
 Filename: "{cmd}"; Parameters: "/k ""{app}\cehoproxy.exe"" setup"; \
   Description: "Настроить сейчас"; Flags: postinstall skipifsilent
 

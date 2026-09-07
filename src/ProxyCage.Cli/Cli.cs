@@ -45,6 +45,7 @@ public static class Cli
             ]),
             ("Other", [
                 ("chp doctor", "check what is missing before start"),
+                (sudo + "chp engine", "download the sing-box engine (engine update — refresh it)"),
                 ("chp log [engine|crash|clear]", "the journal: the program, the engine and crashes"),
                 ("chp detect", "find installed AI tools"),
                 ("chp apply", "rebuild the rules"),
@@ -84,6 +85,7 @@ public static class Cli
             ]),
             ("Прочее", [
                 ("chp doctor", "проверить, всё ли готово к запуску"),
+                (sudo + "chp engine", "скачать движок sing-box (engine update — обновить)"),
                 ("chp log [движок|падения|очистить]", "журнал: программа, движок и падения"),
                 ("chp detect", "найти установленные ИИ-инструменты"),
                 ("chp apply", "пересобрать правила"),

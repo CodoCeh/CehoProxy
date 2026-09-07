@@ -73,11 +73,11 @@ public static class Strings
             "Искали в {0}, рядом с программой и в PATH.",
             "Looked in {0}, next to the program and in PATH."),
         ["pf_engine_fix_win"] = new(
-            "Скачайте движок командой: chp install --with-engine. В комплект он не входит — у него своя лицензия. Можно и вручную: положите {0} в папку настроек.",
-            "Download the engine with: chp install --with-engine. It is not part of the package — it has its own licence. You can also do it by hand: put {0} into the settings folder."),
+            "Скачайте движок командой: chp engine. В комплект он не входит — у него своя лицензия. Можно и вручную: положите {0} в папку настроек.",
+            "Download the engine with: chp engine. It is not part of the package — it has its own licence. You can also do it by hand: put {0} into the settings folder."),
         ["pf_engine_fix_unix"] = new(
-            "Скачайте движок командой: sudo chp install --with-engine. Либо поставьте sing-box пакетным менеджером системы, либо положите файл в {0}.",
-            "Download the engine with: sudo chp install --with-engine. Or install sing-box with your package manager, or put the file into {0}."),
+            "Скачайте движок командой: sudo chp engine. Либо поставьте sing-box пакетным менеджером системы, либо положите файл в {0}.",
+            "Download the engine with: sudo chp engine. Or install sing-box with your package manager, or put the file into {0}."),
         ["pf_curl_ok"] = new("Проверка выхода доступна", "Exit check available"),
         ["pf_curl_missing"] = new("Не найден curl", "curl not found"),
         ["pf_curl_detail"] = new(
@@ -468,11 +468,31 @@ public static class Strings
         ["inst_engine_ask"] = new(
             "Скачать движок sing-box с сайта автора?", "Download the sing-box engine from its author's site?"),
         ["inst_engine_later"] = new(
-            "Движок sing-box ещё не установлен — настройка предложит скачать его.",
-            "The sing-box engine is not installed yet — the setup will offer to download it."),
+            "Движок sing-box ещё не установлен, без него туннель не поднимется.",
+            "The sing-box engine is not installed yet, and without it the tunnel will not start."),
         ["inst_engine_skip"] = new(
-            "Хорошо. Поставьте sing-box сами, иначе туннель не поднимется.",
-            "All right. Install sing-box yourself, otherwise the tunnel will not start."),
+            "Хорошо. Движок можно поставить позже одной командой.",
+            "All right. The engine can be installed later with a single command."),
+        ["engine_command"] = new(
+            "Скачать его одной командой: {0}chp engine",
+            "Download it with a single command: {0}chp engine"),
+        ["engine_already"] = new("Движок уже на месте: {0}", "The engine is already here: {0}"),
+        ["engine_get"] = new("Скачать движок", "Download the engine"),
+        ["job_engine"] = new("Скачиваю движок sing-box", "Downloading the sing-box engine"),
+        ["engine_update_hint"] = new(
+            "Обновить его до свежей версии: {0}chp engine update",
+            "Update it to the latest version: {0}chp engine update"),
+        ["engine_need_rights"] = new(
+            "Движок кладётся в общую папку программы, поэтому нужны права администратора: {0}chp engine",
+            "The engine goes into the shared program folder, so administrator rights are required: {0}chp engine"),
+        ["engine_ready"] = new(
+            "Движок готов: {0}. Туннель можно включать.",
+            "The engine is ready: {0}. The tunnel can be started."),
+        ["engine_by_hand"] = new(
+            "Можно и вручную: скачайте sing-box со страницы github.com/SagerNet/sing-box/releases " +
+            "и положите файл в {0}",
+            "You can also do it by hand: download sing-box from github.com/SagerNet/sing-box/releases " +
+            "and put the file into {0}"),
         ["inst_engine_failed"] = new(
             "Движок скачать не удалось: {0}", "Could not download the engine: {0}"),
         ["inst_binary_at"] = new("программа: {0}", "program: {0}"),
