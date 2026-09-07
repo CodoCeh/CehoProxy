@@ -1,6 +1,13 @@
 using ProxyCage.Core;
 using ProxyCage.Cli;
 
+try
+{
+    Console.OutputEncoding = System.Text.Encoding.UTF8;
+    Console.InputEncoding = System.Text.Encoding.UTF8;
+}
+catch { }
+
 CehoConfig cfg0;
 try { cfg0 = CehoConfig.Load(Ceho.ConfigPath); }
 catch { cfg0 = new CehoConfig(); }
