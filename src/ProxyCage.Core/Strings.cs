@@ -153,6 +153,129 @@ public static class Strings
         ["pf_blockers"] = new(
             "Мешает запуску: {0}. Исправьте отмеченное «стоп».",
             "Blocking startup: {0}. Fix the items marked \"stop\"."),
+
+        // Доктор: осмотр и починка
+        ["doc_title"] = new("Проверка", "Check-up"),
+        ["doc_hint"] = new(
+            "Осмотр смотрит всё: движок на месте и запускается, правила собраны, подписки читаются, " +
+            "нет следов прошлого запуска. Что можно починить без вас — доктор починит.",
+            "The check-up looks at everything: the engine is in place and starts, the rules are built, " +
+            "the subscriptions load, no leftovers from a previous run. Whatever can be fixed without you, the doctor fixes."),
+        ["doc_check"] = new("Проверить всё", "Check everything"),
+        ["doc_heal"] = new("Починить", "Fix it"),
+        ["doc_never"] = new(
+            "Осмотра ещё не было. Нажмите «Проверить всё».",
+            "No check-up yet. Press \"Check everything\"."),
+        ["doc_when"] = new("Осмотр от {0}", "Check-up from {0}"),
+        ["job_doctor"] = new("Осматриваю программу", "Checking the program"),
+        ["job_heal"] = new("Чиню, что можно", "Fixing what can be fixed"),
+        ["doc_stage_install"] = new("Смотрю установку", "Looking at the installation"),
+        ["doc_stage_engine"] = new("Проверяю движок", "Checking the engine"),
+        ["doc_stage_rules"] = new("Проверяю правила", "Checking the rules"),
+        ["doc_stage_subs"] = new("Читаю подписки", "Reading the subscriptions"),
+        ["doc_stage_traces"] = new("Ищу следы прошлого запуска", "Looking for leftovers from a previous run"),
+        ["doc_stage_exit"] = new("Спрашиваю выход", "Asking the exit node"),
+        ["doc_stage_log"] = new("Смотрю журнал", "Looking at the journal"),
+        ["doc_stage_recheck"] = new("Проверяю заново", "Checking again"),
+        ["doc_fixing"] = new("Чиню: {0}", "Fixing: {0}"),
+        ["doc_fix_failed"] = new("Не удалось починить {0}: {1}", "Could not fix {0}: {1}"),
+        ["doc_all_ok"] = new(
+            "Всё в порядке: установлено, настроено, работает.",
+            "All good: installed, configured, working."),
+        ["doc_left_title"] = new("Осталось вам", "Left for you"),
+        ["doc_left_n"] = new("Осталось вам: {0}", "Left for you: {0}"),
+        ["doc_warnings"] = new("Замечаний: {0}", "Warnings: {0}"),
+        ["doc_can_fix"] = new("Это доктор чинит сам.", "The doctor fixes this himself."),
+        ["doc_what_to_do"] = new("Что делать: {0}", "What to do: {0}"),
+        ["doc_nothing_to_fix"] = new(
+            "Само ничего не чинится — всё, что мешает, требует вашего решения.",
+            "Nothing to fix automatically — everything blocking needs your decision."),
+        ["doc_did_nothing"] = new("Чинить было нечего.", "There was nothing to fix."),
+        ["doc_ask_fix"] = new("Починить, что чинится?", "Fix what can be fixed?"),
+        ["doc_offer"] = new(
+            "Часть этого чинится сама: {0}chp doctor fix",
+            "Some of this fixes itself: {0}chp doctor fix"),
+        ["doc_name_engine"] = new("движок", "the engine"),
+        ["doc_name_rules"] = new("правила", "the rules"),
+        ["doc_name_leftovers"] = new("следы прошлого запуска", "leftovers from a previous run"),
+        ["doc_name_panel_port"] = new("порт панели", "the panel port"),
+        ["doc_name_proxy_port"] = new("порт прокси", "the proxy port"),
+        ["doc_name_service"] = new("служба", "the service"),
+        ["doc_name_none"] = new("ничего", "nothing"),
+        ["doc_engine_runs"] = new("Движок запускается: {0}", "The engine starts: {0}"),
+        ["doc_engine_broken"] = new("Движок не запускается", "The engine does not start"),
+        ["doc_engine_broken_detail"] = new(
+            "Файл на месте, но на запрос версии ответил кодом {0}.",
+            "The file is in place, but it answered the version request with code {0}."),
+        ["doc_engine_broken_fix"] = new(
+            "Скачаю движок заново.", "I will download the engine again."),
+        ["doc_rules_ok"] = new("Правила собраны и верны", "The rules are built and valid"),
+        ["doc_rules_missing"] = new("Правила ещё не собраны", "The rules are not built yet"),
+        ["doc_rules_missing_detail"] = new(
+            "Без них движку нечего запускать.", "Without them the engine has nothing to run."),
+        ["doc_rules_stale"] = new(
+            "Правила старше настроек", "The rules are older than the settings"),
+        ["doc_rules_stale_detail"] = new(
+            "Настройки менялись после последней сборки — правила стоит пересобрать.",
+            "The settings changed after the last build — the rules should be rebuilt."),
+        ["doc_rules_bad"] = new("Движок не принимает правила", "The engine rejects the rules"),
+        ["doc_rules_fix"] = new("Пересоберу правила.", "I will rebuild the rules."),
+        ["doc_subs_ok"] = new("Подписки читаются, нод: {0}", "Subscriptions load, nodes: {0}"),
+        ["doc_subs_dead"] = new("Подписки не читаются", "The subscriptions do not load"),
+        ["doc_subs_dead_fix"] = new(
+            "Проверьте ссылку в разделе «Подписки» и доступ в интернет.",
+            "Check the link in the \"Subscriptions\" section and your internet access."),
+        ["doc_subs_empty"] = new("Подписки пустые", "The subscriptions are empty"),
+        ["doc_subs_empty_detail"] = new(
+            "Ссылка открылась, но нод в ней нет.",
+            "The link opened, but there are no nodes in it."),
+        ["doc_pool_ok"] = new("После фильтров осталось нод: {0}", "Nodes left after filtering: {0}"),
+        ["doc_pool_empty"] = new("После фильтров не осталось нод", "No nodes left after filtering"),
+        ["doc_pool_empty_fix"] = new(
+            "Верните страну или включите ноды обратно в разделе «Выход».",
+            "Bring a country back or turn the nodes on again in the \"Exit\" section."),
+        ["doc_exit_dead"] = new("Выход не отвечает", "The exit node does not answer"),
+        ["doc_exit_dead_detail"] = new(
+            "Защита включена, но проверить страну и адрес не удалось: программы сейчас без интернета.",
+            "Protection is on, but the country and address could not be checked: apps have no internet right now."),
+        ["doc_exit_dead_fix"] = new(
+            "Перезапустите защиту — движок возьмёт другую ноду.",
+            "Restart protection — the engine will take another node."),
+        ["doc_leftovers"] = new(
+            "В системе остался туннель от прошлого запуска",
+            "A tunnel from a previous run is still in the system"),
+        ["doc_leftovers_detail"] = new(
+            "Служба не работает, а сетевой интерфейс и правила маршрутизации на месте: программы могут остаться без интернета.",
+            "The service is not running, but the network interface and routing rules are still there: apps may end up without internet."),
+        ["doc_leftovers_fix"] = new("Сниму следы.", "I will remove the leftovers."),
+        ["doc_stale_pid"] = new(
+            "Остался файл с номером процесса", "A stale process-id file is left"),
+        ["doc_service_ok"] = new("Служба работает", "The service is running"),
+        ["doc_service_dead"] = new(
+            "Автозапуск включён, но служба не работает",
+            "Autostart is on, but the service is not running"),
+        ["doc_service_dead_detail"] = new(
+            "Система должна была поднять защиту сама.",
+            "The system should have started protection on its own."),
+        ["doc_service_fix"] = new("Перезапущу службу.", "I will restart the service."),
+        ["doc_service_off"] = new("Автозапуск выключен", "Autostart is off"),
+        ["doc_service_off_detail"] = new(
+            "После перезагрузки защиту придётся включать руками.",
+            "After a reboot, protection will have to be turned on by hand."),
+        ["doc_service_off_fix"] = new(
+            "Включите автозапуск в настройках или командой {0}chp autostart on",
+            "Turn autostart on in the settings or with {0}chp autostart on"),
+        ["doc_crash"] = new("Было падение {0}", "There was a crash on {0}"),
+        ["doc_crash_fix"] = new(
+            "Подробности в журнале, раздел «Падения».",
+            "Details are in the journal, the \"Crashes\" section."),
+        ["doc_did_engine"] = new("Скачал движок: {0}", "Downloaded the engine: {0}"),
+        ["doc_did_rules"] = new("Пересобрал правила.", "Rebuilt the rules."),
+        ["doc_did_leftovers"] = new("Снял следы прошлого запуска: {0}", "Removed leftovers from a previous run: {0}"),
+        ["doc_did_panel_port"] = new("Перенёс панель с порта {0} на {1}.", "Moved the panel from port {0} to {1}."),
+        ["doc_did_proxy_port"] = new("Перенёс прокси с порта {0} на {1}.", "Moved the proxy from port {0} to {1}."),
+        ["doc_did_service"] = new("Перезапустил службу.", "Restarted the service."),
+        ["doc_did_title"] = new("Что сделал доктор", "What the doctor did"),
         ["det_bundle"] = new(
             "Под изоляцию попадёт весь пакет программы целиком, включая вспомогательные процессы внутри него.",
             "The whole application bundle will be isolated, including helper processes inside it."),
@@ -299,6 +422,7 @@ public static class Strings
         ["nav_exit"] = new("Страны", "Countries"),
         ["nav_browser"] = new("Браузер", "Browser"),
         ["nav_access"] = new("Доступ", "Access"),
+        ["nav_doctor"] = new("Проверка", "Check-up"),
         ["nav_help"] = new("Помощь", "Help"),
         ["apps_title"] = new("Программы в изоляции", "Isolated apps"),
         ["apps_lede"] = new(
@@ -549,6 +673,12 @@ public static class Strings
         ["help_cli"] = new(
             "То же самое из терминала: {0}chp add-app ПУТЬ, {0}chp verify, {0}chp status.",
             "The same from a terminal: {0}chp add-app PATH, {0}chp verify, {0}chp status."),
+        ["help_doctor"] = new(
+            "Что-то не работает — вкладка «Проверка»: осмотр пройдёт по всей цепочке, а кнопка " +
+            "«Починить» исправит то, что можно без вас. В терминале это {0}chp doctor и {0}chp doctor fix.",
+            "If something is broken, open the \"Check-up\" tab: it walks the whole chain, and the " +
+            "\"Fix it\" button repairs what can be done without you. In a terminal: {0}chp doctor " +
+            "and {0}chp doctor fix."),
         ["footer_local"] = new(
             "панель доступна только с этого компьютера", "the panel is reachable only from this machine"),
         ["forged"] = new("Выковано в КодоЦех", "Forged at CodoCeh"),

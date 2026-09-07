@@ -44,7 +44,7 @@ public static class Cli
                 ("chp browser", "proxy settings for a browser"),
             ]),
             ("Other", [
-                ("chp doctor", "check what is missing before start"),
+                ("chp doctor [fix]", "check everything; fix repairs what it can"),
                 (sudo + "chp engine", "download the sing-box engine (engine update — refresh it)"),
                 ("chp log [engine|crash|clear]", "the journal: the program, the engine and crashes"),
                 ("chp detect", "find installed AI tools"),
@@ -84,7 +84,7 @@ public static class Cli
                 ("chp browser", "настройки прокси для браузера"),
             ]),
             ("Прочее", [
-                ("chp doctor", "проверить, всё ли готово к запуску"),
+                ("chp doctor [fix]", "проверить всё; fix — починить, что чинится"),
                 (sudo + "chp engine", "скачать движок sing-box (engine update — обновить)"),
                 ("chp log [движок|падения|очистить]", "журнал: программа, движок и падения"),
                 ("chp detect", "найти установленные ИИ-инструменты"),
@@ -661,6 +661,34 @@ public static class Cli
         && (cfg.PreferredCountries.Count == 0
             || cfg.PreferredCountries.Contains(code, StringComparer.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// Руки доктора в терминале: ровно те же действия, что панель отдаёт своим кнопкам,
+    /// поэтому «chp doctor» и кнопка «Починить» ведут себя одинаково.
+    /// </summary>
+    public static DoctorTools DoctorTools() => new()
+    {
+        Pool = report => Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath), preferCache: false, report),
+        Rebuild = Ceho.ApplyAsync,
+        Exit = () => Ceho.ProbeExitAsync(CehoConfig.Load(Ceho.ConfigPath).MixedPort),
+    };
+
+    /// <summary>Что доктор сделал сам и что осталось человеку.</summary>
+    public static void PrintDoctorDeeds(CehoConfig cfg, Doctor.Result report)
+    {
+        if (report.Done.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine(S(cfg, "doc_did_title") + ":");
+            foreach (var line in report.Done) Console.WriteLine("  " + line);
+        }
+
+        if (report.Left.Count == 0) return;
+
+        Console.WriteLine();
+        Console.WriteLine(S(cfg, "doc_left_title") + ":");
+        foreach (var line in report.Left) Console.WriteLine("  " + line);
+    }
+
     public static void PrintChecks(CehoConfig cfg, IReadOnlyList<Preflight.Check> checks)
     {
         foreach (var c in checks)
@@ -673,8 +701,12 @@ public static class Cli
             };
             Console.WriteLine(mark + c.Title);
             if (c.Detail is not null) Console.WriteLine("       " + c.Detail);
-            if (c.Fix is not null)
-                Console.WriteLine("       " + (Lang(cfg) == "en" ? "What to do: " : "Что делать: ") + c.Fix);
+            if (c.Fix is null) continue;
+
+            // Что доктор делает сам, уже написано от первого лица: «Пересоберу правила».
+            Console.WriteLine(c.Repair != Repair.None
+                ? "       " + c.Fix
+                : "       " + (Lang(cfg) == "en" ? "What to do: " : "Что делать: ") + c.Fix);
         }
     }
 
