@@ -993,7 +993,7 @@ switch (cmd)
         TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
         TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", Console.WriteLine);
 
-        TunCleanup.RemoveLeftovers(Console.WriteLine);
+        TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress);
         DaemonControl.ClearRunning(Ceho.Root);
 
         foreach (var f in new[] { Ceho.ConfigPath, Ceho.RuntimeConfigPath })
@@ -1187,7 +1187,7 @@ switch (cmd)
         if (NodeProbe.TunnelIsUp(cfg.TunAddress) || DaemonControl.RunningPid(Ceho.Root) is not null)
         {
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
-            TunCleanup.RemoveLeftovers(Console.WriteLine);
+            TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress);
             DaemonControl.ClearRunning(Ceho.Root);
             Console.WriteLine(Cli.S(cfg, "stop_cleaned"));
             return 0;
@@ -1240,7 +1240,7 @@ switch (cmd)
             DaemonControl.RequestStop(Ceho.Root);
             await Task.Delay(1000);
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
-            TunCleanup.RemoveLeftovers(_ => {});
+            TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress);
             DaemonControl.ClearRunning(Ceho.Root);
         }
 
@@ -1310,7 +1310,7 @@ if (cmd is "daemon" or "web")
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 
             report?.Stage(Strings.T(c.Language, "stage_cleanup"), 94);
-            TunCleanup.RemoveLeftovers(Log.Info);
+            TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress);
 
             report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
             var p = new SingBoxProcess();
@@ -1325,7 +1325,7 @@ if (cmd is "daemon" or "web")
                 var reason = p.Explain(c.Language);
                 Log.Error($"движок не устоял: {reason}");
                 p.Dispose();
-                TunCleanup.RemoveLeftovers(Log.Info);
+                TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress);
                 lastError = reason;
                 return reason;
             }
@@ -1355,7 +1355,7 @@ if (cmd is "daemon" or "web")
         if (!clean)
         {
             Log.Warn("движок не завершился по-хорошему, снимаю следы");
-            TunCleanup.RemoveLeftovers(Log.Info);
+            TunCleanup.RemoveLeftovers(Log.Info, cfg.TunAddress);
         }
         return null;
     }
@@ -1421,7 +1421,7 @@ if (cmd is "daemon" or "web")
             Autostart.Purge();
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
             TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", _ => {});
-            TunCleanup.RemoveLeftovers(_ => {});
+            TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress);
             DaemonControl.ClearRunning(Ceho.Root);
             try
             {

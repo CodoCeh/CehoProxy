@@ -42,7 +42,7 @@ public static class Installer
             if (DaemonControl.IsRunning(root))
             {
                 TunCleanup.KillOurProcesses(Path.Combine(root, "singbox.json"), _ => { });
-                TunCleanup.RemoveLeftovers(log);
+                TunCleanup.RemoveLeftovers(log, CehoConfig.Load(Path.Combine(root, "config.json")).TunAddress);
                 DaemonControl.ClearRunning(root);
             }
         }

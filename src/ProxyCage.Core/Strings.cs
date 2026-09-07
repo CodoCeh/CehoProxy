@@ -265,6 +265,27 @@ public static class Strings
         ["doc_service_off_fix"] = new(
             "Включите автозапуск в настройках или командой {0}chp autostart on",
             "Turn autostart on in the settings or with {0}chp autostart on"),
+        ["doc_proxy_dead"] = new(
+            "Браузеры настроены на прокси {0}, а там никто не отвечает",
+            "Browsers are set to use proxy {0}, but nothing answers there"),
+        ["doc_proxy_dead_detail"] = new(
+            "Это системная настройка Windows, её ставим не мы: обычно её оставляет другой VPN-клиент. "
+            + "Пока она включена, страницы не открываются, даже когда сеть в порядке.",
+            "This is a Windows-wide setting we never touch: usually another VPN client leaves it behind. "
+            + "While it is on, pages will not open even when the network itself is fine."),
+        ["doc_proxy_dead_fix"] = new(
+            "Выключите прокси в «Параметры → Сеть и Интернет → Прокси» или верните тот клиент, "
+            + "который его ставил.",
+            "Turn the proxy off in Settings -> Network & Internet -> Proxy, or bring back the client "
+            + "that set it up."),
+        ["doc_alien_tun"] = new(
+            "Рядом работает другой туннель: {0}",
+            "Another tunnel is running alongside: {0}"),
+        ["doc_alien_tun_detail"] = new(
+            "Его адаптер мы не трогаем, но два туннеля разом делят маршруты — если сеть ведёт себя "
+            + "странно, оставьте один.",
+            "We leave its adapter alone, but two tunnels at once share the routes: if the network "
+            + "behaves oddly, keep just one."),
         ["doc_crash"] = new("Было падение {0}", "There was a crash on {0}"),
         ["doc_crash_fix"] = new(
             "Подробности в журнале, раздел «Падения».",

@@ -67,6 +67,7 @@ public static class Doctor
 
         p?.Stage(S("doc_stage_traces"), 75);
         checks.AddRange(Traces(cfg, root, l));
+        checks.AddRange(Neighbours(cfg, l));
 
         var running = DaemonControl.IsRunning(root) && NodeProbe.TunnelIsUp(cfg.TunAddress);
         if (running && tools?.Exit is not null)
@@ -158,7 +159,7 @@ public static class Doctor
             case Repair.Leftovers:
             {
                 var killed = TunCleanup.KillOurProcesses(Path.Combine(root, "singbox.json"), m => p?.Note(m));
-                var gone = TunCleanup.RemoveLeftovers(m => p?.Note(m));
+                var gone = TunCleanup.RemoveLeftovers(m => p?.Note(m), cfg.TunAddress);
                 DaemonControl.ClearRunning(root);
                 return S("doc_did_leftovers", killed + gone);
             }
@@ -333,6 +334,26 @@ public static class Doctor
                 S("doc_service_off"), S("doc_service_off_detail"),
                 S("doc_service_off_fix", Os.IsWindows ? "" : "sudo "));
         }
+    }
+
+    /// <summary>
+    /// Что на машине делают соседи. Сюда попал живой случай: другой VPN-клиент оставил
+    /// в системе прокси на мёртвом порту, браузер молчал — и виноватым выглядели мы.
+    /// </summary>
+    private static IEnumerable<Preflight.Check> Neighbours(CehoConfig cfg, string l)
+    {
+        if (!Os.IsWindows) yield break;
+
+        string S(string key, params object[] a) => Strings.T(l, key, a);
+
+        if (SystemProxy.DeadLoopbackProxy(cfg.MixedPort) is { } dead)
+            yield return new Preflight.Check(Preflight.Level.Warning,
+                S("doc_proxy_dead", dead), S("doc_proxy_dead_detail"), S("doc_proxy_dead_fix"));
+
+        var ours = TunCleanup.InterfaceWithAddress(cfg.TunAddress);
+        foreach (var alien in SystemProxy.OtherTunnels(ours))
+            yield return new Preflight.Check(Preflight.Level.Warning,
+                S("doc_alien_tun", alien), S("doc_alien_tun_detail"), null);
     }
 
     private static Preflight.Check? FreshCrash(string l)
