@@ -1,8 +1,8 @@
 namespace ProxyCage.Core.Tests;
 
 /// <summary>
-/// Установщик Windows качается с GitHub и крутится в PowerShell с Stop.
-/// Чистая машина не должна падать на отсутствии задачи планировщика.
+/// Установщик Windows качается с GitHub и часто запускается через iex.
+/// Чистая машина и оборванное скачивание не должны закрывать окно PowerShell.
 /// </summary>
 public class InstallScriptTests
 {
@@ -11,10 +11,22 @@ public class InstallScriptTests
     {
         var script = File.ReadAllText(RepoFile("scripts/install.ps1"));
 
-        Assert.Contains("$ErrorActionPreference = 'Stop'", script);
         Assert.Contains("schtasks /end /tn CehoProxy", script);
         Assert.Contains("cmd /c", script);
         Assert.DoesNotContain("& schtasks /end", script);
+    }
+
+    [Fact]
+    public void Iex_must_not_exit_the_host_and_must_reject_a_truncated_download()
+    {
+        var script = File.ReadAllText(RepoFile("scripts/install.ps1"));
+
+        Assert.DoesNotContain("exit 1", script);
+        Assert.DoesNotContain("$ErrorActionPreference = 'Stop'", script);
+        Assert.Contains("$ProgressPreference = 'SilentlyContinue'", script);
+        Assert.Contains("curl.exe", script);
+        Assert.Contains("10MB", script);
+        Assert.Contains("[Console]::IsInputRedirected", script);
     }
 
     private static string RepoFile(string relative)

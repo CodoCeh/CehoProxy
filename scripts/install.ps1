@@ -3,16 +3,22 @@ param(
     [string]$Repo = "CodoCeh/CehoProxy"
 )
 
+# Этот файл запускают и как .\install.ps1, и через iex. exit здесь закрывает
+# всё окно PowerShell, а stderr внешней программы при Stop превращается в
+# остановку скрипта — поэтому только return и Continue.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
+$ProgressPreference = 'SilentlyContinue'
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+} catch { }
 
 $admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
          ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) {
     Write-Host "Нужны права администратора: откройте PowerShell от имени администратора и повторите."
-    exit 1
+    return
 }
 
 $root = Join-Path $env:ProgramData 'CehoProxy'
@@ -27,8 +33,7 @@ if (Test-Path $exe) {
 
 # Прошлую версию надо остановить целиком: и задачу планировщика, и сам процесс.
 # Работающий exe Windows заменить не даёт, а два экземпляра рядом — источник путаницы.
-# На чистой машине задачи нет. PowerShell при Stop превращает stderr schtasks
-# («file specified») в остановку скрипта — зовём через cmd, он глотает отсутствие.
+# На чистой машине задачи нет — cmd глотает отсутствие, PowerShell из-за этого не падает.
 cmd /c "schtasks /end /tn CehoProxy >nul 2>&1" | Out-Null
 $running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
 if ($running) {
@@ -53,26 +58,64 @@ if (Test-Path $uninstallKey) {
 if (-not $Source) {
     if (-not [Environment]::Is64BitOperatingSystem) {
         Write-Host "Поддерживается только 64-разрядная Windows."
-        exit 1
+        return
     }
 
     $url = "https://github.com/$Repo/releases/latest/download/cehoproxy-win-x64.exe"
     $tmp = Join-Path $env:TEMP 'cehoproxy-download.exe'
     Write-Host "Скачиваю программу из релизов $Repo…"
-    try {
-        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
-    } catch {
-        Write-Host ""
-        Write-Host "Скачать не удалось: $url"
-        Write-Host "Так бывает, если релизов ещё нет или репозиторий закрыт."
-        Write-Host "Тогда соберите программу сами и повторите с путём к файлу:"
-        Write-Host "  .\install.ps1 -Source .\cehoproxy.exe"
-        exit 1
+
+    $downloaded = $false
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        & curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --output $tmp $url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $tmp)) { $downloaded = $true }
     }
+    if (-not $downloaded) {
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -TimeoutSec 300
+            $downloaded = Test-Path $tmp
+        } catch {
+            Write-Host ""
+            Write-Host "Скачать не удалось: $url"
+            Write-Host $_.Exception.Message
+            Write-Host "Так бывает при обрыве сети. Повторите команду или скачайте файл со страницы релизов:"
+            Write-Host "  https://github.com/$Repo/releases/latest"
+            Write-Host "и запустите:  .\install.ps1 -Source путь\к\cehoproxy-win-x64.exe"
+            return
+        }
+    }
+
+    if (-not $downloaded -or -not (Test-Path $tmp)) {
+        Write-Host "Скачать не удалось: $url"
+        return
+    }
+
+    $len = (Get-Item $tmp).Length
+    # Self-contained сборка — десятки мегабайт. Обрыв оставляет огрызок в пару мегабайт,
+    # его нельзя запускать: Windows скажет «не является приложением Win32».
+    if ($len -lt 10MB) {
+        Write-Host "Скачивание оборвалось: получили $len байт вместо полной программы."
+        Write-Host "Повторите команду. Если снова оборвётся — скачайте файл вручную:"
+        Write-Host "  https://github.com/$Repo/releases/latest"
+        try { Remove-Item $tmp -Force } catch { }
+        return
+    }
+
+    $fs = [IO.File]::OpenRead($tmp)
+    $mz = New-Object byte[] 2
+    [void]$fs.Read($mz, 0, 2)
+    $fs.Close()
+    if ($mz[0] -ne 0x4D -or $mz[1] -ne 0x5A) {
+        Write-Host "Скачанный файл — не программа Windows. Повторите команду."
+        try { Remove-Item $tmp -Force } catch { }
+        return
+    }
+
     $Source = $tmp
 }
 
-if (-not (Test-Path $Source)) { Write-Host "Не найден файл программы: $Source"; exit 1 }
+if (-not (Test-Path $Source)) { Write-Host "Не найден файл программы: $Source"; return }
 
 $hadConfig = Test-Path (Join-Path $root 'config.json')
 
@@ -90,7 +133,7 @@ for ($i = 1; $i -le 5 -and -not $copied; $i++) {
 }
 if (-not $copied) {
     Write-Host "Не удалось заменить $exe — файл занят. Перезагрузите компьютер и повторите."
-    exit 1
+    return
 }
 
 $sourceDir = Split-Path -Parent (Resolve-Path $Source)
@@ -105,18 +148,30 @@ if ((Test-Path $engine) -or (Test-Path $engineLegacy)) { Write-Host "Движо�
 
 Write-Host "Страница продукта: https://github.com/$Repo"
 
-# Команда сама затирает файлы прошлой сборки, оставляет config.json и sub-*.txt,
-# возвращает автозапуск и скачивает движок, если его ещё нет. Скачиванием занимается
-# программа, а не скрипт: место одно, и оно одинаково работает на всех системах.
+# irm | iex подменяет клавиатуру трубой со скриптом. Мастер настройки тогда
+# сразу получает пустой ввод. В этом случае ставим программу молча и просим
+# открыть новое окно. iex (irm …) клавиатуру не трогает — мастер идёт здесь же.
+$piped = [Console]::IsInputRedirected
+$installArgs = @('install', '--with-engine')
+if ($piped -or $hadConfig) { $installArgs += '--no-setup' }
+
+& $exe @installArgs
+$installCode = $LASTEXITCODE
+
 if ($hadConfig) {
-    & $exe install --no-setup --with-engine
     Write-Host ""
     Write-Host "Обновление завершено, прежние настройки и подписки на месте."
     Write-Host "  chp             # состояние"
     Write-Host "  chp subs        # подписки, сроки и трафик"
     Write-Host "  chp log         # журнал и падения"
-} else {
-    & $exe install --with-engine
+} elseif ($piped) {
+    Write-Host ""
+    Write-Host "Программа стоит. Это окно сейчас занято командой установки —"
+    Write-Host "откройте НОВОЕ окно PowerShell от администратора и введите:"
+    Write-Host "  chp"
+} elseif ($installCode -ne 0 -and $null -ne $installCode) {
+    Write-Host "Установка не завершилась (код $installCode). Повторите команду."
+    return
 }
 
 # Сюда попадаем, если движок скачать не вышло. На экране должна остаться

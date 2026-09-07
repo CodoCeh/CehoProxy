@@ -50,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/inst
 Windows — в PowerShell, запущенном от имени администратора:
 
 ```powershell
-irm https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/install.ps1 | iex
+iex (irm https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/install.ps1)
 ```
 
 Команда скачивает программу для вашей системы, ставит её, заводит короткую команду `chp`
