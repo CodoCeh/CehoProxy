@@ -1361,9 +1361,7 @@ public sealed class WebServer
 
         foreach (var tool in found)
         {
-            var already = cfg.Apps.Any(a =>
-                a.Folder.Equals(tool.Path, StringComparison.OrdinalIgnoreCase) ||
-                tool.Path.StartsWith(a.Folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+            var covered = AppCoverage.IsToolCovered(cfg, tool);
 
             sb.Append("<tr><td>").Append(E(tool.Name)).Append("<br><span class=tag>")
               .Append(E(S(tool.Kind switch
@@ -1380,7 +1378,7 @@ public sealed class WebServer
                   .Append("</span>");
             sb.Append("</td><td class=actions>");
 
-            if (already)
+            if (covered)
                 sb.Append("<span class=tag>").Append(E(S("ai_added", []))).Append("</span>");
             else if (tool.Kind == AiTools.ToolKind.Script)
                 sb.Append("<code>chp run ").Append(E(Path.GetFileNameWithoutExtension(tool.Path)))

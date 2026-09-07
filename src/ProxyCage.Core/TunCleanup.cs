@@ -88,7 +88,7 @@ public static class TunCleanup
 
         // pnputil уже не видит устройство, а файл Wintun ещё держится: без паузы
         // следующий старт снова падает на «файл уже существует».
-        if (removed > 0) Thread.Sleep(1500);
+        if (removed > 0) Thread.Sleep(2500);
         return removed;
     }
 
@@ -96,7 +96,7 @@ public static class TunCleanup
     /// pnputil отвечает раньше, чем Windows успевает убрать устройство, а движок сразу за нами
     /// создаёт своё с тем же именем и ловит «файл уже существует». Поэтому ждём по-настоящему.
     /// </summary>
-    private static bool WaitUntilGone(string instanceId, int timeoutMs = 15000)
+    private static bool WaitUntilGone(string instanceId, int timeoutMs = 25000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
         while (Environment.TickCount64 < deadline)

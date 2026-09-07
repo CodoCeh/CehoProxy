@@ -74,15 +74,50 @@ public static class AiTools
 
         foreach (var tool in Catalog())
         {
-            var hit = tool.Paths.Select(Expand).FirstOrDefault(p => p is not null)
-                      ?? tool.Commands.Select(Os.FindOnPath).FirstOrDefault(p => p is not null);
-            if (hit is null) continue;
+            var hits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var real = Os.RealPath(hit);
-            found.Add(new Found(tool.Name, real, KindOf(real), InterpreterOf(real)));
+            foreach (var pattern in tool.Paths)
+            {
+                var hit = Expand(pattern);
+                if (hit is not null) hits.Add(Os.RealPath(hit));
+            }
+
+            foreach (var command in tool.Commands)
+            {
+                var hit = Os.FindOnPath(command);
+                if (hit is not null) hits.Add(Os.RealPath(hit));
+            }
+
+            if (hits.Count == 0) continue;
+
+            var several = hits.Count > 1;
+            foreach (var hit in hits.OrderBy(h => h, StringComparer.OrdinalIgnoreCase))
+            {
+                found.Add(new Found(
+                    DisplayName(tool.Name, hit, several),
+                    hit,
+                    KindOf(hit),
+                    InterpreterOf(hit)));
+            }
         }
 
         return found;
+    }
+
+    private static string DisplayName(string toolName, string path, bool several)
+    {
+        if (!several) return toolName;
+
+        if (toolName.Equals("Codex", StringComparison.OrdinalIgnoreCase))
+        {
+            if (path.Contains(@"OpenAI\Codex", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("OpenAI/Codex", StringComparison.OrdinalIgnoreCase))
+                return "Codex CLI";
+            if (path.Contains("WindowsApps", StringComparison.OrdinalIgnoreCase))
+                return "Codex";
+        }
+
+        return toolName;
     }
 
     private static string? Expand(string pattern)

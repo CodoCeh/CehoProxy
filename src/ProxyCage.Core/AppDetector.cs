@@ -104,7 +104,7 @@ public static class AppDetector
 
         if (Os.IsWindows && MsixVersioned.Match(folder) is { Success: true } msix)
         {
-            var name = Path.GetFileName(msix.Groups["prefix"].Value);
+            var name = NormalizeMsixName(Path.GetFileName(msix.Groups["prefix"].Value));
             return new Detection(
                 folder, name, true, false,
                 Strings.T(lang, "det_msix", name) + climbedNote + resolvedNote);
@@ -255,6 +255,9 @@ public static class AppDetector
 
         return results;
     }
+
+    private static string NormalizeMsixName(string name) =>
+        name.Equals("OpenAI.Codex", StringComparison.OrdinalIgnoreCase) ? "Codex" : name;
 
     private static bool IsCodex(AppEntry app) =>
         string.Equals(app.Name, "Codex", StringComparison.OrdinalIgnoreCase) ||
