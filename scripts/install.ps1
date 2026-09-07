@@ -17,7 +17,8 @@ if (-not $admin) {
 
 $root = Join-Path $env:ProgramData 'CehoProxy'
 $exe  = Join-Path $root 'cehoproxy.exe'
-$engine = Join-Path $root 'sing-box.exe'
+$engine = Join-Path $root 'ceho-engine.exe'
+$engineLegacy = Join-Path $root 'sing-box.exe'
 
 if (Test-Path $exe) {
     $old = & $exe version 2>$null | Select-Object -First 1
@@ -27,12 +28,12 @@ if (Test-Path $exe) {
 # Прошлую версию надо остановить целиком: и задачу планировщика, и сам процесс.
 # Работающий exe Windows заменить не даёт, а два экземпляра рядом — источник путаницы.
 & schtasks /end /tn CehoProxy 2>$null | Out-Null
-$running = Get-Process -Name 'cehoproxy' -ErrorAction SilentlyContinue
+$running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
 if ($running) {
     Write-Host "Останавливаю работающий CehoProxy перед заменой..."
     if (Test-Path $exe) { & $exe stop 2>$null | Out-Null }
     Start-Sleep -Milliseconds 800
-    $running = Get-Process -Name 'cehoproxy' -ErrorAction SilentlyContinue
+    $running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
     if ($running) { $running | Stop-Process -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 600
 }
@@ -91,13 +92,14 @@ if (-not $copied) {
 }
 
 $sourceDir = Split-Path -Parent (Resolve-Path $Source)
-$nearbyEngine = Join-Path $sourceDir 'sing-box.exe'
+$nearbyEngine = Join-Path $sourceDir 'ceho-engine.exe'
+if (-not (Test-Path $nearbyEngine)) { $nearbyEngine = Join-Path $sourceDir 'sing-box.exe' }
 if (Test-Path $nearbyEngine) {
     Copy-Item -Path $nearbyEngine -Destination $engine -Force
-    Write-Host "Движок sing-box установлен из локального источника: $engine"
+    Write-Host "Движок установлен из локального источника: $engine"
 }
 
-if (Test-Path $engine) { Write-Host "Движок sing-box уже установлен." }
+if ((Test-Path $engine) -or (Test-Path $engineLegacy)) { Write-Host "Движок уже установлен." }
 
 Write-Host "Страница продукта: https://github.com/$Repo"
 
@@ -117,7 +119,7 @@ if ($hadConfig) {
 
 # Сюда попадаем, если движок скачать не вышло. На экране должна остаться
 # одна команда, а не разбор, где его искать.
-if (-not (Test-Path $engine) -and -not (Get-Command 'sing-box' -ErrorAction SilentlyContinue)) {
+if (-not (Test-Path $engine) -and -not (Test-Path $engineLegacy) -and -not (Get-Command 'sing-box' -ErrorAction SilentlyContinue)) {
     Write-Host ""
     Write-Host "Движок sing-box скачать не удалось, без него туннель не поднимется."
     Write-Host "Повторить одной командой (PowerShell от имени администратора):"

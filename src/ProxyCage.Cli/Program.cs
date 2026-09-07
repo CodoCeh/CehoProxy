@@ -993,7 +993,7 @@ switch (cmd)
         TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
         TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", Console.WriteLine);
 
-        TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress);
+        TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress, Ceho.Root);
         DaemonControl.ClearRunning(Ceho.Root);
 
         foreach (var f in new[] { Ceho.ConfigPath, Ceho.RuntimeConfigPath })
@@ -1014,10 +1014,13 @@ switch (cmd)
 
         Installer.Remove(Ceho.Root, Console.WriteLine, cfg.Language);
 
-        var ourEngine = Path.Combine(Ceho.Root, Os.SingBoxFileName);
-        if (File.Exists(ourEngine))
-            try { File.Delete(ourEngine); Console.WriteLine($"удалён движок: {ourEngine}"); }
-            catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
+        foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
+        {
+            var ourEngine = Path.Combine(Ceho.Root, name);
+            if (File.Exists(ourEngine))
+                try { File.Delete(ourEngine); Console.WriteLine($"удалён движок: {ourEngine}"); }
+                catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
+        }
 
         Console.WriteLine(Cli.S(cfg, "uninstall_done"));
 
@@ -1181,13 +1184,23 @@ switch (cmd)
         if (DaemonControl.RequestStop(Ceho.Root))
         {
             Console.WriteLine(Cli.S(cfg, "stop_sent"));
+            await Task.Delay(TimeSpan.FromSeconds(3));
+
+            // Службу Windows завершает резко, попрощаться демон не успевает — и в системе
+            // остаётся наше мёртвое устройство. Раз оно наше, за собой убираем сами.
+            if (Os.IsElevated())
+            {
+                TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
+                TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress, Ceho.Root);
+                DaemonControl.ClearRunning(Ceho.Root);
+            }
             return 0;
         }
 
         if (NodeProbe.TunnelIsUp(cfg.TunAddress) || DaemonControl.RunningPid(Ceho.Root) is not null)
         {
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
-            TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress);
+            TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress, Ceho.Root);
             DaemonControl.ClearRunning(Ceho.Root);
             Console.WriteLine(Cli.S(cfg, "stop_cleaned"));
             return 0;
@@ -1240,7 +1253,7 @@ switch (cmd)
             DaemonControl.RequestStop(Ceho.Root);
             await Task.Delay(1000);
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
-            TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress);
+            TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress, Ceho.Root);
             DaemonControl.ClearRunning(Ceho.Root);
         }
 
@@ -1313,22 +1326,25 @@ if (cmd is "daemon" or "web")
             // Движок от упавшего прошлого сеанса нам не сын: демон его не убьёт, уходя,
             // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
-            TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress);
+            TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root);
 
             report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
+
+            Os.AdoptOwnEngine(Ceho.Root);
             var p = new SingBoxProcess();
             p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
             Log.Info($"движок запущен, pid {p.ProcessId}");
 
             report?.Stage(Strings.T(c.Language, "stage_engine_wait"), 98);
             await Task.Delay(TimeSpan.FromSeconds(2));
+            TunCleanup.Remember(Ceho.Root, c.TunAddress, Log.Info);
             if (!p.IsRunning)
             {
                 // Сам вывод движка уже в журнале: он попадает туда строкой за строкой.
                 var reason = p.Explain(c.Language);
                 Log.Error($"движок не устоял: {reason}");
                 p.Dispose();
-                TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress);
+                TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root);
                 lastError = reason;
                 return reason;
             }
@@ -1355,11 +1371,11 @@ if (cmd is "daemon" or "web")
         exitCountry = exitIp = null;
         probed = false;
 
-        if (!clean)
-        {
-            Log.Warn("движок не завершился по-хорошему, снимаю следы");
-            TunCleanup.RemoveLeftovers(Log.Info, cfg.TunAddress);
-        }
+        if (!clean) Log.Warn("движок не завершился по-хорошему, снимаю следы");
+
+        // Уходя, не оставляем в системе ничего своего: даже после чистого выхода движка
+        // от адаптера остаётся мёртвое устройство, и оно наше — значит, убираем его сами.
+        TunCleanup.RemoveLeftovers(Log.Info, cfg.TunAddress, Ceho.Root);
         return null;
     }
 
@@ -1424,7 +1440,7 @@ if (cmd is "daemon" or "web")
             Autostart.Purge();
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
             TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", _ => {});
-            TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress);
+            TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress, Ceho.Root);
             DaemonControl.ClearRunning(Ceho.Root);
             try
             {
@@ -1437,9 +1453,12 @@ if (cmd is "daemon" or "web")
             }
             catch { }
             Installer.Remove(Ceho.Root, _ => {}, cfg.Language);
-            var ourEngine = Path.Combine(Ceho.Root, Os.SingBoxFileName);
-            if (File.Exists(ourEngine))
-                try { File.Delete(ourEngine); } catch { }
+            foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
+            {
+                var ourEngine = Path.Combine(Ceho.Root, name);
+                if (File.Exists(ourEngine))
+                    try { File.Delete(ourEngine); } catch { }
+            }
             if (Os.IsWindows)
             {
                 try

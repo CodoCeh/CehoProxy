@@ -24,7 +24,14 @@ public static class Os
         _ => "/var/lib/cehoproxy",
     };
 
+    /// <summary>Имя файла в архиве автора — так он называется у всех.</summary>
     public static string SingBoxFileName => IsWindows ? "sing-box.exe" : "sing-box";
+
+    /// <summary>
+    /// Как файл лежит у нас. На Windows не оставляем имя sing-box.exe: Happ ищет
+    /// процессы «sing-box-tun» и убивает чужой движок с этим именем — уже убивал наш.
+    /// </summary>
+    public static string EngineFileName => IsWindows ? "ceho-engine.exe" : "sing-box";
 
     /// <summary>
     /// Система коротко: на macOS полное описание ядра занимает пол-строки журнала,
@@ -43,10 +50,14 @@ public static class Os
 
     public static string? ResolveSingBox(string root)
     {
-        var candidates = new List<string> { Path.Combine(root, SingBoxFileName) };
+        var candidates = new List<string> { Path.Combine(root, EngineFileName), Path.Combine(root, SingBoxFileName) };
 
         var own = Path.GetDirectoryName(Environment.ProcessPath ?? "");
-        if (!string.IsNullOrEmpty(own)) candidates.Add(Path.Combine(own, SingBoxFileName));
+        if (!string.IsNullOrEmpty(own))
+        {
+            candidates.Add(Path.Combine(own, EngineFileName));
+            candidates.Add(Path.Combine(own, SingBoxFileName));
+        }
 
         candidates.AddRange(IsWindows
             ? new[] { "" }
@@ -57,6 +68,24 @@ public static class Os
             if (File.Exists(c)) return c;
 
         return FindOnPath(SingBoxFileName);
+    }
+
+    /// <summary>
+    /// Старые установки клали движок как sing-box.exe. Happ тогда находит его по имени
+    /// и убивает. Переименовываем, если ещё не переименовали.
+    /// </summary>
+    public static void AdoptOwnEngine(string root)
+    {
+        if (!IsWindows) return;
+        var legacy = Path.Combine(root, SingBoxFileName);
+        var ours = Path.Combine(root, EngineFileName);
+        if (!File.Exists(legacy) || File.Exists(ours)) return;
+        try { File.Move(legacy, ours); }
+        catch
+        {
+            try { File.Copy(legacy, ours, overwrite: true); File.Delete(legacy); }
+            catch { }
+        }
     }
 
     public static IReadOnlyList<string> SystemDnsServers(string tunAddress)

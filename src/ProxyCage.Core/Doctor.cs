@@ -171,7 +171,7 @@ public static class Doctor
             case Repair.Leftovers:
             {
                 var killed = TunCleanup.KillOurProcesses(Path.Combine(root, "singbox.json"), m => p?.Note(m));
-                var gone = TunCleanup.RemoveLeftovers(m => p?.Note(m), cfg.TunAddress);
+                var gone = TunCleanup.RemoveLeftovers(m => p?.Note(m), cfg.TunAddress, root);
                 DaemonControl.ClearRunning(root);
                 return S("doc_did_leftovers", killed + gone);
             }

@@ -150,12 +150,24 @@ public sealed class SingBoxProcess : IDisposable
         var code = ExitCode;
 
         if (reason is not null)
-            return code is null or 0 ? reason : $"{reason} (код выхода {code})";
+        {
+            var said = code is null or 0 ? reason : $"{reason} (код выхода {code})";
+            return Hint(reason, lang) is { } hint ? $"{said} — {hint}" : said;
+        }
 
         return code is null
             ? Strings.T(lang, "engine_died")
             : Strings.T(lang, "engine_died_code", code);
     }
+
+    /// <summary>
+    /// Движок говорит по-своему. Здесь переводим на человеческий только те беды, где человек
+    /// без подсказки не поймёт, что делать: чужие адаптеры мы принципиально не убираем сами.
+    /// </summary>
+    public static string? Hint(string reason, string lang) =>
+        reason.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+            ? Strings.T(lang, "engine_tun_busy")
+            : null;
 
     /// <summary>Строки движка с момента этого запуска.</summary>
     public IReadOnlyList<string> EngineLogOfThisRun(int maxLines = 30)

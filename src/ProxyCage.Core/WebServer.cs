@@ -829,7 +829,11 @@ public sealed class WebServer
         if (job is { Running: true })
             sb.Append("<noscript><meta http-equiv=refresh content=2></noscript>");
 
-        sb.Append("<title>CehoProxy</title><style>").Append(WebUi.Css).Append("</style></head><body>");
+        sb.Append("<title>CehoProxy</title><style>").Append(WebUi.Css).Append("</style></head>");
+
+        // Пока идёт операция, страница перерисовывается каждые пару секунд.
+        // Появление разделов на таких перерисовках только мельтешит, поэтому его выключаем.
+        sb.Append(job is { Running: true } ? "<body class=busy>" : "<body>");
     }
 
     private string RenderPage(
@@ -1144,7 +1148,8 @@ public sealed class WebServer
             sb.Append("<p class=empty>").Append(E(S("apps_empty", []))).Append("</p>");
         else
         {
-            sb.Append("<table><tr><th>").Append(E(S("col_name", []))).Append("</th><th>")
+            sb.Append("<div class=scroll><table class=t-apps><tr><th>")
+              .Append(E(S("col_name", []))).Append("</th><th>")
               .Append(E(S("col_folder", []))).Append("</th><th></th></tr>");
             foreach (var a in cfg.Apps)
             {
@@ -1157,7 +1162,7 @@ public sealed class WebServer
                   .Append("\"><button class=danger>").Append(E(S("btn_remove", []))).Append("</button></form>");
                 sb.Append("</td></tr>");
             }
-            sb.Append("</table>");
+            sb.Append("</table></div>");
         }
 
         var placeholder = S(Os.Kind switch
@@ -1223,7 +1228,8 @@ public sealed class WebServer
     private static void RenderDetectedTable(StringBuilder sb, CehoConfig cfg,
         Func<string, object[], string> S, IReadOnlyList<AiTools.Found> found)
     {
-        sb.Append("<table><tr><th>").Append(E(S("col_name", []))).Append("</th><th>")
+        sb.Append("<div class=scroll><table class=t-apps><tr><th>")
+          .Append(E(S("col_name", []))).Append("</th><th>")
           .Append(E(S("col_folder", []))).Append("</th><th></th></tr>");
 
         foreach (var tool in found)
@@ -1260,7 +1266,7 @@ public sealed class WebServer
 
             sb.Append("</td></tr>");
         }
-        sb.Append("</table>");
+        sb.Append("</table></div>");
     }
 
     private static string ExpiryText(DateTime expiresUtc, Func<string, object[], string> S)
@@ -1281,7 +1287,8 @@ public sealed class WebServer
             sb.Append("<p class=empty>").Append(E(S("subs_empty", []))).Append("</p>");
         else
         {
-            sb.Append("<table><tr><th>").Append(E(S("col_use", []))).Append("</th><th>")
+            sb.Append("<div class=scroll><table class=t-subs><tr><th>")
+              .Append(E(S("col_use", []))).Append("</th><th>")
               .Append(E(S("col_name", []))).Append("</th><th>")
               .Append(E(S("col_until", []))).Append("</th><th>")
               .Append(E(S("col_traffic", []))).Append("</th><th>")
@@ -1354,7 +1361,7 @@ public sealed class WebServer
                   .Append("\"><button class=danger>").Append(E(S("btn_delete", []))).Append("</button></form>");
                 sb.Append("</td></tr>");
             }
-            sb.Append("</table>");
+            sb.Append("</table></div>");
             sb.Append("<p class=hint>").Append(E(S("subs_toggle_hint", []))).Append("</p>");
             sb.Append("<p class=hint>").Append(E(S("subs_expiry_hint", []))).Append("</p>");
         }
@@ -1410,7 +1417,8 @@ public sealed class WebServer
             sb.Append("<form method=post action=/countries/save><input type=hidden name=tab value=exit>");
             sb.Append("<input type=hidden name=all value=\"")
               .Append(E(string.Join(",", groups.Select(g => g.Key)))).Append("\">");
-            sb.Append("<table><tr><th>").Append(E(S("col_use", []))).Append("</th><th>")
+            sb.Append("<div class=scroll><table class=t-countries><tr><th>")
+              .Append(E(S("col_use", []))).Append("</th><th>")
               .Append(E(S("col_country", []))).Append("</th><th>").Append(E(S("col_nodes", [])))
               .Append("</th><th>").Append(E(S("col_alive", []))).Append("</th><th>")
               .Append(E(S("col_best", []))).Append("</th><th>").Append(E(S("col_protocols", [])))
@@ -1435,7 +1443,7 @@ public sealed class WebServer
                   .Append(row?.BestMs is null ? E(S("not_measured", [])) : row.BestMs + " ms").Append("</td>");
                 sb.Append("<td class=tag>").Append(E(protocols)).Append("</td></tr>");
             }
-            sb.Append("</table>");
+            sb.Append("</table></div>");
             sb.Append("<button>").Append(E(S("btn_save", []))).Append("</button></form>");
 
             sb.Append("<p class=hint>").Append(E(S("pool_from", new object[]
@@ -1511,7 +1519,7 @@ public sealed class WebServer
             // Иначе непонятно, почему галочка стоит, а нода всё равно не работает.
             if (countryOff)
                 sb.Append(" · ").Append(E(S("nodes_country_off", [])));
-            sb.Append("</summary><table>");
+            sb.Append("</summary><div class=scroll><table class=t-nodes>");
             sb.Append("<tr><th>").Append(E(S("col_use", []))).Append("</th><th>")
               .Append(E(S("col_node", []))).Append("</th><th>").Append(E(S("col_address", [])))
               .Append("</th><th>").Append(E(S("col_protocols", []))).Append("</th><th>")
@@ -1535,7 +1543,7 @@ public sealed class WebServer
                   .Append(slow ? " · " + E(S("node_slow", [])) : "").Append("</td>");
                 sb.Append("<td class=tag>").Append(E(n.Source ?? "—")).Append("</td></tr>");
             }
-            sb.Append("</table></details>");
+            sb.Append("</table></div></details>");
         }
 
         sb.Append("<button>").Append(E(S("btn_save", []))).Append("</button></form>");
@@ -1673,5 +1681,15 @@ public sealed class WebServer
         sb.Append("<p class=hint>").Append(E(S("help_cli", new object[] { sudo }))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("help_doctor", new object[] { sudo }))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("help_multiuser", []))).Append("</p></section>");
+
+        // Про вмешательство в систему честнее рассказать самим, чем оставлять человека гадать,
+        // почему в списке адаптеров появился ещё один туннель.
+        sb.Append("<section><h2>").Append(E(S("touch_title", []))).Append("</h2>");
+        sb.Append("<p class=lede>").Append(E(S("touch_lede", []))).Append("</p>");
+        sb.Append("<ul class=steps>");
+        foreach (var key in new[] { "touch_1", "touch_2", "touch_3" })
+            sb.Append("<li>").Append(E(S(key, []))).Append("</li>");
+        sb.Append("</ul>");
+        sb.Append("<p class=hint>").Append(E(S("touch_not", []))).Append("</p></section>");
     }
 }
