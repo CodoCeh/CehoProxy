@@ -167,7 +167,9 @@ public static class AppDetector
 
     public static string ToRegex(AppEntry app)
     {
-        var prefix = Os.IsLinux ? "^" : "(?i)^";
+        var isWinPath = Os.IsWindows || app.Folder.Contains('\\') || (app.Folder.Length >= 2 && app.Folder[1] == ':');
+        var prefix = (!isWinPath && Os.IsLinux) ? "^" : "(?i)^";
+        var sep = isWinPath ? @"[\\/]" : "/";
 
         if (app.SingleFile)
             return prefix + EscapeGo(app.Folder) + "$";
@@ -177,7 +179,14 @@ public static class AppDetector
         if (app.VersionAgnostic && MsixVersioned.Match(folder) is { Success: true } m)
             return prefix + EscapeGo(m.Groups["prefix"].Value) + @"_[^\\]*[\\/]";
 
-        return prefix + EscapeGo(folder) + (Os.IsWindows ? @"[\\/]" : "/");
+        if (folder.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            var lastSep = folder.LastIndexOfAny(new[] { '\\', '/' });
+            var dir = lastSep >= 0 ? folder[..lastSep] : folder;
+            return prefix + "(?:" + EscapeGo(folder) + "$|" + EscapeGo(dir) + sep + ")";
+        }
+
+        return prefix + EscapeGo(folder) + sep;
     }
 
     private static string EscapeGo(string s)

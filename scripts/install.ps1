@@ -31,20 +31,6 @@ if (Test-Path $exe) {
     if ($old) { Write-Host "Была установлена версия $old — заменяю её." }
 }
 
-# Прошлую версию надо остановить целиком: и задачу планировщика, и сам процесс.
-# Работающий exe Windows заменить не даёт, а два экземпляра рядом — источник путаницы.
-# На чистой машине задачи нет — cmd глотает отсутствие, PowerShell из-за этого не падает.
-cmd /c "schtasks /end /tn CehoProxy >nul 2>&1" | Out-Null
-$running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
-if ($running) {
-    Write-Host "Останавливаю работающий CehoProxy перед заменой..."
-    if (Test-Path $exe) { & $exe stop 2>$null | Out-Null }
-    Start-Sleep -Milliseconds 800
-    $running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
-    if ($running) { $running | Stop-Process -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Milliseconds 600
-}
-
 # Запись в «Установке и удалении программ» от прежнего установщика осталась бы висеть
 # рядом с новой версией и показывала бы старый номер. Данные при этом не трогаем.
 $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{6E2C3F41-8B7A-4E2D-9C1F-2A5D7B0E9C33}_is1'
@@ -68,7 +54,7 @@ if (-not $Source) {
     $downloaded = $false
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
     if ($curl) {
-        & curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --output $tmp $url
+        & curl.exe -# --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --output $tmp $url
         if ($LASTEXITCODE -eq 0 -and (Test-Path $tmp)) { $downloaded = $true }
     }
     if (-not $downloaded) {
@@ -118,6 +104,20 @@ if (-not $Source) {
 if (-not (Test-Path $Source)) { Write-Host "Не найден файл программы: $Source"; return }
 
 $hadConfig = Test-Path (Join-Path $root 'config.json')
+
+# Прошлую версию надо остановить целиком: и задачу планировщика, и сам процесс.
+# Работающий exe Windows заменить не даёт, а два экземпляра рядом — источник путаницы.
+# На чистой машине задачи нет — cmd глотает отсутствие, PowerShell из-за этого не падает.
+cmd /c "schtasks /end /tn CehoProxy >nul 2>&1" | Out-Null
+$running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
+if ($running) {
+    Write-Host "Останавливаю работающий CehoProxy перед заменой..."
+    if (Test-Path $exe) { & $exe stop 2>$null | Out-Null }
+    Start-Sleep -Milliseconds 800
+    $running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
+    if ($running) { $running | Stop-Process -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 600
+}
 
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 

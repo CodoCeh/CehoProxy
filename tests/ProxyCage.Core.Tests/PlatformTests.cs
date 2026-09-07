@@ -164,4 +164,52 @@ public class PlatformTests
             if (File.Exists(temp)) File.Delete(temp);
         }
     }
+
+    [Fact]
+    public void Route_has_find_process_enabled_for_tun()
+    {
+        var app = new AppEntry
+        {
+            Name = "Cursor",
+            Folder = @"C:\Users\s.bonich\AppData\Local\Programs\cursor",
+        };
+        var nodes = SubscriptionParser.Parse(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "sub-example.txt")));
+        var cfg = new CehoConfig { Apps = { app } };
+
+        var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+
+        Assert.True((bool?)root["route"]!["find_process"]);
+    }
+
+    [Fact]
+    public void Windows_app_regex_matches_nested_executables()
+    {
+        var app = new AppEntry
+        {
+            Name = "Cursor",
+            Folder = @"C:\Users\s.bonich\AppData\Local\Programs\cursor",
+        };
+        var rx = AppDetector.ToRegex(app);
+
+        Assert.Matches(rx, @"C:\Users\s.bonich\AppData\Local\Programs\cursor\Cursor.exe");
+        Assert.Matches(rx, @"C:\Users\s.bonich\AppData\Local\Programs\cursor\resources\app\node.exe");
+        Assert.DoesNotMatch(rx, @"C:\Users\s.bonich\AppData\Local\Programs\cursor-other\helper.exe");
+    }
+
+    [Fact]
+    public void Windows_app_exe_path_matches_exe_and_directory()
+    {
+        var app = new AppEntry
+        {
+            Name = "Cursor",
+            Folder = @"C:\Users\s.bonich\AppData\Local\Programs\cursor\Cursor.exe",
+        };
+        var rx = AppDetector.ToRegex(app);
+
+        Assert.Matches(rx, @"C:\Users\s.bonich\AppData\Local\Programs\cursor\Cursor.exe");
+        Assert.Matches(rx, @"C:\Users\s.bonich\AppData\Local\Programs\cursor\resources\app\node.exe");
+        Assert.DoesNotMatch(rx, @"C:\Users\s.bonich\AppData\Local\Programs\cursor-other\helper.exe");
+    }
 }
