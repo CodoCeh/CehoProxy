@@ -58,19 +58,23 @@ public static class TunCleanup
         return stopped;
     }
 
-    public static int RemoveLeftovers(Action<string>? log = null, string? tunAddress = null, string? root = null)
+    public static int RemoveLeftovers(
+        Action<string>? log = null, string? tunAddress = null, string? root = null,
+        IReadOnlyCollection<string>? beforeStart = null)
         => Os.Kind switch
         {
-            OsKind.Windows => RemoveGhostAdapters(log, tunAddress, root),
+            OsKind.Windows => RemoveGhostAdapters(log, tunAddress, root, beforeStart),
             OsKind.Linux => CleanLinux(log),
             _ => CleanMac(log),
         };
 
     public static int RemoveGhostAdapters(
-        Action<string>? log = null, string? tunAddress = null, string? root = null)
+        Action<string>? log = null, string? tunAddress = null, string? root = null,
+        IReadOnlyCollection<string>? beforeStart = null)
     {
         var removed = 0;
-        foreach (var (name, instanceId) in Removable(WintunDevices(), Adapter(tunAddress), Ours(root), log))
+        foreach (var (name, instanceId) in Removable(
+                     WintunDevices(), Adapter(tunAddress), Ours(root), log, beforeStart))
         {
             var (code, _) = Os.Run("pnputil", $"/remove-device \"{instanceId}\"", 15000);
             if (code != 0) continue;
@@ -107,14 +111,21 @@ public static class TunCleanup
 
     /// <summary>
     /// Убирать можно только то, что создали сами, поэтому запоминаем устройство после
-    /// запуска движка: то, что держит наш адрес, и то, что уже было записано.
+    /// запуска движка: то, что держит наш адрес, то, что уже было записано, и то, что
+    /// появилось за этот старт, если это не живой чужой туннель.
     /// </summary>
-    public static void Remember(string root, string? tunAddress = null, Action<string>? log = null)
+    public static void Remember(
+        string root, string? tunAddress = null, Action<string>? log = null,
+        IReadOnlyCollection<string>? beforeStart = null)
     {
         if (!Os.IsWindows) return;
 
         var adapter = Adapter(tunAddress);
-        var mine = Mine(WintunDevices(), Ours(root), id => adapter(id)?.Ours == true);
+        var recorded = Ours(root);
+        var mine = WintunDevices()
+            .Where(id => IsOursToKeep(id, recorded, adapter(id), beforeStart))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         try { File.WriteAllLines(OursFile(root), mine); }
         catch (Exception ex) { log?.Invoke($"не запомнил свой TUN-адаптер: {ex.Message}"); }
@@ -134,6 +145,28 @@ public static class TunCleanup
             .Where(id => written.Contains(id, StringComparer.OrdinalIgnoreCase) || ours(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// Можно снимать: записали сами, держит наш уникальный адрес, или появилось за этот
+    /// старт и это не живой чужой туннель. Чужой работающий адаптер и чужой на заводском
+    /// адресе сюда не попадают.
+    /// </summary>
+    public static bool IsOursToKeep(
+        string id,
+        IReadOnlyCollection<string> recorded,
+        Nic? nic,
+        IReadOnlyCollection<string>? beforeStart = null)
+    {
+        if (recorded.Contains(id, StringComparer.OrdinalIgnoreCase)) return true;
+        if (nic?.Ours == true) return true;
+        if (beforeStart is null) return false;
+        if (beforeStart.Contains(id, StringComparer.OrdinalIgnoreCase)) return false;
+
+        // Появилось, пока мы поднимали движок. Живой чужой туннель не берём: у него уже
+        // свой адрес и он работает. Остальное — наш след, в том числе адаптер без адреса,
+        // на котором движок сразу упал с «файл уже существует».
+        return nic is not { Ours: false, Up: true };
     }
 
     /// <summary>Устройства, записанные нами как свои. Всё остальное — чужое имущество.</summary>
@@ -166,26 +199,26 @@ public static class TunCleanup
     }
 
     /// <summary>
-    /// Что можно убрать. Только то, что записано как своё. Совпадение адреса или «адаптер
-    /// появился, пока мы стартовали» — не доказательство: Happ живёт на том же Wintun
-    /// и на заводском адресе движка, и мы уже сносили его туннель именно так.
+    /// Что можно убрать. Записанное как своё, либо адаптер на нашем уникальном адресе.
+    /// Живой чужой туннель и чужой на заводском 172.19.0.1 — нет: так мы уже сносили Happ.
     /// </summary>
     public static IReadOnlyList<(string Name, string InstanceId)> Removable(
         IEnumerable<string> deviceIds, Func<string, Nic?> adapter,
-        IReadOnlyCollection<string> ours, Action<string>? log = null)
+        IReadOnlyCollection<string> ours, Action<string>? log = null,
+        IReadOnlyCollection<string>? beforeStart = null)
     {
         var removable = new List<(string, string)>();
         foreach (var id in deviceIds)
         {
             if (!id.Contains(@"SWD\WINTUN\", StringComparison.OrdinalIgnoreCase)) continue;
 
-            if (!ours.Contains(id, StringComparer.OrdinalIgnoreCase))
+            var nic = adapter(id);
+            if (!IsOursToKeep(id, ours, nic, beforeStart))
             {
                 log?.Invoke($"чужое устройство {id} не наше, не трогаю");
                 continue;
             }
 
-            var nic = adapter(id);
             removable.Add((nic?.Name ?? "наш след без адаптера", id));
         }
         return removable;

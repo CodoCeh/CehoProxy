@@ -787,10 +787,13 @@ public static class Strings
         ["engine_died"] = new(
             "Движок завершился сразу после запуска.", "The engine exited right after start."),
         ["engine_tun_busy"] = new(
-            "адрес туннеля держит адаптер другого VPN-клиента. Чужие адаптеры мы не удаляем: "
-            + "отключите лишний клиент или его адаптер в «Сетевых подключениях» и включите защиту снова.",
-            "the tunnel address is held by another VPN client's adapter. We never delete adapters that "
-            + "are not ours: turn that client off, or disable its adapter in Network Connections, and start again."),
+            "адрес туннеля уже занят — чаще это наш адаптер от прошлого запуска, который не успели снять. " +
+            "Выключите защиту и включите снова. Если рядом другой VPN — отключите его или его адаптер " +
+            "в «Сетевых подключениях»: чужие мы сами не удаляем.",
+            "the tunnel address is already taken — most often by our adapter from the last start that " +
+            "was not removed. Turn protection off and on again. If another VPN is running, turn that " +
+            "client off, or disable its adapter in Network Connections: we never delete adapters that " +
+            "are not ours."),
         ["start_failed"] = new("Защита не включилась", "Protection did not start"),
         ["engine_gone"] = new(
             "Движок остановился сам, поднимаю заново", "The engine stopped on its own, starting it again"),
@@ -1098,9 +1101,9 @@ public static class Strings
         ["log_title"] = new("Журнал", "Journal"),
         ["log_lede"] = new(
             "Один журнал на всё: что делала программа, что говорил движок и разбор падений. " +
-            "Записи остаются на диске, поэтому причину сбоя видно и после перезапуска.",
+            "Свежие записи сверху. На диске они остаются, поэтому причину сбоя видно и после перезапуска.",
             "One journal for everything: what the program did, what the engine said and the crash details. " +
-            "The records stay on disk, so the reason for a failure is visible even after a restart."),
+            "Newest lines come first. The records stay on disk, so the reason for a failure is visible even after a restart."),
         ["log_view_all"] = new("Всё", "Everything"),
         ["log_view_ours"] = new("Программа", "The program"),
         ["log_view_engine"] = new("Движок", "The engine"),

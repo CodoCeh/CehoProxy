@@ -44,12 +44,49 @@ public class NeighboursTests
     [Fact]
     public void Matching_the_old_shared_address_is_not_enough_to_remove()
     {
-        // Happ и заводской sing-box живут на 172.19.0.1/30. Совпадение адреса раньше
-        // считалось доказательством «это мы» — и Happ терял свой туннель.
+        // Happ и заводской sing-box живут на 172.19.0.1/30. Реальный Look() для этого
+        // адреса ставит Ours: false. Живой чужой туннель без записи не снимаем.
         var removable = TunCleanup.Removable(
             new[] { Alien },
-            Adapters((Alien, new TunCleanup.Nic("sing-tun", Up: true, Ours: true))),
+            Adapters((Alien, new TunCleanup.Nic("sing-tun", Up: true, Ours: false))),
             Nobodys);
+
+        Assert.Empty(removable);
+    }
+
+    [Fact]
+    public void Our_unique_address_is_enough_to_remove_without_a_record()
+    {
+        // Движок упал до записи GUID, адаптер с 172.31.211.1 остался. Без этой проверки
+        // следующий старт ловит «файл уже существует» и винит чужой VPN.
+        var removable = TunCleanup.Removable(
+            new[] { Ours },
+            Adapters((Ours, new TunCleanup.Nic("tun0", Up: true, Ours: true))),
+            Nobodys);
+
+        Assert.Equal(new[] { Ours }, removable.Select(a => a.InstanceId));
+    }
+
+    [Fact]
+    public void An_adapter_that_appeared_dead_during_start_is_removed()
+    {
+        var removable = TunCleanup.Removable(
+            new[] { Ours },
+            Adapters((Ours, new TunCleanup.Nic("tun0", Up: false, Ours: false))),
+            Nobodys,
+            beforeStart: Nobodys);
+
+        Assert.Equal(new[] { Ours }, removable.Select(a => a.InstanceId));
+    }
+
+    [Fact]
+    public void A_live_neighbour_that_appeared_during_start_is_not_claimed()
+    {
+        var removable = TunCleanup.Removable(
+            new[] { Alien },
+            Adapters((Alien, new TunCleanup.Nic("happ-tun", Up: true, Ours: false))),
+            Nobodys,
+            beforeStart: Nobodys);
 
         Assert.Empty(removable);
     }
