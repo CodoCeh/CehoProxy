@@ -1502,7 +1502,13 @@ if (cmd is "daemon" or "web")
 
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
         Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
-        if (Autostart.IsEnabled()) Autostart.Restart();
+        report.Stage(Strings.T(c.Language, "upd_relaunch"), 95);
+        DaemonControl.SpawnRelaunchHelper(Ceho.OwnExecutablePath, Ceho.Root);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2500);
+            Environment.Exit(0);
+        });
         return Strings.T(c.Language, "upd_done", release.Version);
     };
     web.OnPool = report =>

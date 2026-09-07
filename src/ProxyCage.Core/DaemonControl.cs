@@ -52,6 +52,71 @@ public static class DaemonControl
         try { File.Delete(PidPath(root)); } catch { }
     }
 
+    /// <summary>
+    /// Обновление из панели не должно убивать себя через schtasks /end:
+    /// тогда /run уже некому выполнить, и человек остаётся без интерфейса.
+    /// Помощник ждёт, пока наш процесс сам выйдет, и только потом поднимает новый.
+    /// </summary>
+    public static string WindowsRelaunchScript(int pid, string exe, string root, bool autostart)
+    {
+        static string Q(string s) => s.Replace("'", "''");
+        var start = autostart
+            ? "schtasks /run /tn CehoProxy | Out-Null"
+            : $"Start-Process -FilePath '{Q(exe)}' -ArgumentList 'daemon' -WorkingDirectory '{Q(root)}' -WindowStyle Hidden";
+        return $$"""
+            $watch = {{pid}}
+            while (Get-Process -Id $watch -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 1 }
+            Start-Sleep -Milliseconds 500
+            {{start}}
+
+            """;
+    }
+
+    public static void SpawnRelaunchHelper(string exe, string root)
+    {
+        var pid = Environment.ProcessId;
+        var autostart = Autostart.IsEnabled();
+
+        if (Os.IsWindows)
+        {
+            var script = Path.Combine(root, "relaunch.ps1");
+            File.WriteAllText(script,
+                WindowsRelaunchScript(pid, exe, root, autostart)
+                + $"Remove-Item -LiteralPath '{script.Replace("'", "''")}' -Force -ErrorAction SilentlyContinue\n");
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = root,
+            });
+            return;
+        }
+
+        var sh = Path.Combine(root, "relaunch.sh");
+        var start = autostart
+            ? (Os.IsLinux
+                ? "systemctl start cehoproxy"
+                : "launchctl kickstart -k system/ru.codoceh.cehoproxy")
+            : $"nohup \"{exe}\" daemon >/dev/null 2>&1 &";
+        File.WriteAllText(sh, $"""
+            #!/bin/sh
+            while kill -0 {pid} 2>/dev/null; do sleep 1; done
+            sleep 1
+            {start}
+            rm -f "{sh}"
+            """);
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "/bin/sh",
+            Arguments = sh,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = root,
+        });
+    }
+
     public static bool RequestStop(string root)
     {
         if (OperatingSystem.IsWindows()) return RequestStopWindows();

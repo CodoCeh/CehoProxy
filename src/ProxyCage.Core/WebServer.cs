@@ -217,7 +217,7 @@ public sealed class WebServer
     {
         var job = Jobs.Find(ctx.Request.QueryString["id"]);
         var payload = job is null
-            ? new { state = "gone", percent = 100, stage = "", result = (string?)null, isError = false, seconds = 0.0 }
+            ? new { state = "gone", percent = 100, stage = "", result = (string?)null, isError = false, relaunch = false, seconds = 0.0 }
             : new
             {
                 state = job.State switch
@@ -230,6 +230,7 @@ public sealed class WebServer
                 stage = job.Stage,
                 result = job.Result,
                 isError = job.IsError,
+                relaunch = job.RelaunchPanel,
                 seconds = Math.Round(job.Elapsed.TotalSeconds, 1),
             };
 
@@ -696,6 +697,7 @@ public sealed class WebServer
                     var install = f.ContainsKey("install");
                     var job = Jobs.Start(JobUpdate, S(install ? "job_update" : "job_update_check"),
                         p => OnUpdate(install, p));
+                    if (install) job.RelaunchPanel = true;
                     return (null, false, job.Id);
                 }
 
@@ -937,7 +939,9 @@ public sealed class WebServer
             _ => "err",
         };
 
-        sb.Append("<div class=\"job ").Append(cls).Append("\" id=jp data-job=\"").Append(E(job.Id)).Append("\">");
+        sb.Append("<div class=\"job ").Append(cls).Append("\" id=jp data-job=\"").Append(E(job.Id)).Append("\"")
+          .Append(job.RelaunchPanel ? " data-relaunch=1" : "")
+          .Append(" data-wait=\"").Append(E(S("job_wait_panel", []))).Append("\">");
         sb.Append("<div class=job-head><b>").Append(E(job.Title)).Append("</b>")
           .Append("<span class=job-num id=jn>").Append(job.Percent).Append("%</span></div>");
         sb.Append("<div class=bar><span id=jf style=\"width:").Append(job.Percent).Append("%\"></span></div>");
