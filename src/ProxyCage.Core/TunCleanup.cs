@@ -1,10 +1,12 @@
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Text.Json;
 
 namespace ProxyCage.Core;
 
 public static class TunCleanup
 {
-    public const string LinuxInterfaceName = "ceho-tun";
+    public const string InterfaceName = "ceho-tun";
 
     public const int Iproute2TableIndex = 2122;
     public const int Iproute2RuleIndex = 9100;
@@ -47,39 +49,89 @@ public static class TunCleanup
         return stopped;
     }
 
-    public static int RemoveLeftovers(Action<string>? log = null) => Os.Kind switch
+    public static int RemoveLeftovers(Action<string>? log = null, string? tunAddress = null) => Os.Kind switch
     {
-        OsKind.Windows => RemoveGhostAdapters(log),
+        OsKind.Windows => RemoveGhostAdapters(log, tunAddress),
         OsKind.Linux => CleanLinux(log),
         _ => CleanMac(log),
     };
 
-    public static int RemoveGhostAdapters(Action<string>? log = null)
+    public static int RemoveGhostAdapters(Action<string>? log = null, string? tunAddress = null)
     {
         var removed = 0;
-        foreach (var instanceId in FindSingTunInstanceIds(log))
+        foreach (var (name, instanceId) in OurAdapters(log, tunAddress))
         {
             var (code, _) = Os.Run("pnputil", $"/remove-device \"{instanceId}\"", 15000);
             if (code == 0)
             {
                 removed++;
-                log?.Invoke($"удалён залипший TUN-адаптер: {instanceId}");
+                log?.Invoke($"удалён залипший TUN-адаптер {name}: {instanceId}");
             }
         }
         return removed;
     }
 
-    private static IEnumerable<string> FindSingTunInstanceIds(Action<string>? log)
+    /// <summary>
+    /// На той же Wintun работают и другие клиенты (Happ, Nekoray и прочие), а их адаптеры
+    /// с виду не отличаются от нашего. Поэтому берём только наш: по имени интерфейса,
+    /// а для туннелей, поднятых старыми версиями, — по адресу. Не узнали своего — не трогаем ничего.
+    /// </summary>
+    private static IEnumerable<(string Name, string InstanceId)> OurAdapters(
+        Action<string>? log, string? tunAddress) =>
+        Mine(WindowsNetAdapters(log), tunAddress is null ? null : InterfaceWithAddress(tunAddress), log);
+
+    /// <summary>Отбор своих из всех адаптеров системы. Вынесен отдельно, чтобы его можно было проверить.</summary>
+    public static IReadOnlyList<(string Name, string InstanceId)> Mine(
+        IEnumerable<(string Name, string InstanceId)> adapters, string? ourInterface, Action<string>? log = null)
     {
-        var (_, output) = Os.Run("pnputil", "/enum-devices /class Net", 15000);
-        var ids = new List<string>();
-        foreach (var rawLine in output.Split('\n'))
+        var mine = new List<(string, string)>();
+        foreach (var (name, id) in adapters)
         {
-            var line = rawLine.Trim();
-            var idx = line.IndexOf(@"SWD\WINTUN\", StringComparison.OrdinalIgnoreCase);
-            if (idx >= 0) ids.Add(line[idx..].Trim());
+            if (!id.Contains(@"SWD\WINTUN\", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var ours = name.StartsWith(InterfaceName, StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(name, ourInterface, StringComparison.OrdinalIgnoreCase);
+
+            if (ours) mine.Add((name, id));
+            else log?.Invoke($"чужой TUN-адаптер {name} не трогаю");
         }
-        return ids;
+        return mine;
+    }
+
+    private static IEnumerable<(string Name, string InstanceId)> WindowsNetAdapters(Action<string>? log)
+    {
+        const string script = "Get-NetAdapter -IncludeHidden | ForEach-Object { $_.Name + '|' + $_.PnPDeviceID }";
+        var (code, output) = Os.Run("powershell", $"-NoProfile -NonInteractive -Command \"{script}\"", 20000);
+        if (code != 0)
+        {
+            log?.Invoke("не удалось перечислить сетевые адаптеры, следы оставляю как есть");
+            return Array.Empty<(string, string)>();
+        }
+
+        var found = new List<(string, string)>();
+        foreach (var raw in output.Split('\n'))
+        {
+            var parts = raw.Trim().Split('|', 2);
+            if (parts.Length == 2 && parts[0].Length > 0 && parts[1].Length > 0)
+                found.Add((parts[0].Trim(), parts[1].Trim()));
+        }
+        return found;
+    }
+
+    /// <summary>Имя интерфейса, на котором висит этот адрес: так узнаётся наш старый туннель.</summary>
+    public static string? InterfaceWithAddress(string address)
+    {
+        var ip = address.Split('/')[0].Trim();
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            foreach (var unicast in nic.GetIPProperties().UnicastAddresses)
+                if (unicast.Address.AddressFamily == AddressFamily.InterNetwork
+                    && unicast.Address.ToString() == ip)
+                    return nic.Name;
+        }
+        catch { }
+        return null;
     }
 
     private static int CleanLinux(Action<string>? log)
@@ -93,16 +145,16 @@ public static class TunCleanup
         Os.Run("ip", $"route flush table {Iproute2TableIndex}", 10000);
         Os.Run("ip", $"-6 route flush table {Iproute2TableIndex}", 10000);
 
-        var (linkCode, _) = Os.Run("ip", $"link show {LinuxInterfaceName}", 10000);
+        var (linkCode, _) = Os.Run("ip", $"link show {InterfaceName}", 10000);
         if (linkCode == 0)
         {
-            var (delCode, delOut) = Os.Run("ip", $"link delete {LinuxInterfaceName}", 10000);
+            var (delCode, delOut) = Os.Run("ip", $"link delete {InterfaceName}", 10000);
             if (delCode == 0)
             {
                 removed++;
-                log?.Invoke($"удалён залипший интерфейс {LinuxInterfaceName}");
+                log?.Invoke($"удалён залипший интерфейс {InterfaceName}");
             }
-            else log?.Invoke($"не удалось удалить {LinuxInterfaceName}: {delOut}");
+            else log?.Invoke($"не удалось удалить {InterfaceName}: {delOut}");
         }
 
         return removed;
