@@ -215,6 +215,34 @@ public static class Strings
         ["countries_only_left"] = new(
             "Оставлено только {0}, но нод этих стран в подписках нет. Верните другие страны или добавьте подписку.",
             "Only {0} is allowed, but the subscriptions have no nodes there. Allow other countries or add a subscription."),
+        ["nodes_title"] = new("Отдельные ноды", "Individual nodes"),
+        ["nodes_hint"] = new(
+            "Здесь снимается галочка с одной ноды, а не со всей страны: остальные ноды этой страны " +
+            "работают дальше. Выбор помнится по адресу ноды, поэтому обновление подписки его не сбросит.",
+            "Here you uncheck a single node instead of the whole country: the other nodes of that country " +
+            "keep working. The choice is remembered by node address, so refreshing a subscription keeps it."),
+        ["nodes_none_left"] = new(
+            "Вы выключили все ноды разрешённых стран. Верните хотя бы одну галочку.",
+            "You turned off every node of the allowed countries. Turn at least one back on."),
+        ["nodes_off_now"] = new("Выключено вручную нод: {0}.", "Nodes turned off by hand: {0}."),
+        ["nodes_off_here"] = new("выключено {0}", "{0} turned off"),
+        ["nodes_country_off"] = new("страна выключена целиком", "the whole country is off"),
+        ["nodes_unchanged"] = new("Ноды остались как были.", "The nodes are unchanged."),
+        ["node_slow"] = new("медленнее порога", "slower than the threshold"),
+        ["node_usage"] = new(
+            "Выключить ноду: chp node off <номер, имя или адрес> · включить: chp node on <...> · " +
+            "вернуть все: chp node on all",
+            "Turn a node off: chp node off <number, name or address> · back on: chp node on <...> · " +
+            "all back: chp node on all"),
+        ["node_none_found"] = new(
+            "Не нашёл ноду по «{0}». Список с номерами: chp node",
+            "No node matches \"{0}\". The numbered list: chp node"),
+        ["nodes_read"] = new("Нод в подписках: {0}.", "Nodes in the subscriptions: {0}."),
+        ["node_turned_off"] = new("Выключено нод: {0}.", "Nodes turned off: {0}."),
+        ["node_turned_on"] = new("Включено нод: {0}.", "Nodes turned on: {0}."),
+        ["col_node"] = new("Нода", "Node"),
+        ["col_address"] = new("Адрес", "Address"),
+        ["col_source"] = new("Подписка", "Subscription"),
         ["col_country"] = new("Страна", "Country"),
         ["col_nodes"] = new("Нод", "Nodes"),
         ["col_alive"] = new("Отвечают", "Responding"),
@@ -748,5 +776,130 @@ public static class Strings
         ["verify_no_conn"] = new(
             "У программы нет активных соединений. Поработайте в ней и повторите проверку.",
             "The program has no active connections. Use it for a moment and repeat the check."),
+
+        ["nav_log"] = new("Журнал", "Journal"),
+
+        ["job_apply"] = new("Пересобираю правила", "Rebuilding the rules"),
+        ["job_check_subs"] = new("Проверяю подписки", "Checking the subscriptions"),
+        ["job_measure"] = new("Меряю задержки нод", "Measuring node latency"),
+        ["job_pool"] = new("Читаю подписки", "Reading the subscriptions"),
+        ["job_start"] = new("Включаю защиту", "Turning protection on"),
+        ["job_stop"] = new("Выключаю защиту", "Turning protection off"),
+        ["job_restart"] = new("Перезапускаю защиту", "Restarting protection"),
+        ["job_update"] = new("Обновляю программу", "Updating the program"),
+        ["job_update_check"] = new("Смотрю, есть ли обновление", "Looking for an update"),
+        ["job_running"] = new("идёт {0} с", "running for {0} s"),
+        ["job_done"] = new("готово за {0} с", "done in {0} s"),
+        ["job_failed"] = new("не получилось, {0} с", "failed after {0} s"),
+        ["job_hide"] = new("убрать", "hide"),
+        ["job_steps"] = new("Все этапы", "All stages"),
+
+        ["stage_writing_rules"] = new("Записываю правила для движка", "Writing the rules for the engine"),
+        ["stage_saving"] = new("Сохраняю результат", "Saving the result"),
+        ["stage_stopping"] = new("Останавливаю туннель", "Stopping the tunnel"),
+        ["stage_engine_start"] = new("Запускаю движок", "Starting the engine"),
+        ["stage_engine_wait"] = new("Смотрю, устоял ли движок", "Checking that the engine held"),
+        ["stage_cleanup"] = new("Снимаю следы прошлого запуска", "Removing leftovers from the previous run"),
+        ["stage_download"] = new("Скачиваю {0} ({1} МБ)", "Downloading {0} ({1} MB)"),
+        ["stage_installing"] = new("Ставлю новую версию", "Installing the new version"),
+
+        ["sub_progress"] = new(
+            "Подписка «{0}»: нод {1}. Готово {2} из {3}",
+            "Subscription \"{0}\": {1} nodes. Done {2} of {3}"),
+        ["sub_building_pool"] = new("Складываю ноды в общий пул", "Building the shared node pool"),
+
+        ["subs_all_off"] = new(
+            "Все подписки выключены, брать ноды негде. Включите хотя бы одну в разделе «Подписки».",
+            "Every subscription is off, so there is nowhere to take nodes from. Turn at least one on in \"Subscriptions\"."),
+        ["subs_last_one"] = new(
+            "Это последняя включённая подписка. Выключить её — остаться совсем без нод.",
+            "This is the last subscription still on. Turning it off would leave you with no nodes at all."),
+        ["sub_turned_on"] = new("Подписка «{0}» снова в пуле.", "Subscription \"{0}\" is back in the pool."),
+        ["sub_turned_off"] = new(
+            "Подписка «{0}» выключена: её ноды в пул не идут, сама она осталась в списке.",
+            "Subscription \"{0}\" is off: its nodes stay out of the pool, the entry itself remains in the list."),
+        ["subs_on_of"] = new("{0} из {1} включено", "{0} of {1} on"),
+        ["subs_toggle_hint"] = new(
+            "Кнопкой в первом столбце подписка выключается, не удаляясь: ссылка, срок и трафик останутся на месте.",
+            "The button in the first column turns a subscription off without deleting it: the link, expiry date and traffic stay."),
+        ["subs_expiry_hint"] = new(
+            "Срок и трафик берутся из ответа вашего VPN-сервиса. Если он их не отдаёт, в столбцах будет прочерк — это не поломка.",
+            "The expiry date and traffic come from your VPN service's answer. If it does not send them, the columns stay empty — that is not a fault."),
+        ["subs_expiry_short"] = new("Подписка до", "Subscription until"),
+        ["col_until"] = new("Действует до", "Valid until"),
+        ["col_traffic"] = new("Трафик", "Traffic"),
+        ["sub_expires_on"] = new("{0}, осталось дней: {1}", "{0}, days left: {1}"),
+        ["sub_expired_on"] = new("истекла {0}", "expired on {0}"),
+        ["sub_days_left"] = new("осталось дней: {0}", "days left: {0}"),
+        ["sub_expired"] = new("срок истёк", "expired"),
+        ["sub_no_expiry"] = new("срок не указан", "no expiry given"),
+        ["sub_no_traffic"] = new("не сообщается", "not reported"),
+        ["sub_of_total"] = new(" из {0}", " of {0}"),
+        ["sub_nodes_n"] = new("нод: {0}", "nodes: {0}"),
+
+        ["pool_loaded"] = new("Нод в пуле: {0}.", "Nodes in the pool: {0}."),
+        ["pool_loading"] = new(
+            "Читаю подписки — список стран появится сам, страницу закрывать не надо.",
+            "Reading the subscriptions — the country list will appear by itself, no need to close the page."),
+        ["pool_from"] = new(
+            "Нод в пуле: {0}, прочитано в {1}.", "Nodes in the pool: {0}, read at {1}."),
+        ["btn_pool_refresh"] = new("Перечитать подписки", "Re-read the subscriptions"),
+
+        ["log_title"] = new("Журнал", "Journal"),
+        ["log_lede"] = new(
+            "Один журнал на всё: что делала программа, что говорил движок и разбор падений. " +
+            "Записи остаются на диске, поэтому причину сбоя видно и после перезапуска.",
+            "One journal for everything: what the program did, what the engine said and the crash details. " +
+            "The records stay on disk, so the reason for a failure is visible even after a restart."),
+        ["log_view_all"] = new("Всё", "Everything"),
+        ["log_view_ours"] = new("Программа", "The program"),
+        ["log_view_engine"] = new("Движок", "The engine"),
+        ["log_view_crashes"] = new("Падения", "Crashes"),
+        ["log_crashes"] = new("Падений записано: {0}", "Crashes recorded: {0}"),
+        ["log_crash_last"] = new("Последнее — {0}, на месте: {1}", "The last one — {0}, at: {1}"),
+        ["log_no_crashes"] = new("Падений не было.", "No crashes."),
+        ["log_clear"] = new("Очистить журнал", "Clear the journal"),
+        ["log_cleared"] = new("Журнал очищен.", "The journal is cleared."),
+        ["log_empty"] = new("Записей пока нет.", "No records yet."),
+        ["log_arg_bad"] = new(
+            "Непонятно, что показать: {0}. Бывает engine, crash, clear или число строк.",
+            "Not clear what to show: {0}. It can be engine, crash, clear or a number of lines."),
+        ["log_cli_hint"] = new(
+            "Только движок — chp log движок, только падения — chp log падения, очистить — chp log очистить.",
+            "Engine only — chp log engine, crashes only — chp log crash, clear — chp log clear."),
+        ["log_download"] = new("Скачать текстом", "Download as text"),
+        ["log_open"] = new("Открыть журнал", "Open the journal"),
+        ["log_level"] = new("Подробность лога движка", "Engine log detail"),
+        ["log_level_hint"] = new(
+            "debug пишет каждое соединение — включайте, когда разбираете сбой, и возвращайте warn после: " +
+            "иначе файл быстро распухает. Новый уровень применится при следующем запуске защиты.",
+            "debug records every connection — turn it on while investigating a failure and go back to warn " +
+            "afterwards, otherwise the file grows fast. The new level takes effect the next time protection starts."),
+        ["log_level_set"] = new("Подробность лога движка: {0}.", "Engine log detail: {0}."),
+        ["log_level_bad"] = new(
+            "Уровень бывает только debug, info, warn или error.",
+            "The level can only be debug, info, warn or error."),
+        ["state_last_error"] = new("Последняя ошибка", "Last error"),
+        ["inst_stopping"] = new(
+            "останавливаю прошлую версию перед заменой",
+            "stopping the previous version before replacing it"),
+        ["inst_wiped"] = new(
+            "убрано файлов прошлой версии: {0}",
+            "files from the previous version removed: {0}"),
+        ["inst_kept"] = new(
+            "сохранено ваших файлов (настройки и подписки): {0}",
+            "your files kept (settings and subscriptions): {0}"),
+        ["inst_autostart_back"] = new(
+            "автозапуск восстановлен, защита поднимается с новой версией",
+            "autostart restored, protection is coming up on the new version"),
+        ["inst_start_again"] = new(
+            "защита была включена — поднимите её на новой версии: {0}chp daemon",
+            "protection was on — bring it up on the new version: {0}chp daemon"),
+        ["crash_written"] = new(
+            "Подробности в журнале: chp log crash — или во вкладке «Журнал» в панели.",
+            "The details are in the journal: chp log crash — or the Journal tab in the panel."),
+        ["engine_died_code"] = new(
+            "Движок завершился с кодом {0}; что он сказал перед этим — во вкладке «Журнал».",
+            "The engine exited with code {0}; what it said before that is in the \"Journal\" tab."),
     };
 }

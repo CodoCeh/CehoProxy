@@ -133,7 +133,7 @@ public static class Assistant
                 Ceho.Quiet = true;
                 try
                 {
-                    var nodes = await Ceho.LoadAllNodesAsync(cfg, preferCache: false, msg => spinner.Update(msg));
+                    var nodes = await Ceho.LoadAllNodesAsync(cfg, preferCache: false, spinner.AsReport());
                     count = nodes.Count;
                     if (count > 0)
                     {

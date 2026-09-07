@@ -164,13 +164,23 @@ public static class SingBoxConfigGenerator
         });
     }
 
+    /// <summary>
+    /// Движок пишет в свой вывод, а мы его читаем и складываем в общий журнал:
+    /// своего файла у движка нет, время ставит журнал.
+    /// </summary>
+    private static JsonObject BuildLog(CehoConfig cfg) => new()
+    {
+        ["level"] = string.IsNullOrWhiteSpace(cfg.EngineLogLevel) ? "warn" : cfg.EngineLogLevel,
+        ["timestamp"] = false,
+    };
+
     public static string GenerateForConfig(IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg)
     {
         var apps = cfg.Apps.Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)).ToList();
         if (apps.Count == 0)
             throw new InvalidOperationException("Не добавлено ни одного приложения — изолировать нечего.");
 
-        var pool = FilterByCountries(allNodes, cfg);
+        var pool = BuildPool(allNodes, cfg);
 
         var appRegexes = new JsonArray();
         foreach (var a in apps) appRegexes.Add(AppDetector.ToRegex(a));
@@ -195,7 +205,7 @@ public static class SingBoxConfigGenerator
 
         var config = new JsonObject
         {
-            ["log"] = new JsonObject { ["level"] = "warn", ["timestamp"] = true },
+            ["log"] = BuildLog(cfg),
             ["dns"] = new JsonObject
             {
                 ["servers"] = DnsServersWithDirect(cfg.TunAddress),
@@ -240,33 +250,50 @@ public static class SingBoxConfigGenerator
         });
     }
 
-    public static List<ProxyNode> FilterByCountries(IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg)
+    /// <summary>
+    /// Ноды, из которых движку можно выбирать: без служебных, без запрещённых стран,
+    /// без выключенных вручную и без слишком медленных.
+    /// </summary>
+    public static List<ProxyNode> BuildPool(IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg)
     {
-        var pool = allNodes
-            .Where(n => !n.IsMeta)
-            .Where(n => !cfg.ExcludedCountries.Contains(n.CountryCode ?? CountryResolver.Unknown,
-                                                        StringComparer.OrdinalIgnoreCase))
-            .Where(n => cfg.PreferredCountries.Count == 0
-                        || cfg.PreferredCountries.Contains(n.CountryCode ?? CountryResolver.Unknown,
-                                                           StringComparer.OrdinalIgnoreCase))
+        var real = allNodes.Where(n => !n.IsMeta).ToList();
+
+        var byCountry = real
+            .Where(n => CountryAllowed(n, cfg))
+            .ToList();
+
+        var pool = byCountry
+            .Where(n => !IsBlockedByHand(n, cfg))
             .Where(n => !IsTooSlow(n, cfg))
             .ToList();
 
-        if (pool.Count == 0 && cfg.MaxLatencyMs is { } limit
-            && allNodes.Any(n => !n.IsMeta && IsTooSlow(n, cfg)))
+        if (pool.Count > 0) return pool;
+
+        // Сообщать надо про ту причину, которая опустошила пул, иначе непонятно, что вернуть.
+        if (byCountry.Count > 0 && byCountry.All(n => IsBlockedByHand(n, cfg)))
+            throw new PoolEmptyException(Strings.T(cfg.Language, "nodes_none_left"));
+
+        if (cfg.MaxLatencyMs is { } limit && real.Any(n => IsTooSlow(n, cfg)))
             throw new PoolEmptyException(Strings.T(cfg.Language, "speed_none_left", limit));
 
-        if (pool.Count == 0)
-        {
-            var key = cfg.PreferredCountries.Count > 0 ? "countries_only_left" : "countries_none_left";
-            var reason = cfg.PreferredCountries.Count > 0
-                ? string.Join(", ", cfg.PreferredCountries)
-                : string.Join(", ", cfg.ExcludedCountries);
-            throw new PoolEmptyException(Strings.T(cfg.Language, key, reason));
-        }
-
-        return pool;
+        var key = cfg.PreferredCountries.Count > 0 ? "countries_only_left" : "countries_none_left";
+        var reason = cfg.PreferredCountries.Count > 0
+            ? string.Join(", ", cfg.PreferredCountries)
+            : string.Join(", ", cfg.ExcludedCountries);
+        throw new PoolEmptyException(Strings.T(cfg.Language, key, reason));
     }
+
+    private static bool CountryAllowed(ProxyNode node, CehoConfig cfg)
+    {
+        var code = node.CountryCode ?? CountryResolver.Unknown;
+        return !cfg.ExcludedCountries.Contains(code, StringComparer.OrdinalIgnoreCase)
+               && (cfg.PreferredCountries.Count == 0
+                   || cfg.PreferredCountries.Contains(code, StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Нода, выключенная руками в списке.</summary>
+    public static bool IsBlockedByHand(ProxyNode node, CehoConfig cfg) =>
+        cfg.BlockedNodes.Contains(node.Key, StringComparer.OrdinalIgnoreCase);
 
     public static bool IsTooSlow(ProxyNode node, CehoConfig cfg) =>
         cfg.MaxLatencyMs is { } limit

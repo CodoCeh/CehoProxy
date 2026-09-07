@@ -142,5 +142,78 @@ public static class WebUi
       border-radius:var(--radius);background:var(--surface);animation:rise .4s ease both}
     .gate .logo{margin-bottom:14px}
     .gate h1{font-size:18px;margin:0 0 6px;font-weight:660}
+
+    .job{padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);
+      background:var(--surface);margin-bottom:18px}
+    .job.ok{border-color:var(--ok-ink)} .job.err{border-color:var(--danger-ink)}
+    .job-head{display:flex;align-items:baseline;gap:10px}
+    .job-head b{font-weight:640}
+    .job-num{margin-left:auto;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+    .bar{height:8px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:10px 0 8px}
+    .bar>span{display:block;height:100%;border-radius:99px;background:var(--brand-ink);
+      width:0;transition:width .35s cubic-bezier(.2,.7,.3,1)}
+    .job.run .bar>span{background:linear-gradient(90deg,var(--brand-ink),var(--brand-strong))}
+    .job.err .bar>span{background:var(--danger-ink)}
+    .bar.thin{height:5px;margin:5px 0 0;max-width:170px}
+    .job-stage{font-size:13.5px;color:var(--subtext)}
+    .job-foot{font-size:12.5px;color:var(--muted);margin-top:4px}
+    .job-foot a{color:var(--muted)}
+    .job-steps{margin-top:8px;font-size:12.5px;color:var(--muted)}
+    .job-steps summary{cursor:pointer}
+    .job-steps ol{margin:6px 0 0;padding-left:22px}
+
+    tr.dim td{opacity:.55}
+    .tag.bad{color:var(--danger-ink)}
+    button.pill{min-height:28px;padding:3px 12px;font-size:12.5px;font-weight:600;border-radius:99px}
+    button.pill.no{background:transparent;color:var(--muted);border-color:var(--line);font-weight:500}
+    button.pill.no:hover{background:var(--panel2)}
+    .until{font-variant-numeric:tabular-nums}
+    .until.warn{color:var(--warn-ink);font-weight:600}
+    .until.danger{color:var(--danger-ink);font-weight:600}
+    a.pill{display:inline-flex;align-items:center;min-height:28px;padding:3px 13px;font-size:12.5px;
+      border:1px solid var(--line);border-radius:99px;color:var(--subtext);text-decoration:none;
+      transition:background .18s ease,color .18s ease}
+    a.pill:hover{background:var(--panel2);color:var(--text)}
+    a.pill.on{background:var(--brand-ink);border-color:var(--brand-ink);color:#f4fbf7;font-weight:600}
+
+    details.nodes{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);
+      margin:0 0 8px;padding:0 14px}
+    details.nodes>summary{cursor:pointer;padding:11px 0;font-size:14px;font-weight:600}
+    details.nodes>summary::marker{color:var(--muted)}
+    details.nodes[open]>summary{border-bottom:1px solid var(--line)}
+    details.nodes table{margin:0 0 6px}
+    tr.off td{opacity:.5}
+
+    pre.logbox{margin:6px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius);
+      background:var(--panel);color:var(--subtext);font-family:ui-monospace,Consolas,"SF Mono",monospace;
+      font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+    """;
+
+    /// <summary>
+    /// Полоса двигается без перезагрузки страницы. Скриптов может не быть —
+    /// тогда работает meta refresh, поэтому здесь только украшение, а не единственный путь.
+    /// </summary>
+    public const string JobScript = """
+    <script>
+    (function(){
+      var box=document.getElementById('jp');
+      if(!box||!box.dataset.job)return;
+      var id=box.dataset.job,fill=document.getElementById('jf'),
+          stage=document.getElementById('js'),num=document.getElementById('jn');
+      function tick(){
+        fetch('/job?id='+encodeURIComponent(id),{cache:'no-store'})
+          .then(function(r){return r.json()})
+          .then(function(j){
+            if(fill)fill.style.width=j.percent+'%';
+            if(num)num.textContent=j.percent+'%';
+            if(stage&&j.stage)stage.textContent=j.stage;
+            if(j.state==='running'){setTimeout(tick,700);return}
+            location.reload();
+          })
+          .catch(function(){setTimeout(tick,2500)});
+      }
+      setTimeout(tick,600);
+    })();
+    </script>
     """;
 }

@@ -42,16 +42,29 @@ fi
 
 [ -f "$SRC" ] || { echo "Не найден файл программы: $SRC"; exit 1; }
 
+# Старая версия останавливается ДО замены файла. Иначе на машине остаётся
+# работающий прежний экземпляр, и непонятно, чьи правила действуют.
+if [ -x "$BIN" ]; then
+  OLD="$("$BIN" version 2>/dev/null | head -n1 || true)"
+  [ -n "$OLD" ] && echo "Была установлена версия $OLD — заменяю её."
+  "$BIN" stop >/dev/null 2>&1 || true
+fi
+
 install -m 755 "$SRC" "$BIN"
 mkdir -p "$ROOT"
 chmod 755 "$ROOT"
 
 ln -sf "$BIN" /usr/local/bin/chp
 
+# Регистрация в системе, затирание файлов прошлой сборки и возврат автозапуска.
+# Настройки и сохранённые подписки эта команда не трогает.
+"$BIN" install --no-setup
+
+echo
 echo "Страница продукта: https://github.com/$REPO"
 echo "Программа: $BIN"
 echo "Короткая команда: chp"
-echo "Настройки: $ROOT"
+echo "Настройки и подписки: $ROOT (сохранены)"
 echo
 
 if ! command -v sing-box >/dev/null 2>&1 && [ ! -x "$ROOT/sing-box" ]; then
@@ -61,7 +74,13 @@ if ! command -v sing-box >/dev/null 2>&1 && [ ! -x "$ROOT/sing-box" ]; then
   echo
 fi
 
-if { : < /dev/tty; } 2>/dev/null; then
+# Настройку задаём только на чистой машине: при обновлении переспрашивать нечего.
+if [ -f "$ROOT/config.json" ]; then
+  echo "Обновление завершено, прежние настройки на месте."
+  echo "  chp             # состояние"
+  echo "  chp subs        # подписки, сроки и трафик"
+  echo "  chp log         # журнал и падения"
+elif { : < /dev/tty; } 2>/dev/null; then
   "$BIN" setup < /dev/tty
 else
   echo "Терминала для вопросов нет, поэтому настройка не запущена."
