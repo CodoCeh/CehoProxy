@@ -67,14 +67,20 @@ public class LogTests : IDisposable
     {
         var fatal = Mark();
         var plain = Mark();
+        var debugDns = Mark();
+        var ansiDebug = Mark();
 
         Log.Engine("FATAL start service: " + fatal);
         Log.Engine("INFO router: " + plain);
+        Log.Engine("DEBUG dns: exchange A example.com rcode=NOERROR " + debugDns);
+        Log.Engine("\x1b[37mDEBUG\x1b[0m[0246] router: sniff " + ansiDebug);
 
         var entries = Log.Entries(50, LogView.Engine);
 
         Assert.Equal("error", entries.Single(e => e.Message.Contains(fatal)).Level);
         Assert.Equal("info", entries.Single(e => e.Message.Contains(plain)).Level);
+        Assert.Equal("debug", entries.Single(e => e.Message.Contains(debugDns)).Level);
+        Assert.Equal("debug", entries.Single(e => e.Message.Contains(ansiDebug)).Level);
     }
 
     [Fact]

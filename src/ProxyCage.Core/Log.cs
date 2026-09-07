@@ -41,6 +41,12 @@ public static class Log
         @"^(?<t>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?<lvl>\S+) +(?<cmp>\S+) +(?<msg>.*)$",
         RegexOptions.Compiled);
 
+    private static readonly Regex AnsiStrip = new(@"\x1b\[[0-9;]*[a-zA-Z]", RegexOptions.Compiled);
+
+    private static readonly Regex EngineLevelRegex = new(
+        @"\b(?<lvl>FATAL|PANIC|ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public static bool EchoToConsole { get; set; }
 
     public static string? Root => _root;
@@ -97,11 +103,23 @@ public static class Log
         Write(EngineLevel(line), EngineComponent, line.Trim());
     }
 
-    private static string EngineLevel(string line) =>
-        line.Contains("FATAL", StringComparison.OrdinalIgnoreCase)
-        || line.Contains("ERROR", StringComparison.OrdinalIgnoreCase) ? "error"
-        : line.Contains("WARN", StringComparison.OrdinalIgnoreCase) ? "warn"
-        : "info";
+    private static string EngineLevel(string line)
+    {
+        var clean = AnsiStrip.Replace(line, "");
+        var m = EngineLevelRegex.Match(clean);
+        if (m.Success)
+        {
+            var lvl = m.Groups["lvl"].Value.ToLowerInvariant();
+            return lvl switch
+            {
+                "fatal" or "panic" or "error" => "error",
+                "warn" or "warning" => "warn",
+                "debug" or "trace" => "debug",
+                _ => "info"
+            };
+        }
+        return "info";
+    }
 
     /// <summary>
     /// Разбор падения — блоком в тот же журнал: сообщения в консоли не увидит никто,
