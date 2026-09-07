@@ -45,6 +45,7 @@ public static class AiTools
                 {
                     Path.Combine(programFiles, "WindowsApps", "OpenAI.Codex*"),
                     Path.Combine(local, "Programs", "codex"),
+                    Path.Combine(local, "OpenAI", "Codex"),
                 }, new[] { "codex" });
                 yield return new("Cursor", new[] { Path.Combine(local, "Programs", "cursor") }, new[] { "cursor" });
                 yield return new("Antigravity", new[] { Path.Combine(local, "Programs", "Antigravity") },

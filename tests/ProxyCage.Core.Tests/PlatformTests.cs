@@ -212,4 +212,39 @@ public class PlatformTests
         Assert.Matches(rx, @"C:\Users\s.bonich\AppData\Local\Programs\cursor\resources\app\node.exe");
         Assert.DoesNotMatch(rx, @"C:\Users\s.bonich\AppData\Local\Programs\cursor-other\helper.exe");
     }
+
+    [Fact]
+    public void Windows_codex_regexes_match_msix_and_localappdata_cli()
+    {
+        var app = new AppEntry
+        {
+            Name = "Codex",
+            Folder = @"C:\Program Files\WindowsApps\OpenAI.Codex_26.901.6511.0_x64__2p2nqsd0c76g0",
+            VersionAgnostic = true,
+        };
+        var rxes = AppDetector.ToRegexes(app);
+
+        var msixExe = @"C:\Program Files\WindowsApps\OpenAI.Codex_26.901.6511.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe";
+        var cliExe = @"C:\Users\s.bonich\AppData\Local\OpenAI\Codex\bin\8e5b6932251c2c1c\codex.exe";
+
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(msixExe, r));
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(cliExe, r));
+    }
+
+    [Fact]
+    public void Windows_cursor_regexes_match_appdata_and_dotcursor()
+    {
+        var app = new AppEntry
+        {
+            Name = "Cursor",
+            Folder = @"C:\Users\s.bonich\AppData\Local\Programs\cursor",
+        };
+        var rxes = AppDetector.ToRegexes(app);
+
+        var cursorExe = @"C:\Users\s.bonich\AppData\Local\Programs\cursor\Cursor.exe";
+        var dotCursorServer = @"C:\Users\s.bonich\.cursor\server\bin\node.exe";
+
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(cursorExe, r));
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(dotCursorServer, r));
+    }
 }
