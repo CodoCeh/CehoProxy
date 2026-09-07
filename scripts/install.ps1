@@ -27,7 +27,9 @@ if (Test-Path $exe) {
 
 # Прошлую версию надо остановить целиком: и задачу планировщика, и сам процесс.
 # Работающий exe Windows заменить не даёт, а два экземпляра рядом — источник путаницы.
-& schtasks /end /tn CehoProxy 2>$null | Out-Null
+# На чистой машине задачи нет. PowerShell при Stop превращает stderr schtasks
+# («file specified») в остановку скрипта — зовём через cmd, он глотает отсутствие.
+cmd /c "schtasks /end /tn CehoProxy >nul 2>&1" | Out-Null
 $running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
 if ($running) {
     Write-Host "Останавливаю работающий CehoProxy перед заменой..."
