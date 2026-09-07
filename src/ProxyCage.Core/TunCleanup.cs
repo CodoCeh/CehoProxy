@@ -60,36 +60,257 @@ public static class TunCleanup
 
     public static int RemoveLeftovers(
         Action<string>? log = null, string? tunAddress = null, string? root = null,
-        IReadOnlyCollection<string>? beforeStart = null)
+        IReadOnlyCollection<string>? beforeStart = null, string? runtimeConfigPath = null)
         => Os.Kind switch
         {
-            OsKind.Windows => RemoveGhostAdapters(log, tunAddress, root, beforeStart),
+            OsKind.Windows => RemoveGhostAdapters(log, tunAddress, root, beforeStart, runtimeConfigPath),
             OsKind.Linux => CleanLinux(log),
             _ => CleanMac(log),
         };
 
-    public static int RemoveGhostAdapters(
-        Action<string>? log = null, string? tunAddress = null, string? root = null,
+    /// <summary>
+    /// Снять свой Wintun: сначала убить движок, потом отключить интерфейс, потом pnputil.
+    /// aggressive — после FATAL «file already exists»: снимаем всё с нашим адресом, не только по записи.
+    /// </summary>
+    public static bool ReleaseOurs(
+        string runtimeConfigPath,
+        string? tunAddress,
+        string? root,
+        Action<string>? log = null,
+        int attempts = 3,
+        bool aggressive = false,
         IReadOnlyCollection<string>? beforeStart = null)
     {
-        var removed = 0;
-        foreach (var (name, instanceId) in Removable(
-                     WintunDevices(), Adapter(tunAddress), Ours(root), log, beforeStart))
+        if (!Os.IsWindows) return RemoveLeftovers(log, tunAddress, root, beforeStart, runtimeConfigPath) >= 0;
+
+        KillOurProcesses(runtimeConfigPath, log);
+        WaitUntilEngineGone(runtimeConfigPath, 10000, log);
+
+        var ourIp = tunAddress?.Split('/')[0].Trim();
+        var recorded = Ours(root);
+        var lookup = Adapter(tunAddress);
+        for (var attempt = 1; attempt <= attempts; attempt++)
         {
-            var (code, _) = Os.Run("pnputil", $"/remove-device \"{instanceId}\"", 15000);
-            if (code != 0) continue;
+            if (attempt > 1)
+            {
+                log?.Invoke($"повторная уборка Wintun, попытка {attempt}/{attempts}");
+                Thread.Sleep(2000);
+                KillOurProcesses(runtimeConfigPath, log);
+                WaitUntilEngineGone(runtimeConfigPath, 5000, log);
+            }
+
+            var removed = 0;
+            foreach (var id in WintunDevices())
+            {
+                var nic = lookup(id);
+                if (!ShouldRemove(id, recorded, nic, ourIp, aggressive, beforeStart)) continue;
+
+                if (nic is not null)
+                    DisableInterface(nic.Name, log);
+
+                if (!RemoveDevice(id, nic?.Name, log))
+                    continue;
+
+                removed++;
+                if (!WaitUntilGone(id) || (nic is not null && !WaitUntilInterfaceGone(nic.Name)))
+                    log?.Invoke($"устройство {id} ещё держится — продолжаю уборку");
+            }
+
+            if (removed > 0) Thread.Sleep(2500);
+
+            if (!AnyOursLeft(recorded, lookup, ourIp, aggressive) && !TunnelAddressBusy(ourIp))
+            {
+                ClearOursFile(root);
+                return true;
+            }
+        }
+
+        return !AnyOursLeft(recorded, lookup, ourIp, aggressive) && !TunnelAddressBusy(ourIp);
+    }
+
+    public static int RemoveGhostAdapters(
+        Action<string>? log = null, string? tunAddress = null, string? root = null,
+        IReadOnlyCollection<string>? beforeStart = null, string? runtimeConfigPath = null)
+    {
+        if (runtimeConfigPath is not null)
+        {
+            KillOurProcesses(runtimeConfigPath, log);
+            WaitUntilEngineGone(runtimeConfigPath, 8000, log);
+        }
+
+        var removed = 0;
+        var lookup = Adapter(tunAddress);
+        foreach (var (name, instanceId) in Removable(
+                     WintunDevices(), lookup, Ours(root), log, beforeStart))
+        {
+            var nic = lookup(instanceId);
+            if (nic is not null)
+                DisableInterface(nic.Name, log);
+
+            if (!RemoveDevice(instanceId, name, log)) continue;
 
             removed++;
-            log?.Invoke($"удалён залипший TUN-адаптер {name}: {instanceId}");
-
             if (!WaitUntilGone(instanceId))
                 log?.Invoke($"устройство {instanceId} ещё держится — движок может не встать");
         }
 
-        // pnputil уже не видит устройство, а файл Wintun ещё держится: без паузы
-        // следующий старт снова падает на «файл уже существует».
         if (removed > 0) Thread.Sleep(2500);
         return removed;
+    }
+
+    private static bool RemoveDevice(string instanceId, string? name, Action<string>? log)
+    {
+        var (code, output) = Os.Run("pnputil", $"/remove-device \"{instanceId}\"", 15000);
+        if (code != 0)
+        {
+            log?.Invoke($"pnputil не снял {instanceId}: {output.Trim()}");
+            return false;
+        }
+
+        log?.Invoke($"снят Wintun {name ?? "без интерфейса"}: {instanceId}");
+        return true;
+    }
+
+    private static void DisableInterface(string name, Action<string>? log)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var (code, output) = Os.Run("netsh", $"interface set interface \"{name}\" disable", 10000);
+        if (code != 0 && output.Length > 0)
+            log?.Invoke($"не удалось выключить интерфейс {name}: {output.Trim()}");
+    }
+
+    private static bool ShouldRemove(
+        string id,
+        IReadOnlyCollection<string> recorded,
+        Nic? nic,
+        string? ourIp,
+        bool aggressive,
+        IReadOnlyCollection<string>? beforeStart)
+    {
+        if (aggressive)
+        {
+            if (recorded.Contains(id, StringComparer.OrdinalIgnoreCase)) return true;
+            if (nic?.Ours == true) return true;
+            if (nic is null && beforeStart?.Contains(id, StringComparer.OrdinalIgnoreCase) == true)
+                return true;
+            return false;
+        }
+
+        return IsOursToKeep(id, recorded, nic, beforeStart);
+    }
+
+    private static bool AnyOursLeft(
+        IReadOnlyCollection<string> recorded,
+        Func<string, Nic?> lookup,
+        string? ourIp,
+        bool aggressive)
+    {
+        foreach (var id in WintunDevices())
+        {
+            if (ShouldRemove(id, recorded, lookup(id), ourIp, aggressive, beforeStart: null))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool TunnelAddressBusy(string? ourIp)
+    {
+        if (ourIp is null) return false;
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Any(nic => HasAddress(nic, ourIp));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void WaitUntilEngineGone(string runtimeConfigPath, int timeoutMs, Action<string>? log)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (!EngineStillRunning(runtimeConfigPath)) return;
+            Thread.Sleep(400);
+        }
+        log?.Invoke("движок ещё держит Wintun — принудительная остановка");
+        KillOurProcesses(runtimeConfigPath, log);
+    }
+
+    private static bool EngineStillRunning(string runtimeConfigPath)
+    {
+        if (!Os.IsWindows) return false;
+
+        var home = Path.GetDirectoryName(runtimeConfigPath) ?? "";
+        foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
+        {
+            var (_, list) = Os.Run("wmic",
+                $"process where \"name='{name}'\" get processid,commandline /format:csv", 8000);
+            foreach (var line in list.Split('\n'))
+            {
+                if (!line.Contains(Os.EngineFileName, StringComparison.OrdinalIgnoreCase)
+                    && !line.Contains(name, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
+                    || (home.Length > 0 && line.Contains(home, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool WaitUntilInterfaceGone(string name, int timeoutMs = 15000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            try
+            {
+                if (!NetworkInterface.GetAllNetworkInterfaces()
+                        .Any(n => n.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+            catch { return true; }
+            Thread.Sleep(500);
+        }
+        return false;
+    }
+
+    private static void ClearOursFile(string? root)
+    {
+        if (root is null) return;
+        try
+        {
+            var file = OursFile(root);
+            if (File.Exists(file)) File.WriteAllText(file, "");
+        }
+        catch { }
+    }
+
+    /// <summary>Есть ли в журнале залипший Wintun после неудачной уборки.</summary>
+    public static bool LogShowsStuckAdapter(int tailLines = 400)
+    {
+        var lines = Log.Tail(tailLines, LogView.All);
+        var sawCleanup = false;
+        foreach (var line in lines)
+        {
+            if (line.Contains("удалён залипший TUN", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("наш след без адаптера", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("снят Wintun", StringComparison.OrdinalIgnoreCase))
+                sawCleanup = true;
+
+            if (line.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                && (line.Contains("FATAL", StringComparison.OrdinalIgnoreCase)
+                    || line.Contains("configure tun interface", StringComparison.OrdinalIgnoreCase)))
+                return true;
+
+            if (sawCleanup && line.Contains("движок не устоял", StringComparison.OrdinalIgnoreCase)
+                           && line.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

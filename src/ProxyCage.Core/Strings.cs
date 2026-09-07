@@ -248,6 +248,15 @@ public static class Strings
             "Служба не работает, а сетевой интерфейс и правила маршрутизации на месте: программы могут остаться без интернета.",
             "The service is not running, but the network interface and routing rules are still there: apps may end up without internet."),
         ["doc_leftovers_fix"] = new("Сниму следы.", "I will remove the leftovers."),
+        ["doc_tun_stuck"] = new(
+            "Wintun-адаптер залип",
+            "Wintun adapter is stuck"),
+        ["doc_tun_stuck_detail"] = new(
+            "Windows держит старый TUN после сбоя или обновления. Пока он не снят, защита не включится.",
+            "Windows is holding an old TUN after a crash or update. Protection cannot start until it is removed."),
+        ["doc_tun_stuck_fix"] = new(
+            "Нажмите «Починить» на вкладке «Доктор» или выполните: chp doctor --fix. Если не помогло — перезагрузите ПК.",
+            "Click \"Fix\" on the Doctor tab or run: chp doctor --fix. If that fails, reboot Windows."),
         ["doc_stale_pid"] = new(
             "Остался файл с номером процесса", "A stale process-id file is left"),
         ["doc_service_ok"] = new("Служба работает", "The service is running"),
@@ -603,6 +612,10 @@ public static class Strings
         ["upd_none"] = new("Обновлений нет, у вас последняя версия.", "No updates, you have the latest version."),
         ["upd_found"] = new("Доступна версия {0}.", "Version {0} is available."),
         ["upd_apply"] = new("Обновить и перезапустить", "Update and restart"),
+        ["upd_stopping_tun"] = new("Выключаю защиту перед обновлением", "Turning protection off before update"),
+        ["upd_need_reboot"] = new(
+            "TUN-адаптер не снялся. Перезагрузите Windows и повторите обновление.",
+            "The TUN adapter could not be removed. Reboot Windows and try updating again."),
         ["upd_done"] = new(
             "Обновлено до {0}.", "Updated to {0}."),
         ["upd_relaunch"] = new(

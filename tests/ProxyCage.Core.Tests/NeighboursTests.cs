@@ -238,6 +238,24 @@ public class NeighboursTests
     }
 
     [Fact]
+    public void Stuck_adapter_is_visible_in_recent_log()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "chp-tun-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        try
+        {
+            Log.Init(root, "test");
+            Log.Engine("INFO removed something");
+            Log.Engine("FATAL start inbound/tun[tun-in]: configure tun interface: Cannot create a file when that file already exists.");
+            Assert.True(TunCleanup.LogShowsStuckAdapter());
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Dead_system_proxy_is_named_with_host_and_port()
     {
         var dead = SystemProxy.DeadAmong("0x1", "socks=127.0.0.1:10808", ourPort: 2080, _ => false);

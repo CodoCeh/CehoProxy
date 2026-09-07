@@ -739,6 +739,14 @@ switch (cmd)
             if (!args.Contains("--yes") && !Cli.AskYes(Cli.S(cfg, "upd_apply"), true))
             { Console.WriteLine(Cli.S(cfg, "cancelled")); return 0; }
 
+            Console.WriteLine("  " + Cli.S(cfg, "upd_stopping_tun"));
+            var shut = TunnelShutdown.PrepareForUpdate(cfg, Ceho.Root, Ceho.RuntimeConfigPath, Console.WriteLine);
+            if (!shut.Ok)
+            {
+                Console.Error.WriteLine(Cli.S(cfg, shut.ErrorKey ?? "upd_need_reboot"));
+                return 1;
+            }
+
             await Updater.InstallAsync(release, Ceho.OwnExecutablePath, Console.WriteLine);
             Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
 
@@ -751,12 +759,7 @@ switch (cmd)
                 Console.WriteLine("  " + ex.Message);
             }
 
-            if (DaemonControl.IsRunning(Ceho.Root))
-            {
-                DaemonControl.RequestStop(Ceho.Root);
-                await Task.Delay(TimeSpan.FromSeconds(6));
-                if (Autostart.IsEnabled()) Autostart.Restart();
-            }
+            if (Autostart.IsEnabled()) Autostart.Restart();
             Console.WriteLine(Cli.S(cfg, "upd_done", release.Version));
             return 0;
         }
@@ -1417,17 +1420,12 @@ if (cmd is "daemon" or "web")
             if (reason is not null
                 && reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
             {
-                // Часто это наш же адаптер от прошлого падения: только что запомнили GUID
-                // и сняли. Второй заход — чтобы человек не видел ложную «чужой VPN».
-                Log.Info("адрес туннеля был занят, снимаю свой след и пробую ещё раз");
+                Log.Info("адрес туннеля занят — принудительно снимаю Wintun");
+                TunCleanup.ReleaseOurs(
+                    Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
+                    attempts: 3, aggressive: true);
+                await Task.Delay(TimeSpan.FromSeconds(2));
                 reason = await BringEngineUp(c, report);
-                if (reason is not null
-                    && reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log.Info("адаптер всё ещё занят, жду и пробую в третий раз");
-                    await Task.Delay(TimeSpan.FromSeconds(3));
-                    reason = await BringEngineUp(c, report);
-                }
             }
 
             if (reason is not null)
@@ -1456,7 +1454,7 @@ if (cmd is "daemon" or "web")
         // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
         var killed = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
         if (killed > 0) await Task.Delay(500);
-        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before);
+        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
 
         report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
 
@@ -1478,14 +1476,15 @@ if (cmd is "daemon" or "web")
         var reason = p.Explain(c.Language);
         Log.Error($"движок не устоял: {reason}");
         p.Dispose();
-        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before);
+        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
         return reason;
     }
 
     string? StopTunnel()
     {
         if (proc is null) return Strings.T(cfg.Language, "already_off");
-        var clean = proc.Stop();
+        var clean = proc.Stop(8000);
+        proc.WaitForExit();
         proc.Dispose();
         proc = null;
         exitCountry = exitIp = null;
@@ -1498,9 +1497,9 @@ if (cmd is "daemon" or "web")
             Thread.Sleep(800);
         }
 
-        // Уходя, не оставляем в системе ничего своего: даже после чистого выхода движка
-        // от адаптера остаётся мёртвое устройство, и оно наше — значит, убираем его сами.
-        TunCleanup.RemoveLeftovers(Log.Info, cfg.TunAddress, Ceho.Root);
+        TunCleanup.ReleaseOurs(
+            Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Log.Info,
+            attempts: 2, aggressive: false);
         return null;
     }
 
@@ -1535,6 +1534,21 @@ if (cmd is "daemon" or "web")
         var release = await Updater.CheckAsync(c.UpdateRepo);
         if (release is null) return Strings.T(c.Language, "upd_none");
         if (!install) return Strings.T(c.Language, "upd_found", release.Version);
+
+        report.Stage(Strings.T(c.Language, "upd_stopping_tun"), 25);
+        StopTunnel();
+        var shut = TunnelShutdown.Release(c, Ceho.Root, Ceho.RuntimeConfigPath, m => report.Note(m));
+        if (!shut.Ok) return Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot");
+
+        try
+        {
+            report.Stage(Strings.T(c.Language, "stage_writing_rules"), 35);
+            await Ceho.ApplyAsync(report);
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
 
         report.Stage(Strings.T(c.Language, "stage_download",
             release.Version, release.Size / 1024 / 1024), 40);
