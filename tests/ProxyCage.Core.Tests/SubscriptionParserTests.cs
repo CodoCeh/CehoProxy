@@ -98,4 +98,16 @@ public class SubscriptionParserTests
         Assert.Equal("obfs-secret", hy2.ObfsPassword);
         Assert.True(hy2.AllowInsecure);
     }
+
+    [Fact]
+    public void Hwid_gate_is_not_treated_as_real_nodes()
+    {
+        var raw = Fixture("sub-hwid-gate.txt");
+        Assert.True(SubscriptionParser.LooksLikeHwidGate(raw));
+        Assert.Empty(SubscriptionParser.Parse(raw));
+
+        var wrapped = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(raw));
+        Assert.True(SubscriptionParser.LooksLikeHwidGate(wrapped));
+        Assert.Empty(SubscriptionParser.Parse(wrapped));
+    }
 }

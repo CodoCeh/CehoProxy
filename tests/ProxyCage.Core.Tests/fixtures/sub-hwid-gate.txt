@@ -1,0 +1,2 @@
+vless://00000000-0000-4000-8000-000000000099@0.0.0.0:1?encryption=none&type=tcp&security=none#%E2%9A%A0%20HWID%20disabled
+vless://00000000-0000-4000-8000-000000000099@0.0.0.0:1?encryption=none&type=tcp&security=none#enable%20HWID

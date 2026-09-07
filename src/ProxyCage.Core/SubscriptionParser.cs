@@ -28,7 +28,7 @@ public static class SubscriptionParser
     {
         var text = Decode(subscriptionBody);
 
-        var ready = SubscriptionFormats.Parse(text, lang);
+        var ready = DropPlaceholders(SubscriptionFormats.Parse(text, lang));
         if (ready.Count > 0) return ready;
 
         var nodes = new List<ProxyNode>();
@@ -52,7 +52,29 @@ public static class SubscriptionParser
             if (node is not null) nodes.Add(node);
         }
 
-        return nodes;
+        return DropPlaceholders(nodes);
+    }
+
+    /// <summary>
+    /// Панели Remnawave/Happ без заголовка x-hwid отдают «ноды» на 0.0.0.0:1
+    /// с текстом «включите отправку HWID». Это не серверы.
+    /// </summary>
+    public static bool LooksLikeHwidGate(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return false;
+        var text = Decode(body);
+        return text.Contains("0.0.0.0:1", StringComparison.Ordinal)
+               || (text.Contains("HWID", StringComparison.OrdinalIgnoreCase)
+                   && text.Contains("0.0.0.0", StringComparison.Ordinal));
+    }
+
+    internal static bool IsPlaceholder(ProxyNode node) =>
+        node.Port <= 1 && node.Server is "0.0.0.0" or "::" or "127.0.0.1";
+
+    private static IReadOnlyList<ProxyNode> DropPlaceholders(IReadOnlyList<ProxyNode> nodes)
+    {
+        var kept = nodes.Where(n => !IsPlaceholder(n)).ToList();
+        return kept.Count == nodes.Count ? nodes : kept;
     }
 
     private static string Decode(string body)

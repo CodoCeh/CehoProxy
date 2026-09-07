@@ -28,7 +28,10 @@ public static class Ceho
         }
     }
 
-    private static HttpClient MakeClient(string? proxy = null, bool asBrowser = true, int timeoutSeconds = 15)
+    private enum FetchPersona { Client, Clash, Browser }
+
+    private static HttpClient MakeClient(
+        string? proxy = null, FetchPersona persona = FetchPersona.Client, int timeoutSeconds = 15)
     {
         var handler = new HttpClientHandler();
         if (proxy is not null)
@@ -37,20 +40,32 @@ public static class Ceho
             handler.UseProxy = true;
         }
         var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(Math.Max(1, timeoutSeconds)) };
-        if (asBrowser)
+        switch (persona)
         {
-            c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36");
-            c.DefaultRequestHeaders.TryAddWithoutValidation("Accept",
-                "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
-            c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+            case FetchPersona.Browser:
+                c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36");
+                c.DefaultRequestHeaders.TryAddWithoutValidation("Accept",
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+                c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+                break;
+            case FetchPersona.Clash:
+                c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "clash-meta/1.18.0");
+                c.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+                break;
+            default:
+                c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                    "CehoProxy/" + Updater.CurrentVersion);
+                c.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "text/plain,*/*");
+                break;
         }
-        else
-        {
-            c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
-                "CehoProxy/" + Updater.CurrentVersion);
-            c.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "text/plain,*/*");
-        }
+
+        var hwid = DeviceStamp.LoadOrCreate(Root);
+        c.DefaultRequestHeaders.TryAddWithoutValidation("x-hwid", hwid);
+        c.DefaultRequestHeaders.TryAddWithoutValidation("x-device-os",
+            Os.IsWindows ? "Windows" : Os.IsMac ? "macOS" : "Linux");
+        c.DefaultRequestHeaders.TryAddWithoutValidation("x-ver-os", Environment.OSVersion.Version.ToString());
+        c.DefaultRequestHeaders.TryAddWithoutValidation("x-device-model", "CehoProxy");
         return c;
     }
 
@@ -102,6 +117,8 @@ public static class Ceho
             }
             Log.Warn($"подписка «{sub.Name}» ответила, но нод в ответе нет");
             if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» ответила, но нод в ответе нет");
+            if (SubscriptionParser.LooksLikeHwidGate(fetched.Body))
+                fetched = fetched with { Failure = Strings.T(lang, "sub_hwid_gate") };
         }
         else
         {
@@ -137,6 +154,13 @@ public static class Ceho
 
     private readonly record struct Fetched(string? Body, string? Failure, string? UserInfo);
 
+    private static FetchPersona PersonaOf(int attempt) => attempt switch
+    {
+        1 => FetchPersona.Client,
+        2 => FetchPersona.Clash,
+        _ => FetchPersona.Browser,
+    };
+
     private static async Task<Fetched> FetchWithRetriesAsync(
         string url, IStageReport? report = null, string lang = "ru", int timeoutSeconds = 15)
     {
@@ -144,11 +168,10 @@ public static class Ceho
         string? webPage = null;
         for (var attempt = 1; attempt <= FetchAttempts; attempt++)
         {
-            var asBrowser = attempt > 1;
             report?.Note(Strings.T(lang, "sub_fetch_attempt", attempt, FetchAttempts));
             try
             {
-                using var http = MakeClient(null, asBrowser, timeoutSeconds);
+                using var http = MakeClient(null, PersonaOf(attempt), timeoutSeconds);
                 using var response = await http.GetAsync(url);
                 var userInfo = UserInfoHeader(response);
                 if (response.IsSuccessStatusCode)
@@ -163,6 +186,15 @@ public static class Ceho
                     else if (LooksLikeWebPage(body))
                     {
                         webPage ??= body;
+                    }
+                    else if (SubscriptionParser.LooksLikeHwidGate(body) || HeaderTrue(response, "x-hwid-max-devices-reached")
+                             || HeaderTrue(response, "x-hwid-limit"))
+                    {
+                        failure = Strings.T(lang, HeaderTrue(response, "x-hwid-max-devices-reached")
+                            || HeaderTrue(response, "x-hwid-limit")
+                            ? "sub_hwid_limit"
+                            : "sub_hwid_gate");
+                        report?.Note(failure);
                     }
                     else
                     {
@@ -189,10 +221,14 @@ public static class Ceho
             if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(1));
         }
 
-        return webPage is not null
+        return webPage is not null && failure is null
             ? new Fetched(webPage, null, null)
             : new Fetched(null, failure, null);
     }
+
+    private static bool HeaderTrue(HttpResponseMessage response, string name) =>
+        response.Headers.TryGetValues(name, out var values)
+        && values.Any(v => v.Equals("true", StringComparison.OrdinalIgnoreCase));
 
     private static string? UserInfoHeader(HttpResponseMessage response) =>
         response.Headers.TryGetValues(SubscriptionInfo.HeaderName, out var values)
@@ -315,7 +351,7 @@ public static class Ceho
     {
         try
         {
-            using var http = MakeClient($"http://127.0.0.1:{mixedPort}", false, timeoutSeconds);
+            using var http = MakeClient($"http://127.0.0.1:{mixedPort}", FetchPersona.Client, timeoutSeconds);
             using var resp = await http.GetAsync(checkUrl);
             return resp.IsSuccessStatusCode;
         }
@@ -375,7 +411,7 @@ public static class Ceho
 
         try
         {
-            using var http = MakeClient(null, asBrowser: false, timeoutSeconds);
+            using var http = MakeClient(null, FetchPersona.Client, timeoutSeconds);
             HttpResponseMessage response = null!;
             for (var attempt = 1; attempt <= FetchAttempts; attempt++)
             {
@@ -392,6 +428,19 @@ public static class Ceho
 
             var body = await response.Content.ReadAsStringAsync();
             if (body.Trim().Length == 0) return Strings.T(lang, "diag_empty");
+            if (SubscriptionParser.LooksLikeHwidGate(body)
+                || HeaderTrue(response, "x-hwid-max-devices-reached")
+                || HeaderTrue(response, "x-hwid-limit"))
+            {
+                return Strings.T(lang, HeaderTrue(response, "x-hwid-max-devices-reached")
+                    || HeaderTrue(response, "x-hwid-limit")
+                    ? "sub_hwid_limit"
+                    : "sub_hwid_gate");
+            }
+
+            var parsed = SubscriptionParser.Parse(body, lang);
+            if (parsed.Count > 0)
+                return Strings.T(lang, "sub_parsed", parsed.Count);
 
             var looksHtml = LooksLikeWebPage(body);
             return Strings.T(lang, looksHtml ? "diag_html" : "diag_unknown_format",
