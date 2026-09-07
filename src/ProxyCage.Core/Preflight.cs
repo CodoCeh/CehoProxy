@@ -68,7 +68,11 @@ public static class Preflight
         return checks;
     }
 
-    private static Check CheckWritable(string root, string lang)
+    /// <summary>
+    /// Права спрашиваем у самой папки, а не у системы: где-то она общая и нужен админ,
+    /// а где-то (CEHOPROXY_HOME в своей папке) писать можно и обычным пользователем.
+    /// </summary>
+    public static bool FolderIsWritable(string root, out string why)
     {
         try
         {
@@ -76,16 +80,23 @@ public static class Preflight
             var probe = Path.Combine(root, ".write-test");
             File.WriteAllText(probe, "1");
             File.Delete(probe);
-            return new Check(Level.Ok, Strings.T(lang, "pf_dir_ok"), null, null);
+            why = "";
+            return true;
         }
         catch (Exception ex)
         {
-            return new Check(Level.Blocker,
-                Strings.T(lang, "pf_dir_bad"),
-                $"{root}: {ex.Message}",
-                Strings.T(lang, Os.IsWindows ? "pf_dir_fix_win" : "pf_dir_fix_unix"));
+            why = ex.Message;
+            return false;
         }
     }
+
+    private static Check CheckWritable(string root, string lang) =>
+        FolderIsWritable(root, out var why)
+            ? new Check(Level.Ok, Strings.T(lang, "pf_dir_ok"), null, null)
+            : new Check(Level.Blocker,
+                Strings.T(lang, "pf_dir_bad"),
+                $"{root}: {why}",
+                Strings.T(lang, Os.IsWindows ? "pf_dir_fix_win" : "pf_dir_fix_unix"));
 
     public static int NextFreePort(int from)
     {

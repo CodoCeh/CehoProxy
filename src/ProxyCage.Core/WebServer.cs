@@ -14,6 +14,7 @@ public sealed class WebServer
     private const string JobPower = "power";
     private const string JobUpdate = "update";
     private const string JobSubs = "subs";
+    private const string JobEngine = "engine";
 
     private readonly string _configPath;
     private readonly Func<ControlState> _state;
@@ -513,6 +514,21 @@ public sealed class WebServer
                     return (null, false, job.Id);
                 }
 
+                case "/engine/download":
+                {
+                    if (Os.ResolveSingBox(Root) is { } here) return (S("engine_already", here), false, null);
+
+                    var job = Jobs.Start(JobEngine, S("job_engine"), async p =>
+                    {
+                        p.Stage(S("job_engine"), 10);
+                        var engine = await Task.Run(() => Installer.DownloadEngineAsync(
+                            Root, m => p.Note(m), cfg.Language));
+                        p.Stage(S("stage_saving"), 95);
+                        return S("engine_ready", engine);
+                    });
+                    return (null, false, job.Id);
+                }
+
                 case "/countries/refresh":
                 {
                     if (OnCountries is null) return (S("measure_blocked"), true, null);
@@ -901,12 +917,20 @@ public sealed class WebServer
               .Append("<br><a href=\"/?tab=log\">").Append(E(S("log_open", []))).Append("</a></div>");
         }
 
+        var engineMissing = Os.ResolveSingBox(Root) is null;
+
         foreach (var c in problems)
         {
             sb.Append("<div class=\"flash").Append(c.Level == Preflight.Level.Blocker ? " err" : "").Append("\"><b>")
               .Append(E(c.Title)).Append("</b>");
             if (c.Detail is not null) sb.Append(E(c.Detail)).Append("<br>");
             if (c.Fix is not null) sb.Append(E(c.Fix));
+
+            // В браузере набирать команду негде, поэтому движок скачивается кнопкой.
+            if (engineMissing && c.Title.Contains(Os.SingBoxFileName, StringComparison.OrdinalIgnoreCase))
+                sb.Append("<form class=row method=post action=/engine/download>")
+                  .Append("<input type=hidden name=tab value=state><button>")
+                  .Append(E(S("engine_get", []))).Append("</button></form>");
             sb.Append("</div>");
         }
 
