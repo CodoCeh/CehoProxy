@@ -1443,7 +1443,7 @@ if (cmd is "daemon" or "web")
         // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
         var killed = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
         if (killed > 0) await Task.Delay(500);
-        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root);
+        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before);
 
         report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
 

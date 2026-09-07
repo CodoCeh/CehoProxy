@@ -85,6 +85,10 @@ public static class TunCleanup
             if (!WaitUntilGone(instanceId))
                 log?.Invoke($"устройство {instanceId} ещё держится — движок может не встать");
         }
+
+        // pnputil уже не видит устройство, а файл Wintun ещё держится: без паузы
+        // следующий старт снова падает на «файл уже существует».
+        if (removed > 0) Thread.Sleep(1500);
         return removed;
     }
 
@@ -148,9 +152,10 @@ public static class TunCleanup
     }
 
     /// <summary>
-    /// Можно снимать: записали сами, держит наш уникальный адрес, или появилось за этот
-    /// старт и это не живой чужой туннель. Чужой работающий адаптер и чужой на заводском
-    /// адресе сюда не попадают.
+    /// Можно снимать: записали сами, держит наш уникальный адрес, устройство без интерфейса
+    /// (залипший след — в журнале «наш след без адаптера»), или появилось за этот старт
+    /// и это не живой чужой туннель. Чужой happ-tun, даже выключенный, сюда не попадает:
+    /// у него интерфейс есть.
     /// </summary>
     public static bool IsOursToKeep(
         string id,
@@ -161,11 +166,14 @@ public static class TunCleanup
         if (recorded.Contains(id, StringComparer.OrdinalIgnoreCase)) return true;
         if (nic?.Ours == true) return true;
         if (beforeStart is null) return false;
-        if (beforeStart.Contains(id, StringComparer.OrdinalIgnoreCase)) return false;
 
-        // Появилось, пока мы поднимали движок. Живой чужой туннель не берём: у него уже
-        // свой адрес и он работает. Остальное — наш след, в том числе адаптер без адреса,
-        // на котором движок сразу упал с «файл уже существует».
+        // Уже было до старта. Без интерфейса — наш залипший след: из‑за него движок
+        // падает на «файл уже существует». Чужой адаптер (Happ) сюда не попадает —
+        // у него имя и интерфейс, пусть и выключенный.
+        if (beforeStart.Contains(id, StringComparer.OrdinalIgnoreCase))
+            return nic is null;
+
+        // Появилось, пока мы поднимали движок. Живой чужой туннель не берём.
         return nic is not { Ours: false, Up: true };
     }
 

@@ -115,6 +115,32 @@ public class NeighboursTests
     }
 
     [Fact]
+    public void A_ghost_already_there_without_an_adapter_is_removed()
+    {
+        // Живой случай 1.2.10: устройство без интерфейса уже было до старта, GUID
+        // не записан. Первая уборка его пропускала, движок падал, снимали уже после.
+        var removable = TunCleanup.Removable(
+            new[] { Ours },
+            Adapters(),
+            Nobodys,
+            beforeStart: new[] { Ours });
+
+        Assert.Equal(new[] { Ours }, removable.Select(a => a.InstanceId));
+    }
+
+    [Fact]
+    public void A_dead_named_neighbour_already_there_is_still_not_touched()
+    {
+        var removable = TunCleanup.Removable(
+            new[] { Alien },
+            Adapters((Alien, new TunCleanup.Nic("happ-tun", Up: false, Ours: false))),
+            Nobodys,
+            beforeStart: new[] { Alien });
+
+        Assert.Empty(removable);
+    }
+
+    [Fact]
     public void An_unknown_device_without_an_adapter_is_not_ours_to_remove()
     {
         var removable = TunCleanup.Removable(new[] { Alien }, Adapters(), Nobodys);
