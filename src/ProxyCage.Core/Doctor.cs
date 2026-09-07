@@ -68,6 +68,7 @@ public static class Doctor
         p?.Stage(S("doc_stage_traces"), 75);
         checks.AddRange(Traces(cfg, root, l));
         checks.AddRange(Neighbours(cfg, l));
+        checks.AddRange(StuckWintun(cfg, root, l));
         checks.AddRange(UnmanagedAiTools(cfg, l));
 
         var running = DaemonControl.IsRunning(root) && NodeProbe.TunnelIsUp(cfg.TunAddress);
@@ -171,10 +172,11 @@ public static class Doctor
         {
             case Repair.Leftovers:
             {
-                var killed = TunCleanup.KillOurProcesses(Path.Combine(root, "singbox.json"), m => p?.Note(m));
-                var gone = TunCleanup.RemoveLeftovers(m => p?.Note(m), cfg.TunAddress, root);
+                var path = Path.Combine(root, "singbox.json");
+                TunCleanup.ReleaseOurs(path, cfg.TunAddress, root, m => p?.Note(m),
+                    attempts: 3, aggressive: true);
                 DaemonControl.ClearRunning(root);
-                return S("doc_did_leftovers", killed + gone);
+                return S("doc_did_leftovers", 0);
             }
 
             case Repair.Engine:
@@ -367,6 +369,24 @@ public static class Doctor
         foreach (var alien in SystemProxy.OtherTunnels(ours))
             yield return new Preflight.Check(Preflight.Level.Warning,
                 S("doc_alien_tun", alien), S("doc_alien_tun_detail"), null);
+    }
+
+    private static IEnumerable<Preflight.Check> StuckWintun(CehoConfig cfg, string root, string l)
+    {
+        if (!Os.IsWindows) yield break;
+
+        string S(string key, params object[] a) => Strings.T(l, key, a);
+
+        var logStuck = TunCleanup.LogShowsStuckAdapter();
+        var orphanTun = NodeProbe.TunnelIsUp(cfg.TunAddress) && !DaemonControl.IsRunning(root);
+        if (!logStuck && !orphanTun) yield break;
+
+        yield return new Preflight.Check(
+            Preflight.Level.Blocker,
+            S("doc_tun_stuck"),
+            S("doc_tun_stuck_detail"),
+            S("doc_tun_stuck_fix"),
+            Repair.Leftovers);
     }
 
     private static IEnumerable<Preflight.Check> UnmanagedAiTools(CehoConfig cfg, string l)
