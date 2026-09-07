@@ -912,6 +912,12 @@ public static class Strings
         ["sub_timeout"] = new(
             "таймаут ожидания ответа",
             "connection timed out"),
+        ["sub_hwid_gate"] = new(
+            "Панель не отдала ноды: она требует идентификатор устройства, как Happ. Если Happ уже привязан — в боте отвяжите лишний клиент и проверьте подписку снова.",
+            "The panel did not return nodes: it wants a device id, like Happ. If Happ is already bound, unlink an extra client in the bot and check the subscription again."),
+        ["sub_hwid_limit"] = new(
+            "Панель не отдала ноды: достигнут лимит устройств. Отвяжите лишний клиент в боте и проверьте подписку снова.",
+            "The panel did not return nodes: the device limit is reached. Unlink an extra client in the bot and check the subscription again."),
         ["sub_diag_checking"] = new(
             "Диагностирую причину сбоя…",
             "Diagnosing the failure cause…"),
