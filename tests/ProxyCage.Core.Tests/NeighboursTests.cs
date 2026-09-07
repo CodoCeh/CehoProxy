@@ -13,37 +13,62 @@ public class NeighboursTests
     private static (string Name, string InstanceId) Wintun(string name) =>
         (name, @"SWD\WINTUN\{0DCCC63E-5622-3880-1E09-7CC9C46AD7B4}");
 
+    private static bool Live(string name) => true;
+
+    private static bool Dead(string name) => false;
+
     [Fact]
-    public void Cleanup_never_touches_a_tunnel_of_another_client()
+    public void A_working_tunnel_of_another_client_is_never_touched()
     {
         var seen = new List<string>();
-        var mine = TunCleanup.Mine(
+        var removable = TunCleanup.Removable(
             new[] { Wintun("happ-tun"), Wintun(TunCleanup.InterfaceName) },
             ourInterface: null,
+            isLive: Live,
             seen.Add);
 
-        Assert.Equal(new[] { TunCleanup.InterfaceName }, mine.Select(a => a.Name));
+        Assert.Equal(new[] { TunCleanup.InterfaceName }, removable.Select(a => a.Name));
         Assert.Contains(seen, m => m.Contains("happ-tun"));
     }
 
     [Fact]
-    public void Cleanup_finds_our_old_tunnel_by_interface_name()
+    public void A_dead_adapter_is_removed_whoever_left_it()
     {
-        var mine = TunCleanup.Mine(
-            new[] { Wintun("happ-tun"), Wintun("tun0") },
-            ourInterface: "tun0");
+        // Трафика за ним нет, а свой туннель поднять он мешает: движок упирается
+        // в «файл уже существует». Клиент, которому он нужен, создаст его заново.
+        var removable = TunCleanup.Removable(
+            new[] { Wintun("happ-tun") }, ourInterface: null, isLive: Dead);
 
-        Assert.Equal(new[] { "tun0" }, mine.Select(a => a.Name));
+        Assert.Equal(new[] { "happ-tun" }, removable.Select(a => a.Name));
     }
 
     [Fact]
-    public void Cleanup_ignores_adapters_that_are_not_tunnels()
+    public void Our_own_tunnel_is_removed_even_while_it_works()
     {
-        var mine = TunCleanup.Mine(
-            new[] { (TunCleanup.InterfaceName, @"PCI\VEN_8086&DEV_51F0") },
-            ourInterface: null);
+        var removable = TunCleanup.Removable(
+            new[] { Wintun("happ-tun"), Wintun("tun0") }, ourInterface: "tun0", isLive: Live);
 
-        Assert.Empty(mine);
+        Assert.Equal(new[] { "tun0" }, removable.Select(a => a.Name));
+    }
+
+    [Fact]
+    public void Adapters_that_are_not_tunnels_are_out_of_scope()
+    {
+        var removable = TunCleanup.Removable(
+            new[] { (TunCleanup.InterfaceName, @"PCI\VEN_8086&DEV_51F0") },
+            ourInterface: null, isLive: Dead);
+
+        Assert.Empty(removable);
+    }
+
+    [Fact]
+    public void A_live_interface_is_recognised_by_the_system()
+    {
+        var loopback = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .First(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up);
+
+        Assert.True(TunCleanup.IsLive(loopback.Name));
+        Assert.False(TunCleanup.IsLive("такого-адаптера-нет"));
     }
 
     [Fact]

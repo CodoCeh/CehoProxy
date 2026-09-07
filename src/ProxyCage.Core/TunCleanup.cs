@@ -66,6 +66,9 @@ public static class TunCleanup
             {
                 removed++;
                 log?.Invoke($"удалён залипший TUN-адаптер {name}: {instanceId}");
+                // Устройство исчезает не мгновенно, а движок сразу за нами создаёт свой
+                // с тем же именем — без паузы он ловит «файл уже существует».
+                Thread.Sleep(1500);
             }
         }
         return removed;
@@ -78,13 +81,22 @@ public static class TunCleanup
     /// </summary>
     private static IEnumerable<(string Name, string InstanceId)> OurAdapters(
         Action<string>? log, string? tunAddress) =>
-        Mine(WindowsNetAdapters(log), tunAddress is null ? null : InterfaceWithAddress(tunAddress), log);
+        Removable(WindowsNetAdapters(log),
+            tunAddress is null ? null : InterfaceWithAddress(tunAddress),
+            IsLive, log);
 
-    /// <summary>Отбор своих из всех адаптеров системы. Вынесен отдельно, чтобы его можно было проверить.</summary>
-    public static IReadOnlyList<(string Name, string InstanceId)> Mine(
-        IEnumerable<(string Name, string InstanceId)> adapters, string? ourInterface, Action<string>? log = null)
+    /// <summary>
+    /// Что из адаптеров системы можно убрать. Свой — по имени или по адресу туннеля.
+    /// Чужой работающий туннель не трогаем никогда: за ним живой клиент. А вот мёртвый
+    /// адаптер трафика не несёт, зато мешает поднять свой — такой снимаем, чей бы он ни был.
+    /// </summary>
+    public static IReadOnlyList<(string Name, string InstanceId)> Removable(
+        IEnumerable<(string Name, string InstanceId)> adapters,
+        string? ourInterface,
+        Func<string, bool> isLive,
+        Action<string>? log = null)
     {
-        var mine = new List<(string, string)>();
+        var removable = new List<(string, string)>();
         foreach (var (name, id) in adapters)
         {
             if (!id.Contains(@"SWD\WINTUN\", StringComparison.OrdinalIgnoreCase)) continue;
@@ -92,10 +104,25 @@ public static class TunCleanup
             var ours = name.StartsWith(InterfaceName, StringComparison.OrdinalIgnoreCase)
                        || string.Equals(name, ourInterface, StringComparison.OrdinalIgnoreCase);
 
-            if (ours) mine.Add((name, id));
-            else log?.Invoke($"чужой TUN-адаптер {name} не трогаю");
+            if (ours || !isLive(name)) removable.Add((name, id));
+            else log?.Invoke($"чужой туннель {name} работает, не трогаю");
         }
-        return mine;
+        return removable;
+    }
+
+    /// <summary>Живой ли интерфейс: по нему видно, что за адаптером есть работающий туннель.</summary>
+    public static bool IsLive(string name)
+    {
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Any(n => n.OperationalStatus == OperationalStatus.Up
+                          && string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private static IEnumerable<(string Name, string InstanceId)> WindowsNetAdapters(Action<string>? log)
