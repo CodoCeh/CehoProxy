@@ -8,12 +8,13 @@ public static class ProcessInspector
 {
     public static IReadOnlySet<int> PidsOf(AppEntry app)
     {
-        var rx = new Regex(AppDetector.ToRegex(app),
-            Os.IsLinux ? RegexOptions.None : RegexOptions.IgnoreCase);
+        var rxes = AppDetector.ToRegexes(app)
+            .Select(r => new Regex(r, Os.IsLinux ? RegexOptions.None : RegexOptions.IgnoreCase))
+            .ToList();
 
         var pids = new HashSet<int>();
         foreach (var (pid, path) in RunningExecutables())
-            if (rx.IsMatch(path)) pids.Add(pid);
+            if (rxes.Any(rx => rx.IsMatch(path))) pids.Add(pid);
         return pids;
     }
 

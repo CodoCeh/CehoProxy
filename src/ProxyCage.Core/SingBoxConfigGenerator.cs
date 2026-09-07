@@ -234,7 +234,8 @@ public static class SingBoxConfigGenerator
 
         foreach (var item in pinned)
         {
-            var regex = new JsonArray { AppDetector.ToRegex(item.App) };
+            var regex = new JsonArray();
+            foreach (var rx in AppDetector.ToRegexes(item.App)) regex.Add(rx);
             if (item.Nodes.Count == 0)
             {
                 routeRules.Add(new JsonObject
@@ -275,7 +276,10 @@ public static class SingBoxConfigGenerator
         if (unpinned.Count > 0)
         {
             var regexes = new JsonArray();
-            foreach (var a in unpinned) regexes.Add(AppDetector.ToRegex(a));
+            foreach (var a in unpinned)
+            {
+                foreach (var rx in AppDetector.ToRegexes(a)) regexes.Add(rx);
+            }
             dnsRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["server"] = "dns-proxy" });
             hijack.Add(regexes.DeepClone());
             routeRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["outbound"] = ProxyTag });
@@ -361,15 +365,21 @@ public static class SingBoxConfigGenerator
     private static JsonArray FlattenRegexes(JsonArray groups)
     {
         var all = new JsonArray();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in groups)
         {
             if (item is JsonArray arr)
             {
-                foreach (var x in arr) all.Add(x!.DeepClone());
+                foreach (var x in arr)
+                {
+                    var s = x?.ToString();
+                    if (s is not null && seen.Add(s)) all.Add(x!.DeepClone());
+                }
             }
             else if (item is not null)
             {
-                all.Add(item.DeepClone());
+                var s = item.ToString();
+                if (seen.Add(s)) all.Add(item.DeepClone());
             }
         }
         return all;

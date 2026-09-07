@@ -157,7 +157,8 @@ public static class AppDetector
 
             var isNested = NestedDirs.Any(d => d.EndsWith('*')
                 ? leaf.StartsWith(d.TrimEnd('*'), StringComparison.OrdinalIgnoreCase)
-                : leaf.Equals(d, StringComparison.OrdinalIgnoreCase));
+                : leaf.Equals(d, StringComparison.OrdinalIgnoreCase))
+                || IsHexHash(leaf);
             if (!isNested) break;
 
             current = parent;
@@ -165,29 +166,112 @@ public static class AppDetector
         return current;
     }
 
-    public static string ToRegex(AppEntry app)
+    private static bool IsHexHash(string s) =>
+        s.Length >= 8 && s.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
+
+    public static string ToRegex(AppEntry app) => ToRegexes(app)[0];
+
+    public static IReadOnlyList<string> ToRegexes(AppEntry app)
     {
         var isWinPath = Os.IsWindows || app.Folder.Contains('\\') || (app.Folder.Length >= 2 && app.Folder[1] == ':');
         var prefix = (!isWinPath && Os.IsLinux) ? "^" : "(?i)^";
         var sep = isWinPath ? @"[\\/]" : "/";
 
+        string primary;
         if (app.SingleFile)
-            return prefix + EscapeGo(app.Folder) + "$";
-
-        var folder = app.Folder.TrimEnd('\\', '/');
-
-        if (app.VersionAgnostic && MsixVersioned.Match(folder) is { Success: true } m)
-            return prefix + EscapeGo(m.Groups["prefix"].Value) + @"_[^\\]*[\\/]";
-
-        if (folder.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
-            var lastSep = folder.LastIndexOfAny(new[] { '\\', '/' });
-            var dir = lastSep >= 0 ? folder[..lastSep] : folder;
-            return prefix + "(?:" + EscapeGo(folder) + "$|" + EscapeGo(dir) + sep + ")";
+            primary = prefix + EscapeGo(app.Folder) + "$";
+        }
+        else
+        {
+            var folder = app.Folder.TrimEnd('\\', '/');
+
+            if (app.VersionAgnostic && MsixVersioned.Match(folder) is { Success: true } m)
+                primary = prefix + EscapeGo(m.Groups["prefix"].Value) + @"_[^\\]*[\\/]";
+            else if (folder.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                var lastSep = folder.LastIndexOfAny(new[] { '\\', '/' });
+                var dir = lastSep >= 0 ? folder[..lastSep] : folder;
+                primary = prefix + "(?:" + EscapeGo(folder) + "$|" + EscapeGo(dir) + sep + ")";
+            }
+            else
+            {
+                primary = prefix + EscapeGo(folder) + sep;
+            }
         }
 
-        return prefix + EscapeGo(folder) + sep;
+        var results = new List<string> { primary };
+
+        void AddIfMissing(string rx)
+        {
+            if (!results.Contains(rx, StringComparer.OrdinalIgnoreCase))
+                results.Add(rx);
+        }
+
+        if (IsCodex(app))
+        {
+            if (isWinPath)
+            {
+                AddIfMissing(@"(?i)^.*[\\/]AppData[\\/]Local[\\/]OpenAI[\\/]Codex[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]WindowsApps[\\/]OpenAI\.Codex_[^\\/]*[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]AppData[\\/]Local[\\/]Programs[\\/]codex[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/](?:codex|ChatGPT)\.exe$");
+            }
+            else
+            {
+                AddIfMissing(@"(?i)^.*[\\/]\.codex[\\/]");
+                AddIfMissing(@"^.*[\\/]codex$");
+            }
+        }
+        else if (IsCursor(app))
+        {
+            if (isWinPath)
+            {
+                AddIfMissing(@"(?i)^.*[\\/]AppData[\\/]Local[\\/]Programs[\\/][Cc]ursor[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]\.cursor[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/][Cc]ursor\.exe$");
+            }
+            else
+            {
+                AddIfMissing(@"(?i)^.*[\\/]\.cursor[\\/]");
+                AddIfMissing(@"^.*[\\/]cursor$");
+            }
+        }
+        else if (IsClaude(app))
+        {
+            if (isWinPath)
+            {
+                AddIfMissing(@"(?i)^.*[\\/]AppData[\\/]Local[\\/]AnthropicClaude[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]AppData[\\/]Local[\\/]Programs[\\/]claude[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]\.claude[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/][Cc]laude\.exe$");
+            }
+            else
+            {
+                AddIfMissing(@"(?i)^.*[\\/]\.claude[\\/]");
+                AddIfMissing(@"^.*[\\/]claude$");
+            }
+        }
+
+        return results;
     }
+
+    private static bool IsCodex(AppEntry app) =>
+        string.Equals(app.Name, "Codex", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains("OpenAI.Codex", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains(@"OpenAI\Codex", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains("OpenAI/Codex", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCursor(AppEntry app) =>
+        string.Equals(app.Name, "Cursor", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains(@"\cursor", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains("/cursor", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsClaude(AppEntry app) =>
+        string.Equals(app.Name, "Claude", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains("AnthropicClaude", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains(@"\claude", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains("/claude", StringComparison.OrdinalIgnoreCase);
 
     private static string EscapeGo(string s)
     {
