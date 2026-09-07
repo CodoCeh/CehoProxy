@@ -313,12 +313,13 @@ public static class SingBoxConfigGenerator
 
         if (!Os.IsMac) tun["strict_route"] = true;
 
-        // Имя нужно не для красоты: по нему уборка следов узнаёт наш адаптер и не сносит
-        // туннели других VPN-клиентов, которые тоже стоят на Wintun.
-        if (!Os.IsMac) tun["interface_name"] = TunCleanup.InterfaceName;
-
+        // На Windows имя не задаём намеренно. Своё имя даёт адаптеру устойчивый GUID, Windows
+        // помнит для него адрес прошлого запуска и возвращает его при создании — движок падает
+        // на «Cannot create a file when that file already exists». Свой адаптер уборка следов
+        // узнаёт по адресу туннеля, а чужой работающий не трогает по признаку живого интерфейса.
         if (Os.IsLinux)
         {
+            tun["interface_name"] = TunCleanup.InterfaceName;
             tun["iproute2_table_index"] = TunCleanup.Iproute2TableIndex;
             tun["iproute2_rule_index"] = TunCleanup.Iproute2RuleIndex;
         }

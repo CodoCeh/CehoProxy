@@ -1310,6 +1310,9 @@ if (cmd is "daemon" or "web")
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 
             report?.Stage(Strings.T(c.Language, "stage_cleanup"), 94);
+            // Движок от упавшего прошлого сеанса нам не сын: демон его не убьёт, уходя,
+            // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
+            TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
             TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress);
 
             report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
