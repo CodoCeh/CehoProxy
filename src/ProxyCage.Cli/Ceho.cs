@@ -28,7 +28,7 @@ public static class Ceho
         }
     }
 
-    private static HttpClient MakeClient(string? proxy = null, bool asBrowser = true)
+    private static HttpClient MakeClient(string? proxy = null, bool asBrowser = true, int timeoutSeconds = 15)
     {
         var handler = new HttpClientHandler();
         if (proxy is not null)
@@ -36,7 +36,7 @@ public static class Ceho
             handler.Proxy = new WebProxyStub(proxy);
             handler.UseProxy = true;
         }
-        var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(12) };
+        var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(Math.Max(1, timeoutSeconds)) };
         if (asBrowser)
         {
             c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
@@ -71,7 +71,7 @@ public static class Ceho
     }
 
     private static async Task<IReadOnlyList<ProxyNode>> LoadOneAsync(
-        SubscriptionEntry sub, string lang, bool preferCache = false, Action<string>? onProgress = null)
+        SubscriptionEntry sub, string lang, bool preferCache = false, Action<string>? onProgress = null, int timeoutSeconds = 15)
     {
         if (ReadWithoutNetwork(sub.Url, lang) is { Count: > 0 } local)
         {
@@ -87,7 +87,7 @@ public static class Ceho
             if (saved.Count > 0) return Tag(saved, sub.Name);
         }
 
-        var (fresh, failure) = await FetchWithRetriesAsync(sub.Url, onProgress, lang);
+        var (fresh, failure) = await FetchWithRetriesAsync(sub.Url, onProgress, lang, timeoutSeconds);
         if (fresh is not null)
         {
             onProgress?.Invoke(Strings.T(lang, "sub_parsing_nodes"));
@@ -120,7 +120,7 @@ public static class Ceho
     private const int FetchAttempts = 3;
 
     private static async Task<(string? Body, string? Failure)> FetchWithRetriesAsync(
-        string url, Action<string>? onProgress = null, string lang = "ru")
+        string url, Action<string>? onProgress = null, string lang = "ru", int timeoutSeconds = 15)
     {
         string? failure = null;
         string? webPage = null;
@@ -130,7 +130,7 @@ public static class Ceho
             onProgress?.Invoke(Strings.T(lang, "sub_fetch_attempt", attempt, FetchAttempts));
             try
             {
-                using var http = MakeClient(null, asBrowser);
+                using var http = MakeClient(null, asBrowser, timeoutSeconds);
                 using var response = await http.GetAsync(url);
                 if (response.IsSuccessStatusCode)
                 {
@@ -215,7 +215,7 @@ public static class Ceho
             throw new InvalidOperationException(Strings.T(cfg.Language, "pf_no_subs"));
 
         var lists = await Task.WhenAll(
-            cfg.Subscriptions.Select(s => LoadOneAsync(s, cfg.Language, preferCache, onProgress)));
+            cfg.Subscriptions.Select(s => LoadOneAsync(s, cfg.Language, preferCache, onProgress, cfg.TimeoutSeconds)));
 
         var pool = new List<ProxyNode>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -256,12 +256,23 @@ public static class Ceho
         return (Extract(output, "countryCode"), Extract(output, "query"));
     });
 
+    private static async Task<bool> CheckSubscriptionLiveAsync(int mixedPort, string checkUrl, int timeoutSeconds = 15)
+    {
+        try
+        {
+            using var http = MakeClient($"http://127.0.0.1:{mixedPort}", false, timeoutSeconds);
+            using var resp = await http.GetAsync(checkUrl);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
     public static async Task<string?> RefreshIfDeadAsync(int mixedPort)
     {
         var cfg = CehoConfig.Load(ConfigPath);
         if (!cfg.RotationEnabled || cfg.Subscriptions.Count == 0) return null;
 
-        if (await CheckSubscriptionLiveAsync(mixedPort, cfg.CheckUrl)) return null;
+        if (await CheckSubscriptionLiveAsync(mixedPort, cfg.CheckUrl, cfg.TimeoutSeconds)) return null;
 
         var before = SubscriptionsFingerprint();
         try
@@ -295,7 +306,7 @@ public static class Ceho
         }
     }
 
-    public static async Task<string> DiagnoseSubscriptionAsync(string url, string lang)
+    public static async Task<string> DiagnoseSubscriptionAsync(string url, string lang, int timeoutSeconds = 15)
     {
         var text = url.Trim();
 
@@ -309,7 +320,7 @@ public static class Ceho
 
         try
         {
-            using var http = MakeClient(null, asBrowser: false);
+            using var http = MakeClient(null, asBrowser: false, timeoutSeconds);
             HttpResponseMessage response = null!;
             for (var attempt = 1; attempt <= FetchAttempts; attempt++)
             {

@@ -29,6 +29,7 @@ public static class Cli
                 ("chp countries · chp country", "exit countries"),
                 ("chp speed <ms> · speed off", "drop nodes slower than this"),
                 ("chp passwd · lang · set-port", "password, language, panel port"),
+                ("chp timeout <sec>", "network and subscription request timeout"),
                 ("chp set-proxy-port <port>", "move the browser proxy off a busy port"),
                 (sudo + "chp autostart on|off", "start with the system"),
             ]),
@@ -64,6 +65,7 @@ public static class Cli
                 ("chp countries · chp country", "страны выхода"),
                 ("chp speed <мс> · speed off", "отсеять ноды медленнее порога"),
                 ("chp passwd · lang · set-port", "пароль, язык, порт панели"),
+                ("chp timeout <сек>", "таймаут сетевых запросов и подписок"),
                 ("chp set-proxy-port <порт>", "перенести прокси, если порт занят"),
                 (sudo + "chp autostart on|off", "запуск при старте системы"),
             ]),
@@ -162,7 +164,7 @@ public static class Cli
         "status", "doctor", "verify", "apps", "add-app", "remove-app",
         "subs", "sub-add", "sub-remove", "countries", "country", "nodes",
         "browser", "detect", "apply", "lang", "set-port", "autostart", "speed",
-        "restart", "stop", "off",
+        "restart", "stop", "off", "timeout", "set-timeout",
     };
 
     public static bool CanRunRemotely(string command) => RemoteAllowed.Contains(command);
@@ -192,7 +194,7 @@ public static class Cli
     private static readonly HashSet<string> Mutating = new(StringComparer.Ordinal)
     {
         "add-app", "remove-app", "sub-add", "sub-remove", "country", "set-port",
-        "lang", "passwd", "apply", "autostart", "uninstall", "speed",
+        "lang", "passwd", "apply", "autostart", "uninstall", "speed", "timeout", "set-timeout",
     };
 
     public static bool ChangesSettings(string command) => Mutating.Contains(command);

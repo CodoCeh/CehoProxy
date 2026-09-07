@@ -134,4 +134,24 @@ public class PlatformTests
         Assert.NotEqual(2022, TunCleanup.Iproute2TableIndex);
         Assert.NotEqual(9000, TunCleanup.Iproute2RuleIndex);
     }
+
+    [Fact]
+    public void Timeout_setting_is_preserved_and_defaults_to_15()
+    {
+        var cfg = new CehoConfig();
+        Assert.Equal(15, cfg.TimeoutSeconds);
+
+        cfg.TimeoutSeconds = 45;
+        var temp = Path.GetTempFileName();
+        try
+        {
+            cfg.Save(temp);
+            var loaded = CehoConfig.Load(temp);
+            Assert.Equal(45, loaded.TimeoutSeconds);
+        }
+        finally
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
+    }
 }

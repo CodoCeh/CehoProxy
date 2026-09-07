@@ -297,6 +297,17 @@ public sealed class WebServer
                     return (S("sub_removed", name), false);
                 }
 
+                case "/subs/timeout":
+                {
+                    if (int.TryParse(f.GetValueOrDefault("timeout", "").Trim(), out var tSec) && tSec is >= 1 and <= 300)
+                    {
+                        cfg.TimeoutSeconds = tSec;
+                        Save(cfg);
+                        return (S("timeout_set", tSec), false);
+                    }
+                    return (S("err_need_timeout"), true);
+                }
+
                 case "/countries/save":
                 {
                     var all = (f.GetValueOrDefault("all", "") ?? "")
@@ -350,6 +361,9 @@ public sealed class WebServer
                     cfg.RotationEnabled = f.ContainsKey("rotation");
                     var checkUrl = f.GetValueOrDefault("checkurl", "").Trim();
                     if (checkUrl.Length > 0) cfg.CheckUrl = checkUrl;
+
+                    if (int.TryParse(f.GetValueOrDefault("timeout", "").Trim(), out var tSec) && tSec is >= 1 and <= 300)
+                        cfg.TimeoutSeconds = tSec;
 
                     var prevLimit = cfg.MaxLatencyMs;
                     var speed = f.GetValueOrDefault("speed", "").Trim();
@@ -825,7 +839,14 @@ public sealed class WebServer
         sb.Append("<input type=text name=name placeholder=\"").Append(E(S("col_name", [])))
           .Append("\" style=\"flex:0 0 180px;min-width:130px\">");
         sb.Append("<input type=text name=url placeholder=\"https://…\">");
-        sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form></section>");
+        sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
+
+        sb.Append("<form class=row method=post action=/subs/timeout style=\"margin-top:16px\"><input type=hidden name=tab value=subs>");
+        sb.Append("<span style=\"align-self:center\">").Append(E(S("timeout_label", []))).Append(":</span>");
+        sb.Append("<input type=text name=timeout inputmode=numeric value=\"")
+          .Append(cfg.TimeoutSeconds.ToString()).Append("\" style=\"flex:0 0 80px;min-width:60px\">");
+        sb.Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form>");
+        sb.Append("<p class=hint>").Append(E(S("timeout_hint", []))).Append("</p></section>");
     }
 
     private void RenderExit(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
@@ -899,6 +920,10 @@ public sealed class WebServer
           .Append("<input type=text name=speed inputmode=numeric value=\"")
           .Append(cfg.MaxLatencyMs?.ToString() ?? "").Append("\" placeholder=\"500\"></label>");
         sb.Append("<p class=hint>").Append(E(S("speed_unmeasured_note", []))).Append("</p>");
+        sb.Append("<label class=field><span>").Append(E(S("timeout_label", []))).Append("</span>")
+          .Append("<input type=text name=timeout inputmode=numeric value=\"")
+          .Append(cfg.TimeoutSeconds.ToString()).Append("\" placeholder=\"15\"></label>");
+        sb.Append("<p class=hint>").Append(E(S("timeout_hint", []))).Append("</p>");
         sb.Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></section>");
     }
 

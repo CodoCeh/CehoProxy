@@ -62,6 +62,8 @@ public sealed class CehoConfig
 
     public string CheckUrl { get; set; } = "https://www.gstatic.com/generate_204";
 
+    public int TimeoutSeconds { get; set; } = 15;
+
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,

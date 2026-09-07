@@ -170,7 +170,7 @@ public static class Assistant
 
             using (var diagSpinner = new ConsoleSpinner(Cli.S(cfg, "sub_diag_checking")))
             {
-                var diag = await Ceho.DiagnoseSubscriptionAsync(url, cfg.Language);
+                var diag = await Ceho.DiagnoseSubscriptionAsync(url, cfg.Language, cfg.TimeoutSeconds);
                 diagSpinner.Done(diag);
             }
 

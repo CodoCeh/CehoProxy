@@ -563,6 +563,24 @@ public static class Strings
         ["uninstall_done"] = new(
             "Удалено: автозапуск, защита, настройки, подписки, правила, движок и короткая команда. Остался только файл самой программы — удалите его, когда он больше не нужен.",
             "Removed: autostart, protection, settings, subscriptions, rules, the engine and the short command. Only the program file itself remains; delete it when you no longer need it."),
+        ["timeout_label"] = new(
+            "Таймаут ожидания (сек)",
+            "Wait timeout (sec)"),
+        ["timeout_hint"] = new(
+            "Таймаут сетевых запросов и скачивания подписок (от 1 до 300 сек).",
+            "Timeout for network requests and downloading subscriptions (1 to 300 sec)."),
+        ["timeout_set"] = new(
+            "Установлен таймаут: {0} сек.",
+            "Timeout set to: {0} sec."),
+        ["timeout_current"] = new(
+            "Текущий таймаут ожидания: {0} сек.",
+            "Current wait timeout: {0} sec."),
+        ["ask_timeout"] = new(
+            "Таймаут ожидания сетевых запросов (сек)",
+            "Network request timeout (sec)"),
+        ["err_need_timeout"] = new(
+            "Укажите целое число секунд от 1 до 300.",
+            "Specify an integer between 1 and 300 seconds."),
         ["no_write_access"] = new(
             "Нет прав на изменение настроек ({0}). Запустите команду через {1}chp либо " +
             "воспользуйтесь панелью: она выполнит её от имени службы.",

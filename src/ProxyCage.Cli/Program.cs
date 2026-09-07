@@ -563,6 +563,41 @@ switch (cmd)
         return 0;
     }
 
+    case "timeout":
+    case "set-timeout":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        if (args.Length < 2)
+        {
+            if (Assistant.Interactive)
+            {
+                var input = Cli.Ask("  " + Cli.S(cfg, "ask_timeout"), cfg.TimeoutSeconds.ToString());
+                if (int.TryParse(input, out var t) && t is >= 1 and <= 300)
+                {
+                    cfg.TimeoutSeconds = t;
+                    cfg.Save(Ceho.ConfigPath);
+                    Console.WriteLine(Cli.S(cfg, "timeout_set", t));
+                    return 0;
+                }
+                Console.Error.WriteLine(Cli.S(cfg, "err_need_timeout"));
+                return 1;
+            }
+            Console.WriteLine(Cli.S(cfg, "timeout_current", cfg.TimeoutSeconds));
+            return 0;
+        }
+
+        if (!int.TryParse(args[1], out var sec) || sec is < 1 or > 300)
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "err_need_timeout"));
+            return 1;
+        }
+
+        cfg.TimeoutSeconds = sec;
+        cfg.Save(Ceho.ConfigPath);
+        Console.WriteLine(Cli.S(cfg, "timeout_set", sec));
+        return 0;
+    }
+
     case "nodes":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
