@@ -50,6 +50,22 @@ public class SubscriptionFormatsTests
     }
 
     [Fact]
+    public void Reads_xray_hysteria2_as_a_single_config()
+    {
+        var nodes = SubscriptionParser.Parse(Fixture("sub-xray-hysteria2.json"));
+        var hy2 = Assert.Single(nodes.Where(n => !n.IsMeta));
+        Assert.Equal(ProxyProtocol.Hysteria2, hy2.Protocol);
+        Assert.Equal("hy2.example.com", hy2.Server);
+        Assert.Equal(8443, hy2.Port);
+        Assert.Equal("hy2-auth-secret", hy2.Credential);
+        Assert.Equal("www.example.com", hy2.Sni);
+        Assert.Equal("quic", hy2.Network);
+        Assert.Equal("tls", hy2.Security);
+        Assert.True(hy2.AllowInsecure);
+        Assert.Equal("US", hy2.CountryCode);
+    }
+
+    [Fact]
     public void Reads_clash_yaml_in_both_styles()
     {
         var nodes = SubscriptionParser.Parse(Fixture("sub-clash.yaml"));

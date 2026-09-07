@@ -1,0 +1,21 @@
+{
+  "remarks": "🇺🇸 Hysteria-test",
+  "log": { "loglevel": "none" },
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "hysteria",
+      "settings": { "version": 2, "address": "hy2.example.com", "port": 8443 },
+      "streamSettings": {
+        "network": "hysteria",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "www.example.com",
+          "pinnedPeerCertSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "hysteriaSettings": { "version": 2, "auth": "hy2-auth-secret" }
+      }
+    },
+    { "tag": "direct", "protocol": "freedom" }
+  ]
+}

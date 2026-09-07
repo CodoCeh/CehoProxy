@@ -80,6 +80,9 @@ public static class SubscriptionFormats
 
         var kind = ProtocolOf(protocol);
         if (kind is null) return null;
+        if (string.Equals(protocol, "hysteria", StringComparison.OrdinalIgnoreCase)
+            && Num(settings, "version") is 1)
+            return null;
 
         string server; int port; string credential; string? method = null, tuicPassword = null;
         var alterId = 0;
@@ -104,6 +107,12 @@ public static class SubscriptionFormats
             credential = Str(s, "password") ?? "";
             method = Str(s, "method");
         }
+        else if (Str(settings, "address") is { } flatHost && Num(settings, "port") is { } flatPort)
+        {
+            server = flatHost;
+            port = flatPort;
+            credential = Str(settings, "password") ?? Str(settings, "auth") ?? "";
+        }
         else return null;
 
         var node = new ProxyNode
@@ -121,6 +130,12 @@ public static class SubscriptionFormats
         };
 
         if (o.TryGetProperty("streamSettings", out var stream)) ReadXrayStream(stream, node);
+
+        if (kind is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic)
+        {
+            node.Network = "quic";
+            if (node.Security is "none" or "hysteria") node.Security = "tls";
+        }
 
         var name = remarks.Length > 0 ? remarks : Str(o, "tag") ?? "";
         return Make(node, name, lang);
@@ -143,6 +158,17 @@ public static class SubscriptionFormats
             node.Sni ??= Str(tls, "serverName");
             node.Fingerprint ??= Str(tls, "fingerprint");
             node.AllowInsecure = Bool(tls, "allowInsecure");
+            // Xray pins SHA256 of the certificate. sing-box pins the public key — это другое.
+            // Если панель прислала пин, без него камуфляжный SNI не сойдётся с сертификатом.
+            if (Str(tls, "pinnedPeerCertSha256") is { Length: > 0 })
+                node.AllowInsecure = true;
+        }
+        if (stream.TryGetProperty("hysteriaSettings", out var hy))
+        {
+            var auth = Str(hy, "auth") ?? Str(hy, "password");
+            if (!string.IsNullOrEmpty(auth)) node.Credential = auth;
+            var obfs = Str(hy, "obfsPassword") ?? Str(hy, "obfs");
+            if (!string.IsNullOrEmpty(obfs) && obfs is not "plain") node.ObfsPassword = obfs;
         }
         if (stream.TryGetProperty("grpcSettings", out var grpc))
             node.ServiceName = Str(grpc, "serviceName");
@@ -338,7 +364,7 @@ public static class SubscriptionFormats
         "vmess" => ProxyProtocol.Vmess,
         "trojan" => ProxyProtocol.Trojan,
         "shadowsocks" or "ss" => ProxyProtocol.Shadowsocks,
-        "hysteria2" or "hy2" => ProxyProtocol.Hysteria2,
+        "hysteria" or "hysteria2" or "hy2" => ProxyProtocol.Hysteria2,
         "tuic" => ProxyProtocol.Tuic,
         _ => null,
     };
