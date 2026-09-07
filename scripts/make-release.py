@@ -22,16 +22,26 @@ def body(path, text_file):
     text = data.replace(b"\r\n", b"\n")
     return text.replace(b"\n", b"\r\n") if path.endswith((".cmd", ".bat", ".ps1")) else text
 
+def refuse_engine():
+    """
+    Движок под GPL и в наши архивы не едет (PUBLISH.md). Он скачивается при установке,
+    а лежащая рядом копия — след ручной сборки, а не повод её выложить.
+    """
+    for name in ("sing-box.exe", "sing-box"):
+        path = os.path.join(BIN, name)
+        if os.path.exists(path):
+            raise SystemExit(
+                f"{path}: рядом с программой лежит движок sing-box.\n"
+                "Он под GPL и в релиз не выкладывается — уберите его "
+                "(например, в publish/.engine/) и соберите заново.")
+
 def main():
+    refuse_engine()
     os.makedirs(OUT, exist_ok=True)
     for suffix, binary, binname, installer in TARGETS:
         name = f"CehoProxy-{VERSION}-{suffix}.zip"
         files = [(os.path.join(BIN, binary), f"CehoProxy/{binname}", True, False),
                  (os.path.join(ROOT, "scripts", installer), f"CehoProxy/{installer}", True, True)]
-        if suffix == "windows":
-            sing_box = os.path.join(BIN, "sing-box.exe")
-            if os.path.exists(sing_box):
-                files.append((sing_box, "CehoProxy/sing-box.exe", True, False))
         files += [(os.path.join(ROOT, d), f"CehoProxy/{d}", False, True) for d in DOCS]
 
         with zipfile.ZipFile(os.path.join(OUT, name), "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
