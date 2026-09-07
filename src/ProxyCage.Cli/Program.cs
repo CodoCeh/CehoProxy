@@ -665,10 +665,17 @@ switch (cmd)
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
         if (!args.Contains("--yes"))
         {
-            Console.WriteLine(Cli.S(cfg, "uninstall_warn"));
-            Console.WriteLine($"  {Ceho.Root}");
-            Console.WriteLine(Cli.S(cfg, "uninstall_confirm"));
-            return 1;
+            if (Assistant.Interactive && Cli.AskYes("  " + Cli.S(cfg, "uninstall_confirm_ask"), false))
+            {
+                // proceed
+            }
+            else
+            {
+                Console.WriteLine(Cli.S(cfg, "uninstall_warn"));
+                Console.WriteLine($"  {Ceho.Root}");
+                Console.WriteLine(Cli.S(cfg, "uninstall_confirm"));
+                return 1;
+            }
         }
 
         Autostart.Purge();
@@ -702,7 +709,20 @@ switch (cmd)
 
         Console.WriteLine(Cli.S(cfg, "uninstall_done"));
 
-        if (args.Contains("--purge") && !Os.IsWindows)
+        if (Os.IsWindows)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"{Ceho.Root}\"")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                System.Diagnostics.Process.Start(psi);
+            }
+            catch { }
+        }
+        else if (args.Contains("--purge"))
         {
             try
             {
@@ -1005,6 +1025,49 @@ if (cmd is "daemon" or "web")
     web.OnPool = async () => await Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath));
     web.OnCountries = async () =>
         await NodeProbe.ByCountryAsync(await Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath)));
+
+    web.OnUninstall = () =>
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1000);
+            StopTunnel();
+            Autostart.Purge();
+            TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
+            TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", _ => {});
+            TunCleanup.RemoveLeftovers(_ => {});
+            DaemonControl.ClearRunning(Ceho.Root);
+            try
+            {
+                foreach (var f in new[] { Ceho.ConfigPath, Ceho.RuntimeConfigPath })
+                    if (File.Exists(f)) File.Delete(f);
+                foreach (var f in Directory.GetFiles(Ceho.Root, "sub-*.txt")) File.Delete(f);
+                foreach (var f in Directory.GetFiles(Ceho.Root, "*.log")) File.Delete(f);
+                var pointer = Path.Combine(Ceho.Root, "panel.port");
+                if (File.Exists(pointer)) File.Delete(pointer);
+            }
+            catch { }
+            Installer.Remove(Ceho.Root, _ => {}, cfg.Language);
+            var ourEngine = Path.Combine(Ceho.Root, Os.SingBoxFileName);
+            if (File.Exists(ourEngine))
+                try { File.Delete(ourEngine); } catch { }
+            if (Os.IsWindows)
+            {
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"{Ceho.Root}\"")
+                    {
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    };
+                    System.Diagnostics.Process.Start(psi);
+                }
+                catch { }
+            }
+            Environment.Exit(0);
+        });
+        return Task.FromResult(Strings.T(cfg.Language, "uninstall_done"));
+    };
 
     web.OnApiCommand = argv => Task.Run(() =>
     {

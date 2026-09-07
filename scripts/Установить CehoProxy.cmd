@@ -28,6 +28,6 @@ if errorlevel 1 (
 
 echo Страница продукта: https://github.com/CodoCeh/CehoProxy
 echo.
-"%EXE%" install
+"%EXE%" install --with-engine
 echo.
 pause

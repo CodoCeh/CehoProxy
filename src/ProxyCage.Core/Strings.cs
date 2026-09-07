@@ -545,6 +545,21 @@ public static class Strings
             "Autostart and protection will be removed, along with settings, subscriptions and rules. Folder:"),
         ["uninstall_confirm"] = new(
             "Повторите с --yes, если согласны.", "Repeat with --yes if you agree."),
+        ["uninstall_confirm_ask"] = new(
+            "Удалить CehoProxy и все его настройки с компьютера?",
+            "Uninstall CehoProxy and all its settings from the computer?"),
+        ["uninstall_title"] = new(
+            "Удаление CehoProxy с компьютера",
+            "Uninstall CehoProxy from computer"),
+        ["uninstall_hint"] = new(
+            "Полностью останавливает защиту, снимает автозапуск и удаляет настройки, движок sing-box и команду chp.",
+            "Completely stops protection, disables autostart, and removes settings, the sing-box engine, and the chp command."),
+        ["btn_uninstall"] = new(
+            "Удалить CehoProxy с ПК",
+            "Uninstall CehoProxy from PC"),
+        ["uninstall_confirm_js"] = new(
+            "Вы действительно хотите полностью удалить CehoProxy с компьютера?",
+            "Are you sure you want to completely uninstall CehoProxy from this computer?"),
         ["uninstall_done"] = new(
             "Удалено: автозапуск, защита, настройки, подписки, правила, движок и короткая команда. Остался только файл самой программы — удалите его, когда он больше не нужен.",
             "Removed: autostart, protection, settings, subscriptions, rules, the engine and the short command. Only the program file itself remains; delete it when you no longer need it."),

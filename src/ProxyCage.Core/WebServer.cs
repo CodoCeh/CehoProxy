@@ -29,6 +29,7 @@ public sealed class WebServer
     public Func<bool, Task<string>>? OnUpdate { get; set; }
 
     public Func<Task<string>>? OnCheckSubs { get; set; }
+    public Func<Task<string>>? OnUninstall { get; set; }
 
     public Func<IReadOnlyList<string>>? WrappedNames { get; set; }
 
@@ -441,6 +442,16 @@ public sealed class WebServer
                     else if (OnStop is not null && OnStart is not null) { await OnStop(); err = await OnStart(); }
                     else err = "no control";
                     return err is null ? (S("rules_applied"), false) : (err, true);
+                }
+
+                case "/uninstall":
+                {
+                    if (OnUninstall is not null)
+                    {
+                        var msg = await OnUninstall();
+                        return (msg, false);
+                    }
+                    return ("no control", true);
                 }
             }
             return (null, false);
@@ -933,6 +944,14 @@ public sealed class WebServer
             sb.Append("<option value=").Append(l).Append(cfg.Language == l ? " selected" : "").Append('>')
               .Append(l == "ru" ? "Русский" : "English").Append("</option>");
         sb.Append("</select><button>").Append(E(S("btn_save", []))).Append("</button></form></section>");
+
+        sb.Append("<section><h2>").Append(E(S("uninstall_title", []))).Append("</h2>");
+        sb.Append("<p class=hint>").Append(E(S("uninstall_hint", []))).Append("</p>");
+        sb.Append("<form class=row method=post action=/uninstall onsubmit=\"return confirm('")
+          .Append(E(S("uninstall_confirm_js", [])))
+          .Append("');\"><input type=hidden name=tab value=access>")
+          .Append("<button class=danger>").Append(E(S("btn_uninstall", [])))
+          .Append("</button></form></section>");
     }
 
     private static void RenderHelp(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
