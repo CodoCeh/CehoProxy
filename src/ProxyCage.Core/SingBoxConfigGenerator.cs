@@ -442,7 +442,7 @@ public static class SingBoxConfigGenerator
         // На Windows имя не задаём намеренно. Своё имя даёт адаптеру устойчивый GUID, Windows
         // помнит для него адрес прошлого запуска и возвращает его при создании — движок падает
         // на «Cannot create a file when that file already exists». Свой адаптер уборка следов
-        // узнаёт по записи, сделанной при запуске, и по адресу туннеля.
+        // узнаёт по записи при запуске, по нашему адресу и по тому, что появилось за этот старт.
         if (Os.IsLinux)
         {
             tun["interface_name"] = TunCleanup.InterfaceName;

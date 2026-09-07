@@ -9,6 +9,7 @@ namespace ProxyCage.Core.Tests;
 /// проигрывала появление разделов на каждом самообновлении, а столбцы таблиц браузер мерил
 /// по содержимому, и на новых числах они вставали иначе. Здесь стережём и то, и другое.
 /// </summary>
+[Collection("journal")]
 public class PanelLayoutTests : IDisposable
 {
     private readonly string _root = Path.Combine(
@@ -21,6 +22,7 @@ public class PanelLayoutTests : IDisposable
     public PanelLayoutTests()
     {
         Directory.CreateDirectory(_root);
+        Log.Init(_root, "test");
 
         var cfg = new CehoConfig
         {
@@ -138,5 +140,26 @@ public class PanelLayoutTests : IDisposable
 
         Assert.True(rise.Success, "появление разделов должно остаться описанным");
         Assert.DoesNotContain("transform", rise.Groups["body"].Value);
+    }
+
+    [Fact]
+    public async Task Clearing_the_journal_does_not_return_404()
+    {
+        var reply = await _http.PostAsync("/log/clear",
+            new StringContent("tab=log", System.Text.Encoding.UTF8, "application/x-www-form-urlencoded"));
+
+        Assert.Equal(HttpStatusCode.SeeOther, reply.StatusCode);
+        Assert.Contains("tab=log", reply.Headers.Location?.OriginalString ?? "");
+        Assert.Contains("очищен", Uri.UnescapeDataString(reply.Headers.Location?.OriginalString ?? ""));
+    }
+
+    [Fact]
+    public async Task Engine_log_level_is_saved_from_the_journal_tab()
+    {
+        var reply = await _http.PostAsync("/log/level",
+            new StringContent("tab=log&level=debug", System.Text.Encoding.UTF8, "application/x-www-form-urlencoded"));
+
+        Assert.Equal(HttpStatusCode.SeeOther, reply.StatusCode);
+        Assert.Equal("debug", CehoConfig.Load(Path.Combine(_root, "config.json")).EngineLogLevel);
     }
 }

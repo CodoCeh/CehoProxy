@@ -183,9 +183,13 @@ public static class Log
 
     public static IReadOnlyList<string> Tail(int lines) => Tail(lines, LogView.All);
 
-    /// <summary>Последние строки журнала нужного вида.</summary>
+    /// <summary>Последние строки журнала нужного вида, как в файле: старые сверху.</summary>
     public static IReadOnlyList<string> Tail(int lines, LogView view) =>
         Entries(lines, view).Select(e => e.ToString()).ToList();
+
+    /// <summary>Те же строки, свежие сверху: так читают журнал в панели, не с конца блока.</summary>
+    public static IReadOnlyList<string> TailNewestFirst(int lines, LogView view) =>
+        Tail(lines, view).Reverse().ToList();
 
     public static IReadOnlyList<LogEntry> Entries(int lines, LogView view = LogView.All)
     {

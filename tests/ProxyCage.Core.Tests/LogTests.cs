@@ -159,4 +159,22 @@ public class LogTests : IDisposable
 
         Assert.Contains(Log.Tail(20), l => l.Contains(mark));
     }
+
+    [Fact]
+    public void Panel_shows_newest_lines_first()
+    {
+        var older = "раньше-" + Mark();
+        var newer = "позже-" + Mark();
+
+        Log.Info(older);
+        Log.Info(newer);
+
+        var newestFirst = Log.TailNewestFirst(20, LogView.Ours);
+        var asFile = Log.Tail(20, LogView.Ours);
+
+        Assert.True(newestFirst.ToList().FindIndex(l => l.Contains(newer))
+                    < newestFirst.ToList().FindIndex(l => l.Contains(older)));
+        Assert.True(asFile.ToList().FindIndex(l => l.Contains(older))
+                    < asFile.ToList().FindIndex(l => l.Contains(newer)));
+    }
 }

@@ -126,21 +126,25 @@ public sealed class WebServer
             return;
         }
 
-        if (path.StartsWith("/log/", StringComparison.Ordinal))
-        {
-            await HandleLogFileAsync(ctx, path);
-            return;
-        }
-
         if (ctx.Request.HttpMethod == "POST")
         {
             var form = await ReadFormAsync(ctx.Request);
             var (msg, isError, jobId) = await ApplyPostAsync(path, form, cfg);
             var tab = form.GetValueOrDefault("tab", "state");
+            var logView = form.GetValueOrDefault("view", "");
             var q = $"?tab={Uri.EscapeDataString(tab)}";
+            if (logView.Length > 0) q += $"&view={Uri.EscapeDataString(logView)}";
             if (msg is not null) q += $"&m={Uri.EscapeDataString(msg)}&e={(isError ? 1 : 0)}";
             if (jobId is not null) q += $"&job={Uri.EscapeDataString(jobId)}";
             Redirect(ctx, "/" + q);
+            return;
+        }
+
+        // Скачать журнал — GET. POST /log/clear и /log/level должны попасть в форму выше:
+        // раньше этот разбор стоял первым и отдавал 404, панель «падала».
+        if (path == "/log/download")
+        {
+            await HandleLogFileAsync(ctx);
             return;
         }
 
@@ -247,15 +251,8 @@ public sealed class WebServer
     /// Журнал текстом. Файл на диске один, поэтому «скачать» — это его нужная часть,
     /// а не отдельный файл под каждый вид записей.
     /// </summary>
-    private async Task HandleLogFileAsync(HttpListenerContext ctx, string path)
+    private async Task HandleLogFileAsync(HttpListenerContext ctx)
     {
-        if (path != "/log/download")
-        {
-            ctx.Response.StatusCode = 404;
-            ctx.Response.Close();
-            return;
-        }
-
         var view = ViewFromQuery(ctx.Request.QueryString["view"]);
         var text = string.Join(Environment.NewLine, Log.Tail(5000, view));
         var bytes = Encoding.UTF8.GetBytes(text.Length == 0 ? "журнал пуст" : text);
@@ -1727,7 +1724,7 @@ public sealed class WebServer
               .Append(E(S(key, []))).Append("</a>");
         sb.Append("</div>");
 
-        var lines = Log.Tail(200, view);
+        var lines = Log.TailNewestFirst(200, view);
         if (lines.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("log_empty", []))).Append("</p>");
         else
@@ -1742,9 +1739,11 @@ public sealed class WebServer
           .Append(E(S("log_download", []))).Append("</a> · ").Append(E(Log.FilePath ?? "")).Append("</p>");
 
         sb.Append("<form class=row method=post action=/log/clear><input type=hidden name=tab value=log>")
+          .Append("<input type=hidden name=view value=").Append(current).Append('>')
           .Append("<button class=danger>").Append(E(S("log_clear", []))).Append("</button></form>");
 
-        sb.Append("<form class=row method=post action=/log/level><input type=hidden name=tab value=log>");
+        sb.Append("<form class=row method=post action=/log/level><input type=hidden name=tab value=log>")
+          .Append("<input type=hidden name=view value=").Append(current).Append('>');
         sb.Append("<span style=\"align-self:center\">").Append(E(S("log_level", []))).Append(":</span>");
         sb.Append("<select name=level style=\"flex:0 0 160px\">");
         foreach (var level in new[] { "warn", "info", "debug", "error" })

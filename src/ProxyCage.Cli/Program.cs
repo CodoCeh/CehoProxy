@@ -1407,34 +1407,22 @@ if (cmd is "daemon" or "web")
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 
-            report?.Stage(Strings.T(c.Language, "stage_cleanup"), 94);
-            // Движок от упавшего прошлого сеанса нам не сын: демон его не убьёт, уходя,
-            // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
-            TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
-            TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root);
-
-            report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
-
-            Os.AdoptOwnEngine(Ceho.Root);
-            var p = new SingBoxProcess();
-            p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
-            Log.Info($"движок запущен, pid {p.ProcessId}");
-
-            report?.Stage(Strings.T(c.Language, "stage_engine_wait"), 98);
-            await Task.Delay(TimeSpan.FromSeconds(2));
-            TunCleanup.Remember(Ceho.Root, c.TunAddress, Log.Info);
-            if (!p.IsRunning)
+            var reason = await BringEngineUp(c, report);
+            if (reason is not null
+                && reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
             {
-                // Сам вывод движка уже в журнале: он попадает туда строкой за строкой.
-                var reason = p.Explain(c.Language);
-                Log.Error($"движок не устоял: {reason}");
-                p.Dispose();
-                TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root);
+                // Часто это наш же адаптер от прошлого падения: только что запомнили GUID
+                // и сняли. Второй заход — чтобы человек не видел ложную «чужой VPN».
+                Log.Info("адрес туннеля был занят, снимаю свой след и пробую ещё раз");
+                reason = await BringEngineUp(c, report);
+            }
+
+            if (reason is not null)
+            {
                 lastError = reason;
                 return reason;
             }
 
-            proc = p;
             lastError = null;
             probed = false;
             return null;
@@ -1445,6 +1433,40 @@ if (cmd is "daemon" or "web")
             lastError = ex.Message;
             return ex.Message;
         }
+    }
+
+    async Task<string?> BringEngineUp(CehoConfig c, IStageReport? report)
+    {
+        report?.Stage(Strings.T(c.Language, "stage_cleanup"), 94);
+        var before = TunCleanup.Devices();
+        // Движок от упавшего прошлого сеанса нам не сын: демон его не убьёт, уходя,
+        // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
+        var killed = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+        if (killed > 0) await Task.Delay(500);
+        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root);
+
+        report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
+
+        Os.AdoptOwnEngine(Ceho.Root);
+        var p = new SingBoxProcess();
+        p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
+        Log.Info($"движок запущен, pid {p.ProcessId}");
+
+        report?.Stage(Strings.T(c.Language, "stage_engine_wait"), 98);
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        TunCleanup.Remember(Ceho.Root, c.TunAddress, Log.Info, before);
+        if (p.IsRunning)
+        {
+            proc = p;
+            return null;
+        }
+
+        // Сам вывод движка уже в журнале: он попадает туда строкой за строкой.
+        var reason = p.Explain(c.Language);
+        Log.Error($"движок не устоял: {reason}");
+        p.Dispose();
+        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before);
+        return reason;
     }
 
     string? StopTunnel()
