@@ -333,6 +333,7 @@ public static class SingBoxConfigGenerator
             ["outbounds"] = outbounds,
             ["route"] = new JsonObject
             {
+                ["find_process"] = true,
                 ["rules"] = routeRules,
                 ["final"] = DirectTag,
                 ["auto_detect_interface"] = true,
@@ -580,6 +581,7 @@ public static class SingBoxConfigGenerator
         var route = new JsonObject();
         if (ruleSet.Count > 0)
             route["rule_set"] = ruleSet;
+        route["find_process"] = true;
         route["rules"] = rules;
         route["final"] = DirectTag;
         route["auto_detect_interface"] = true;
@@ -591,14 +593,24 @@ public static class SingBoxConfigGenerator
     internal static string FolderPathToRegex(string folderPath)
     {
         var trimmed = folderPath.TrimEnd('\\', '/');
-        var sb = new StringBuilder("(?i)^");
-        foreach (var ch in trimmed)
+        if (trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
-            if ("\\.+*?()|[]{}^$".Contains(ch))
-                sb.Append('\\');
-            sb.Append(ch);
+            var lastSep = trimmed.LastIndexOfAny(new[] { '\\', '/' });
+            var dir = lastSep >= 0 ? trimmed[..lastSep] : trimmed;
+            return "(?i)^(?:" + EscapeRegex(trimmed) + "$|" + EscapeRegex(dir) + @"[\\/])";
         }
-        sb.Append("[\\\\/]");
-        return sb.ToString();
+        return "(?i)^" + EscapeRegex(trimmed) + @"[\\/]";
+
+        static string EscapeRegex(string s)
+        {
+            var sb = new StringBuilder();
+            foreach (var ch in s)
+            {
+                if ("\\.+*?()|[]{}^$".Contains(ch))
+                    sb.Append('\\');
+                sb.Append(ch);
+            }
+            return sb.ToString();
+        }
     }
 }
