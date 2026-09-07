@@ -22,12 +22,15 @@ public sealed class ConsoleSpinner : IDisposable
 
         if (!Console.IsOutputRedirected)
         {
-            try
+            if (OperatingSystem.IsWindows())
             {
-                _cursorWasVisible = Console.CursorVisible;
-                Console.CursorVisible = false;
+                try
+                {
+                    _cursorWasVisible = Console.CursorVisible;
+                    Console.CursorVisible = false;
+                }
+                catch { }
             }
-            catch { }
 
             _task = Task.Run(async () =>
             {
@@ -83,7 +86,7 @@ public sealed class ConsoleSpinner : IDisposable
         _cts.Cancel();
         try { _task.Wait(150); } catch { }
         _cts.Dispose();
-        if (!Console.IsOutputRedirected)
+        if (!Console.IsOutputRedirected && OperatingSystem.IsWindows())
         {
             try { Console.CursorVisible = _cursorWasVisible; } catch { }
         }
