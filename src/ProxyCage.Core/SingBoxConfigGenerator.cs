@@ -14,6 +14,13 @@ public static class SingBoxConfigGenerator
     private const string ProxyTag = "proxy";
     private const string DirectTag = "direct";
 
+    internal static JsonArray OwnProcessRegexes() => new()
+    {
+        @"(?i)[\\/]cehoproxy(\.exe)?$",
+        @"(?i)[\\/]ceho-engine\.exe$",
+        @"(?i)[\\/]sing-box\.exe$",
+    };
+
     public static string Generate(IReadOnlyList<ProxyNode> allNodes, ProxyCageSettings settings)
     {
         var pool = allNodes
@@ -231,6 +238,19 @@ public static class SingBoxConfigGenerator
         var dnsRules = new JsonArray();
         var hijack = new JsonArray();
         var routeRules = new JsonArray { new JsonObject { ["action"] = "sniff" } };
+        var ownProcesses = OwnProcessRegexes();
+
+        // Служебный трафик (подписки, движок) не должен попадать в туннель приложений.
+        routeRules.Add(new JsonObject
+        {
+            ["process_path_regex"] = ownProcesses.DeepClone(),
+            ["outbound"] = DirectTag,
+        });
+        dnsRules.Add(new JsonObject
+        {
+            ["process_path_regex"] = ownProcesses.DeepClone(),
+            ["server"] = "dns-direct",
+        });
 
         foreach (var item in pinned)
         {

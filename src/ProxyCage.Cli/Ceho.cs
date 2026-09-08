@@ -92,16 +92,26 @@ public static class Ceho
             || head.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string TunAddressForBypass()
+    {
+        try { return CehoConfig.Load(ConfigPath).TunAddress; }
+        catch { return CehoConfig.DefaultTunAddress; }
+    }
+
     private static async ValueTask<Stream> ConnectBypassingSystemDnsAsync(
         SocketsHttpConnectionContext context, CancellationToken cancellationToken)
     {
         var host = context.DnsEndPoint.Host;
         var port = context.DnsEndPoint.Port;
+        var tunAddress = TunAddressForBypass();
         var addresses = IPAddress.TryParse(host, out var literal)
             ? new[] { literal }
-            : await DirectDnsResolver.ResolveAsync(host, cancellationToken);
+            : await DirectDnsResolver.ResolveAsync(host, cancellationToken, tunAddress);
 
         var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        var bind = Os.PhysicalBindAddress(tunAddress);
+        if (bind is not null)
+            socket.Bind(new IPEndPoint(bind, 0));
         try
         {
             await socket.ConnectAsync(addresses, port, cancellationToken);
