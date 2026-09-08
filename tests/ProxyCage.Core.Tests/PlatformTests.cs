@@ -122,13 +122,14 @@ public class PlatformTests
         // чужие туннели и локальную сеть, а нам для своих программ не нужны.
         Assert.Null(tun["strict_route"]);
 
-        // Имя своё только на Linux: на Windows оно закрепляет GUID адаптера, а вместе с ним
-        // и адрес прошлого запуска — движок потом не может его добавить.
-        if (!Os.IsLinux) Assert.Null(tun["interface_name"]);
+        // ceho-tun на Linux/macOS; на Windows имя не задаём — иначе Wintun залипает по GUID.
+        if (Os.IsWindows)
+            Assert.Null(tun["interface_name"]);
+        else
+            Assert.Equal(TunCleanup.InterfaceName, (string?)tun["interface_name"]);
 
         if (Os.IsLinux)
         {
-            Assert.Equal(TunCleanup.InterfaceName, (string?)tun["interface_name"]);
             Assert.Equal(TunCleanup.Iproute2TableIndex, (int?)tun["iproute2_table_index"]);
             Assert.Equal(TunCleanup.Iproute2RuleIndex, (int?)tun["iproute2_rule_index"]);
         }
@@ -146,10 +147,10 @@ public class PlatformTests
     }
 
     [Fact]
-    public void Timeout_setting_is_preserved_and_defaults_to_15()
+    public void Timeout_setting_is_preserved_and_defaults_to_45()
     {
         var cfg = new CehoConfig();
-        Assert.Equal(15, cfg.TimeoutSeconds);
+        Assert.Equal(45, cfg.TimeoutSeconds);
 
         cfg.TimeoutSeconds = 45;
         var temp = Path.GetTempFileName();

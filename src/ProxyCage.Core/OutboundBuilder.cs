@@ -113,25 +113,46 @@ public static class OutboundBuilder
         o["tls"] = tls;
     }
 
+    /// <summary>
+    /// Cursor и другие HTTP/2-клиенты держат длинные стримы; без keepalive gRPC-канал
+    /// к ноде засыпает и рвёт их каждые ~20 с — в UI это «Reconnecting».
+    /// </summary>
+    private static JsonObject GrpcTransport(string? serviceName) => new()
+    {
+        ["type"] = "grpc",
+        ["service_name"] = serviceName ?? "",
+        ["idle_timeout"] = "60s",
+        ["ping_timeout"] = "20s",
+        ["permit_without_stream"] = true,
+    };
+
     private static void AddTransport(JsonObject o, ProxyNode n)
     {
         switch (n.Network)
         {
             case "grpc":
-                o["transport"] = new JsonObject
-                {
-                    ["type"] = "grpc",
-                    ["service_name"] = n.ServiceName ?? "",
-                };
+                o["transport"] = GrpcTransport(n.ServiceName);
                 break;
             case "ws":
-                var ws = new JsonObject { ["type"] = "ws", ["path"] = n.Path ?? "/" };
+                var ws = new JsonObject
+                {
+                    ["type"] = "ws",
+                    ["path"] = n.Path ?? "/",
+                    ["idle_timeout"] = "60s",
+                    ["ping_timeout"] = "20s",
+                };
                 if (!string.IsNullOrEmpty(n.Host))
                     ws["headers"] = new JsonObject { ["Host"] = n.Host };
                 o["transport"] = ws;
                 break;
             case "http":
-                o["transport"] = new JsonObject { ["type"] = "http", ["path"] = n.Path ?? "/" };
+                o["transport"] = new JsonObject
+                {
+                    ["type"] = "http",
+                    ["path"] = n.Path ?? "/",
+                    ["idle_timeout"] = "60s",
+                    ["ping_timeout"] = "20s",
+                };
                 break;
         }
     }

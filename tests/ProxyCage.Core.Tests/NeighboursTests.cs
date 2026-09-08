@@ -19,6 +19,19 @@ public class NeighboursTests
     private static readonly string[] Nobodys = Array.Empty<string>();
 
     [Fact]
+    public void A_stuck_ceho_tun_by_name_is_removed_even_without_our_address()
+    {
+        // После падения движка ceho-tun может остаться без нашего IP. По имени снимаем
+        // только его — happ-tun и sing-tun не трогаем.
+        var removable = TunCleanup.Removable(
+            new[] { Ours },
+            Adapters((Ours, new TunCleanup.Nic("ceho-tun", Up: false, Ours: false))),
+            Nobodys);
+
+        Assert.Equal(new[] { Ours }, removable.Select(a => a.InstanceId));
+    }
+
+    [Fact]
     public void A_working_tunnel_of_another_client_is_never_touched()
     {
         var seen = new List<string>();
@@ -274,6 +287,15 @@ public class NeighboursTests
     public void Our_own_proxy_port_is_left_to_other_checks()
     {
         Assert.Null(SystemProxy.DeadAmong("0x1", "socks=127.0.0.1:2080", ourPort: 2080, _ => false));
+    }
+
+    [Fact]
+    public void Enabled_system_proxy_on_our_port_is_detected()
+    {
+        Assert.Equal("localhost:2080",
+            SystemProxy.EnabledOnOurPortAmong("0x1", "localhost:2080", ourPort: 2080));
+        Assert.Null(SystemProxy.EnabledOnOurPortAmong("0x0", "localhost:2080", 2080));
+        Assert.Null(SystemProxy.EnabledOnOurPortAmong("0x1", "socks=127.0.0.1:10808", 2080));
     }
 
     [Fact]

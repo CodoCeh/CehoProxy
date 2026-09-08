@@ -447,16 +447,18 @@ public static class SingBoxConfigGenerator
             ["tag"] = "tun-in",
             ["address"] = new JsonArray { cfg.TunAddress },
             ["auto_route"] = true,
-            ["stack"] = "gvisor",
+            // На Windows system-стек стабильнее для длинных TCP (HTTP/2 Cursor); gvisor — macOS/Linux.
+            ["stack"] = Os.IsWindows ? "system" : "gvisor",
         };
 
-        // На Windows имя не задаём намеренно. Своё имя даёт адаптеру устойчивый GUID, Windows
-        // помнит для него адрес прошлого запуска и возвращает его при создании — движок падает
-        // на «Cannot create a file when that file already exists». Свой адаптер уборка следов
-        // узнаёт по записи при запуске, по нашему адресу и по тому, что появилось за этот старт.
+        // ceho-tun — на Linux/macOS: уборка по имени. На Windows имя не задаём: Wintun даёт
+        // устойчивый GUID, Windows помнит адрес, pnputil не всегда снимает пул — движок падает
+        // на «Cannot create a file when that file already exists». Свой адаптер узнаём по
+        // tun-devices.txt и адресу туннеля (ReleaseOurs aggressive).
+        if (!Os.IsWindows)
+            tun["interface_name"] = TunCleanup.InterfaceName;
         if (Os.IsLinux)
         {
-            tun["interface_name"] = TunCleanup.InterfaceName;
             tun["iproute2_table_index"] = TunCleanup.Iproute2TableIndex;
             tun["iproute2_rule_index"] = TunCleanup.Iproute2RuleIndex;
         }

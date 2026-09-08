@@ -19,6 +19,28 @@ public static class SystemProxy
             ? DeadAmong(ReadValue("ProxyEnable"), ReadValue("ProxyServer"), ourPort, PortIsListening)
             : null;
 
+    /// <summary>
+    /// Системный прокси Windows включён и смотрит на наш mixed-порт. CehoProxy его не ставит;
+    /// Electron-приложения (Cursor) начинают ходить через 127.0.0.1:2080 параллельно с TUN.
+    /// </summary>
+    public static string? EnabledOnOurPort(int ourPort) =>
+        Os.IsWindows
+            ? EnabledOnOurPortAmong(ReadValue("ProxyEnable"), ReadValue("ProxyServer"), ourPort)
+            : null;
+
+    public static string? EnabledOnOurPortAmong(string? proxyEnable, string? proxyServer, int ourPort)
+    {
+        if (proxyEnable is null || !Enabled(proxyEnable) || proxyServer is null) return null;
+
+        foreach (var address in Addresses(proxyServer))
+        {
+            var (host, port) = Split(address);
+            if (port is null || !IsLoopback(host) || port != ourPort) continue;
+            return $"{host}:{port}";
+        }
+        return null;
+    }
+
     /// <summary>Разбор настройки без обращения к системе: так это можно проверить тестом.</summary>
     public static string? DeadAmong(string? proxyEnable, string? proxyServer, int ourPort,
         Func<int, bool> listening)

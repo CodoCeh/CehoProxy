@@ -287,6 +287,31 @@ public static class Os
             .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
     }
 
+    /// <summary>
+    /// Список процессов Windows по имени exe. WMIC на Win11 сняли — Get-CimInstance надёжнее.
+    /// </summary>
+    public static IReadOnlyList<(int Pid, string CommandLine)> WindowsProcesses(string exeName)
+    {
+        var list = new List<(int, string)>();
+        if (!IsWindows) return list;
+
+        var filter = exeName.Replace("'", "''");
+        var (code, output) = Run("powershell", "-NoProfile -Command " +
+            $"\"Get-CimInstance Win32_Process -Filter \\\"name='{filter}'\\\" | " +
+            "ForEach-Object { Write-Output ($_.ProcessId.ToString() + [char]9 + ($_.CommandLine ?? '')) }\"",
+            15000);
+        if (code != 0) return list;
+
+        foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = raw.Trim();
+            var tab = line.IndexOf('\t');
+            if (tab <= 0 || !int.TryParse(line[..tab], out var pid)) continue;
+            list.Add((pid, line[(tab + 1)..].Trim()));
+        }
+        return list;
+    }
+
     public static (int Code, string Output) Run(string file, string args, int timeoutMs = 30000)
     {
         try
