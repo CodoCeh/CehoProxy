@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using ProxyCage.Core;
 
 namespace ProxyCage.Cli;
@@ -44,7 +45,9 @@ public static class Ceho
         {
             AutomaticDecompression = DecompressionMethods.All,
         };
-        if (proxy is not null)
+        if (proxy is null)
+            handler.ConnectCallback = ConnectBypassingSystemDnsAsync;
+        else
         {
             handler.Proxy = new WebProxyStub(proxy);
             handler.UseProxy = true;
@@ -87,6 +90,28 @@ public static class Ceho
         var head = body.TrimStart();
         return head.StartsWith('<')
             || head.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async ValueTask<Stream> ConnectBypassingSystemDnsAsync(
+        SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+    {
+        var host = context.DnsEndPoint.Host;
+        var port = context.DnsEndPoint.Port;
+        var addresses = IPAddress.TryParse(host, out var literal)
+            ? new[] { literal }
+            : await DirectDnsResolver.ResolveAsync(host, cancellationToken);
+
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        try
+        {
+            await socket.ConnectAsync(addresses, port, cancellationToken);
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     private sealed class WebProxyStub : IWebProxy
