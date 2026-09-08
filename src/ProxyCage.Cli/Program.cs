@@ -883,7 +883,7 @@ switch (cmd)
     case "nodes":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
-        if (NodeProbe.TunnelIsUp(cfg.TunAddress))
+        if (NodeProbe.MeasureBlocked(cfg.TunAddress, TunCleanup.IsOurEngineRunning(Ceho.RuntimeConfigPath, Ceho.Root)))
         {
             Console.Error.WriteLine(Cli.S(cfg, "measure_blocked"));
             return 1;
@@ -1007,7 +1007,7 @@ switch (cmd)
             return 0;
         }
 
-        if (NodeProbe.TunnelIsUp(cfg.TunAddress))
+        if (NodeProbe.MeasureBlocked(cfg.TunAddress, TunCleanup.IsOurEngineRunning(Ceho.RuntimeConfigPath, Ceho.Root)))
         {
             Console.Error.WriteLine(Cli.S(cfg, "measure_blocked"));
             return 1;

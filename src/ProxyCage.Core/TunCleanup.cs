@@ -13,6 +13,33 @@ public static class TunCleanup
 
     private const int RuleSpan = 16;
 
+    public static bool IsOurEngineRunning(string runtimeConfigPath, string? root = null)
+    {
+        if (Os.IsWindows)
+        {
+            var home = root ?? Path.GetDirectoryName(runtimeConfigPath) ?? "";
+            foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
+            {
+                foreach (var (_, line) in Os.WindowsProcesses(name))
+                {
+                    if (IsOurEngineCommandLine(name, line, runtimeConfigPath, home))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        var (code, output) = Os.Run("pgrep", $"-f {runtimeConfigPath}", 5000);
+        return code == 0 && output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length > 0;
+    }
+
+    private static bool IsOurEngineCommandLine(
+        string processName, string commandLine, string runtimeConfigPath, string home) =>
+        processName.Equals(Os.EngineFileName, StringComparison.OrdinalIgnoreCase)
+        || commandLine.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
+        || (home.Length > 0 && commandLine.Contains(home, StringComparison.OrdinalIgnoreCase));
+
     public static int KillOurProcesses(string runtimeConfigPath, Action<string>? log = null)
     {
         if (Os.IsWindows)
@@ -23,11 +50,7 @@ public static class TunCleanup
             {
                 foreach (var (pid, line) in Os.WindowsProcesses(name))
                 {
-                    // ceho-engine.exe — только наш переименованный движок, чужих не бывает.
-                    var ours = name.Equals(Os.EngineFileName, StringComparison.OrdinalIgnoreCase)
-                               || line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
-                               || (home.Length > 0 && line.Contains(home, StringComparison.OrdinalIgnoreCase));
-                    if (!ours) continue;
+                    if (!IsOurEngineCommandLine(name, line, runtimeConfigPath, home)) continue;
 
                     if (Os.Run("taskkill", $"/PID {pid} /F", 10000).Code == 0)
                     {

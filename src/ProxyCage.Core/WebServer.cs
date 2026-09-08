@@ -27,6 +27,8 @@ public sealed class WebServer
 
     public Func<IStageReport, Task<IReadOnlyList<NodeProbe.CountryRow>>>? OnCountries { get; set; }
     private IReadOnlyList<NodeProbe.CountryRow>? _countries;
+    private IReadOnlyDictionary<string, int>? _liveLatency;
+    private DateTime _liveLatencyAtUtc;
 
     public Func<IStageReport, Task<IReadOnlyList<ProxyNode>>>? OnPool { get; set; }
 
@@ -154,7 +156,10 @@ public sealed class WebServer
         var job = Jobs.Find(ctx.Request.QueryString["job"]);
         var view = ViewFromQuery(ctx.Request.QueryString["view"]);
         var tunnel = ctx.Request.QueryString["tunnel"];
-        await WriteHtmlAsync(ctx, RenderPage(cfg, _state(), current, flash, flashErr, job, view, tunnel));
+        var st = _state();
+        if (current == "exit" && st.Running)
+            await RefreshLiveLatencyAsync(cfg);
+        await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel));
     }
 
     private static bool Authorized(HttpListenerContext ctx, CehoConfig cfg)
@@ -588,7 +593,8 @@ public sealed class WebServer
                 case "/countries/refresh":
                 {
                     if (OnCountries is null) return (S("measure_blocked"), true, null);
-                    if (NodeProbe.TunnelIsUp(cfg.TunAddress)) return (S("measure_blocked"), true, null);
+                    if (NodeProbe.MeasureBlocked(cfg.TunAddress, _state().Running))
+                        return (S("measure_blocked"), true, null);
 
                     var job = Jobs.Start(JobMeasure, S("job_measure"), async p =>
                     {
@@ -1537,7 +1543,9 @@ public sealed class WebServer
                 .OrderByDescending(g => g.Count())
                 .ToList();
 
-            var measured = _countries?.ToDictionary(c => c.Code, StringComparer.OrdinalIgnoreCase);
+            var measured = _countries?.ToDictionary(c => c.Code, StringComparer.OrdinalIgnoreCase)
+                ?? NodeProbe.Summarize(pool, cfg, _liveLatency)
+                    .ToDictionary(c => c.Code, StringComparer.OrdinalIgnoreCase);
 
             sb.Append("<form method=post action=/countries/save><input type=hidden name=tab value=exit>");
             sb.Append("<input type=hidden name=all value=\"")
@@ -1576,7 +1584,7 @@ public sealed class WebServer
                 pool.Count, _poolAtUtc.ToLocalTime().ToString("HH:mm:ss"),
             }))).Append("</p>");
 
-            RenderNodes(sb, cfg, groups, S);
+            RenderNodes(sb, cfg, groups, S, _liveLatency);
         }
 
         sb.Append("<form class=row method=post action=/pool/refresh><input type=hidden name=tab value=exit>")
@@ -1611,7 +1619,8 @@ public sealed class WebServer
     /// </summary>
     private static void RenderNodes(
         StringBuilder sb, CehoConfig cfg,
-        List<IGrouping<string, ProxyNode>> groups, Func<string, object[], string> S)
+        List<IGrouping<string, ProxyNode>> groups, Func<string, object[], string> S,
+        IReadOnlyDictionary<string, int>? liveByTag = null)
     {
         var blocked = cfg.BlockedNodes.Count;
 
@@ -1655,7 +1664,7 @@ public sealed class WebServer
             {
                 var on = !SingBoxConfigGenerator.IsBlockedByHand(n, cfg);
                 var slow = SingBoxConfigGenerator.IsTooSlow(n, cfg);
-                var ms = cfg.NodeLatency.TryGetValue(n.Key, out var value) ? value : (int?)null;
+                var ms = NodeProbe.LatencyFor(n, cfg, liveByTag);
 
                 sb.Append("<tr").Append(on ? "" : " class=off").Append("><td><label class=check>")
                   .Append("<input type=checkbox name=\"n_").Append(E(n.Key)).Append('"')
@@ -1818,5 +1827,13 @@ public sealed class WebServer
             sb.Append("<li>").Append(E(S(key, []))).Append("</li>");
         sb.Append("</ul>");
         sb.Append("<p class=hint>").Append(E(S("touch_not", []))).Append("</p></section>");
+    }
+
+    private async Task RefreshLiveLatencyAsync(CehoConfig cfg)
+    {
+        if (DateTime.UtcNow - _liveLatencyAtUtc < TimeSpan.FromSeconds(20)) return;
+
+        _liveLatency = await ClashLatency.ReadDelaysAsync(cfg.ClashApiPort);
+        _liveLatencyAtUtc = DateTime.UtcNow;
     }
 }
