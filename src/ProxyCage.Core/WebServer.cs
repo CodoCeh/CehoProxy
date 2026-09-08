@@ -377,6 +377,19 @@ public sealed class WebServer
                     return (S("removed"), false, cfg.Apps.Count > 0 ? ApplyJob(cfg).Id : null);
                 }
 
+                case "/apps/rename":
+                {
+                    var folder = f.GetValueOrDefault("folder", "");
+                    var app = cfg.Apps.FirstOrDefault(a =>
+                        a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                    if (app is null) return (S("app_tunnel_missing"), true, null);
+
+                    var displayName = f.GetValueOrDefault("displayName", "").Trim();
+                    app.DisplayName = displayName.Length > 0 ? displayName : null;
+                    Save(cfg);
+                    return (S("app_renamed", app.Label), false, null);
+                }
+
                 case "/apps/tunnel":
                 {
                     var folder = f.GetValueOrDefault("folder", "");
@@ -399,8 +412,8 @@ public sealed class WebServer
                     Save(cfg);
 
                     var msg = keep.Count == 0
-                        ? S("app_tunnel_cleared", app.Name)
-                        : S("app_tunnel_saved", app.Name, keep.Count);
+                        ? S("app_tunnel_cleared", app.Label)
+                        : S("app_tunnel_saved", app.Label, keep.Count);
                     return (msg, false, ApplyJob(cfg).Id);
                 }
 
@@ -1195,7 +1208,7 @@ public sealed class WebServer
               .Append(E(S("col_folder", []))).Append("</th><th></th></tr>");
             foreach (var a in cfg.Apps)
             {
-                sb.Append("<tr><td>").Append(E(a.Name));
+                sb.Append("<tr><td>").Append(E(a.Label));
                 if (a.VersionAgnostic) sb.Append("<br><span class=tag>Microsoft Store</span>");
                 if (a.SingleFile) sb.Append("<br><span class=tag>").Append(E(S("col_file", []))).Append("</span>");
                 sb.Append("<br><span class=tag>")
@@ -1203,6 +1216,11 @@ public sealed class WebServer
                       ? S("app_tunnel_general", [])
                       : S("app_tunnel_pinned", new object[] { a.AllowedNodes.Count })))
                   .Append("</span>");
+                sb.Append("<form class=row method=post action=/apps/rename><input type=hidden name=tab value=apps>")
+                  .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder)).Append("\">")
+                  .Append("<input type=text name=displayName value=\"").Append(E(a.Label))
+                  .Append("\" placeholder=\"").Append(E(S("rename_app_ask", []))).Append("\">")
+                  .Append("<button class=ghost>").Append(E(S("btn_rename", []))).Append("</button></form>");
                 sb.Append("</td><td class=path>").Append(E(a.Folder)).Append("</td><td class=actions>");
                 sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")
                   .Append(Uri.EscapeDataString(a.Folder)).Append("\">")
@@ -1226,6 +1244,7 @@ public sealed class WebServer
         sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("apps_hint", []))).Append(' ')
           .Append(E(Os.IsMac ? S("apps_hint_mac", []) : S("apps_hint_sysdir", []))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(S("rename_app_hint", []))).Append("</p>");
 
         RenderDetected(sb, cfg, S);
         sb.Append("</section>");
@@ -1245,7 +1264,7 @@ public sealed class WebServer
             return;
         }
 
-        sb.Append("<section><h2>").Append(E(S("app_tunnel_title", new object[] { app.Name }))).Append("</h2>");
+        sb.Append("<section><h2>").Append(E(S("app_tunnel_title", new object[] { app.Label }))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("app_tunnel_lede", []))).Append("</p>");
         sb.Append("<p><a href=\"/?tab=apps\">").Append(E(S("app_tunnel_back", []))).Append("</a></p>");
 
