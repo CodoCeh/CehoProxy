@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -219,7 +220,7 @@ public static class SingBoxConfigGenerator
 
         var outbounds = new JsonArray();
         foreach (var node in engineNodes)
-            outbounds.Add(OutboundBuilder.Build(node));
+            outbounds.Add(OutboundBuilder.Build(NodeDialPreparer.Prepare(node, cfg.TunAddress)));
 
         var poolTags = new JsonArray();
         foreach (var node in pool) poolTags.Add(node.Tag);
@@ -232,9 +233,9 @@ public static class SingBoxConfigGenerator
             outbounds.Add(UrlTest(AppOutboundTag(item.Index), tags, checkUrl));
         }
 
-        outbounds.Add(new JsonObject { ["type"] = "direct", ["tag"] = DirectTag });
+        outbounds.Add(BuildDirectOutbound(cfg.TunAddress));
 
-        var dnsServers = DnsServersWithDirect(cfg.TunAddress);
+        var dnsServers = DnsServersWithDirect(cfg.TunAddress, engineOnly: true);
         var dnsRules = new JsonArray();
         var hijack = new JsonArray();
         var routeRules = new JsonArray { new JsonObject { ["action"] = "sniff" } };
@@ -523,7 +524,7 @@ public static class SingBoxConfigGenerator
         };
     }
 
-    private static JsonArray DnsServersWithDirect(string tunAddress)
+    private static JsonArray DnsServersWithDirect(string tunAddress, bool engineOnly = false)
     {
         var servers = new JsonArray
         {
@@ -533,13 +534,39 @@ public static class SingBoxConfigGenerator
                 ["server"] = "1.1.1.1", ["detour"] = ProxyTag,
             },
         };
-        foreach (var direct in DirectDnsServers(tunAddress)) servers.Add(direct!.DeepClone());
+        foreach (var direct in DirectDnsServers(tunAddress, engineOnly)) servers.Add(direct!.DeepClone());
         return servers;
     }
 
-    private static JsonArray DirectDnsServers(string tunAddress)
+    private static JsonObject BuildDirectOutbound(string? tunAddress)
+    {
+        var direct = new JsonObject { ["type"] = "direct", ["tag"] = DirectTag };
+        var bind = Os.PhysicalBindAddress(tunAddress)?.ToString();
+        if (bind is not null)
+            direct["inet4_bind_address"] = bind;
+        return direct;
+    }
+
+    /// <summary>
+    /// Прямой DNS для движка. Под TUN системный DNS Windows часто уходит в петлю
+    /// или AD — urltest тогда не резолвит server нод (origin.example.com).
+    /// </summary>
+    private static JsonArray DirectDnsServers(string tunAddress, bool engineOnly = false)
     {
         var servers = new JsonArray();
+        if (engineOnly)
+        {
+            servers.Add(new JsonObject
+            {
+                ["type"] = "udp", ["tag"] = "dns-direct", ["server"] = Os.PublicResolver,
+            });
+            servers.Add(new JsonObject
+            {
+                ["type"] = "udp", ["tag"] = "dns-direct-2", ["server"] = "8.8.8.8",
+            });
+            return servers;
+        }
+
         var system = Os.SystemDnsServers(tunAddress);
 
         if (system.Count == 0)
