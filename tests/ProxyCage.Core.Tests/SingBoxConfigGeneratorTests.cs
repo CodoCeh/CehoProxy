@@ -105,6 +105,9 @@ public class SingBoxConfigGeneratorTests
         Assert.NotNull(grpc);
         Assert.Null(grpc!["flow"]);
         Assert.NotNull(grpc["transport"]!["service_name"]);
+        Assert.Equal("60s", (string?)grpc["transport"]!["idle_timeout"]);
+        Assert.Equal("20s", (string?)grpc["transport"]!["ping_timeout"]);
+        Assert.True(grpc["transport"]!["permit_without_stream"]!.GetValue<bool>());
     }
 
     [Fact]

@@ -21,24 +21,35 @@ public static class TunCleanup
             var killed = 0;
             foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
             {
-                var (_, list) = Os.Run("wmic",
-                    $"process where \"name='{name}'\" get processid,commandline /format:csv", 15000);
-                foreach (var line in list.Split('\n'))
+                foreach (var (pid, line) in Os.WindowsProcesses(name))
                 {
-                    // Happ тоже запускает sing-box.exe. Убиваем только процесс из нашей папки.
-                    var ours = line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
-                               || (home.Length > 0 && line.Contains(home, StringComparison.OrdinalIgnoreCase)
-                                   && line.Contains(Os.EngineFileName, StringComparison.OrdinalIgnoreCase));
+                    // ceho-engine.exe — только наш переименованный движок, чужих не бывает.
+                    var ours = name.Equals(Os.EngineFileName, StringComparison.OrdinalIgnoreCase)
+                               || line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
+                               || (home.Length > 0 && line.Contains(home, StringComparison.OrdinalIgnoreCase));
                     if (!ours) continue;
 
-                    var pid = line.Split(',').LastOrDefault()?.Trim();
-                    if (int.TryParse(pid, out var id) && Os.Run("taskkill", $"/PID {id} /F", 10000).Code == 0)
+                    if (Os.Run("taskkill", $"/PID {pid} /F", 10000).Code == 0)
                     {
                         killed++;
-                        log?.Invoke($"остановлен движок, процесс {id}");
+                        log?.Invoke($"остановлен движок, процесс {pid}");
                     }
                 }
             }
+
+            // ceho-engine только наш; если Get-CimInstance недоступен — добиваем по имени.
+            var (bulkCode, bulkOut) = Os.Run("taskkill", $"/IM {Os.EngineFileName} /F", 10000);
+            if (bulkCode == 0)
+            {
+                var n = bulkOut.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Count(l => l.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase));
+                if (n > killed)
+                {
+                    log?.Invoke($"остановлено процессов движка: {n}");
+                    killed = n;
+                }
+            }
+
             return killed;
         }
 
@@ -116,7 +127,7 @@ public static class TunCleanup
                     log?.Invoke($"устройство {id} ещё держится — продолжаю уборку");
             }
 
-            if (removed > 0) Thread.Sleep(2500);
+            if (removed > 0) Thread.Sleep(4000);
 
             if (!AnyOursLeft(recorded, lookup, ourIp, aggressive) && !TunnelAddressBusy(ourIp))
             {
@@ -187,17 +198,26 @@ public static class TunCleanup
         bool aggressive,
         IReadOnlyCollection<string>? beforeStart)
     {
+        if (NamedOurs(nic)) return true;
+
         if (aggressive)
         {
             if (recorded.Contains(id, StringComparer.OrdinalIgnoreCase)) return true;
             if (nic?.Ours == true) return true;
+            if (NamedOurs(nic)) return true;
             if (nic is null && beforeStart?.Contains(id, StringComparer.OrdinalIgnoreCase) == true)
                 return true;
+            // Wintun без интерфейса после нашего сбоя — залипший ceho-tun, не Happ (у Happ интерфейс есть).
+            if (nic is null) return true;
             return false;
         }
 
         return IsOursToKeep(id, recorded, nic, beforeStart);
     }
+
+    /// <summary>Только наш ceho-tun по имени — Happ и прочие VPN не попадают.</summary>
+    private static bool NamedOurs(Nic? nic) =>
+        nic?.Name.StartsWith(InterfaceName, StringComparison.OrdinalIgnoreCase) == true;
 
     private static bool AnyOursLeft(
         IReadOnlyCollection<string> recorded,
@@ -246,14 +266,10 @@ public static class TunCleanup
         var home = Path.GetDirectoryName(runtimeConfigPath) ?? "";
         foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
         {
-            var (_, list) = Os.Run("wmic",
-                $"process where \"name='{name}'\" get processid,commandline /format:csv", 8000);
-            foreach (var line in list.Split('\n'))
+            foreach (var (pid, line) in Os.WindowsProcesses(name))
             {
-                if (!line.Contains(Os.EngineFileName, StringComparison.OrdinalIgnoreCase)
-                    && !line.Contains(name, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                if (line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
+                if (name.Equals(Os.EngineFileName, StringComparison.OrdinalIgnoreCase)
+                    || line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
                     || (home.Length > 0 && line.Contains(home, StringComparison.OrdinalIgnoreCase)))
                     return true;
             }
@@ -384,6 +400,7 @@ public static class TunCleanup
         Nic? nic,
         IReadOnlyCollection<string>? beforeStart = null)
     {
+        if (NamedOurs(nic)) return true;
         if (recorded.Contains(id, StringComparer.OrdinalIgnoreCase)) return true;
         if (nic?.Ours == true) return true;
         if (beforeStart is null) return false;

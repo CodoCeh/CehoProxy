@@ -339,6 +339,8 @@ public sealed class SingBoxProcess : IDisposable
 
     public void Dispose()
     {
+        // Движок мог упасть, но процесс ещё держит Wintun — закрыть хэндл недостаточно.
+        if (IsRunning) Stop(3000);
         _drained.Dispose();
         _unix?.Dispose();
         _unix = null;

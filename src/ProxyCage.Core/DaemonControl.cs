@@ -52,6 +52,17 @@ public static class DaemonControl
         try { File.Delete(PidPath(root)); } catch { }
     }
 
+    public static bool WaitForExit(string root, int timeoutMs = 20000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (RunningPid(root) is null) return true;
+            Thread.Sleep(400);
+        }
+        return RunningPid(root) is null;
+    }
+
     /// <summary>
     /// Обновление из панели не должно убивать себя через schtasks /end:
     /// тогда /run уже некому выполнить, и человек остаётся без интерфейса.

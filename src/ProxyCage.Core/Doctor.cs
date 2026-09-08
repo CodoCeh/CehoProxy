@@ -365,6 +365,10 @@ public static class Doctor
             yield return new Preflight.Check(Preflight.Level.Warning,
                 S("doc_proxy_dead", dead), S("doc_proxy_dead_detail"), S("doc_proxy_dead_fix"));
 
+        if (SystemProxy.EnabledOnOurPort(cfg.MixedPort) is { } oursProxy)
+            yield return new Preflight.Check(Preflight.Level.Warning,
+                S("doc_proxy_ours", oursProxy), S("doc_proxy_ours_detail"), S("doc_proxy_ours_fix"));
+
         var ours = TunCleanup.InterfaceWithAddress(cfg.TunAddress);
         foreach (var alien in SystemProxy.OtherTunnels(ours))
             yield return new Preflight.Check(Preflight.Level.Warning,

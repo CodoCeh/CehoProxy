@@ -1285,7 +1285,9 @@ switch (cmd)
             if (Os.IsElevated())
             {
                 TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
-                TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress, Ceho.Root);
+                TunCleanup.ReleaseOurs(
+                    Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Console.WriteLine,
+                    attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
                 DaemonControl.ClearRunning(Ceho.Root);
             }
             return 0;
@@ -1294,7 +1296,9 @@ switch (cmd)
         if (NodeProbe.TunnelIsUp(cfg.TunAddress) || DaemonControl.RunningPid(Ceho.Root) is not null)
         {
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
-            TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress, Ceho.Root);
+            TunCleanup.ReleaseOurs(
+                Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Console.WriteLine,
+                attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
             DaemonControl.ClearRunning(Ceho.Root);
             Console.WriteLine(Cli.S(cfg, "stop_cleaned"));
             return 0;
@@ -1318,7 +1322,21 @@ switch (cmd)
                 Console.Error.WriteLine(Cli.S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo "));
                 return 1;
             }
+            Autostart.StopService();
+            DaemonControl.WaitForExit(Ceho.Root, 20000);
+            await Task.Delay(1000);
+            TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
+            TunCleanup.ReleaseOurs(
+                Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, _ => {},
+                attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
+            await Task.Delay(3000);
             Autostart.Restart();
+            var deadline = Environment.TickCount64 + 90000;
+            while (Environment.TickCount64 < deadline)
+            {
+                await Task.Delay(2000);
+                if (NodeProbe.TunnelIsUp(cfg.TunAddress)) break;
+            }
             Console.WriteLine(Cli.S(cfg, "rules_applied"));
             return 0;
         }
@@ -1347,7 +1365,9 @@ switch (cmd)
             DaemonControl.RequestStop(Ceho.Root);
             await Task.Delay(1000);
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
-            TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress, Ceho.Root);
+            TunCleanup.ReleaseOurs(
+                Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, _ => {},
+                attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
             DaemonControl.ClearRunning(Ceho.Root);
         }
 
@@ -1417,14 +1437,18 @@ if (cmd is "daemon" or "web")
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 
             var reason = await BringEngineUp(c, report);
-            if (reason is not null
-                && reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            for (var attempt = 1;
+                 reason is not null
+                 && reason.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                 && attempt < 5;
+                 attempt++)
             {
-                Log.Info("адрес туннеля занят — принудительно снимаю Wintun");
+                Log.Info($"адрес туннеля занят — принудительно снимаю Wintun (попытка {attempt}/5)");
+                var beforeRetry = TunCleanup.Devices();
                 TunCleanup.ReleaseOurs(
                     Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
-                    attempts: 3, aggressive: true);
-                await Task.Delay(TimeSpan.FromSeconds(2));
+                    attempts: 5, aggressive: true, beforeStart: beforeRetry);
+                await Task.Delay(TimeSpan.FromSeconds(4));
                 reason = await BringEngineUp(c, report);
             }
 
@@ -1454,6 +1478,9 @@ if (cmd is "daemon" or "web")
         // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
         var killed = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
         if (killed > 0) await Task.Delay(500);
+        TunCleanup.ReleaseOurs(
+            Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
+            attempts: 3, aggressive: true, beforeStart: before);
         TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
 
         report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
@@ -1476,7 +1503,18 @@ if (cmd is "daemon" or "web")
         var reason = p.Explain(c.Language);
         Log.Error($"движок не устоял: {reason}");
         p.Dispose();
-        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
+        TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+        if (reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+        {
+            TunCleanup.ReleaseOurs(
+                Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
+                attempts: 5, aggressive: true, beforeStart: before);
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+        else
+        {
+            TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
+        }
         return reason;
     }
 
@@ -1499,7 +1537,7 @@ if (cmd is "daemon" or "web")
 
         TunCleanup.ReleaseOurs(
             Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Log.Info,
-            attempts: 2, aggressive: false);
+            attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
         return null;
     }
 

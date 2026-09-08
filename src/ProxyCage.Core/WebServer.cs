@@ -1600,7 +1600,7 @@ public sealed class WebServer
         sb.Append("<p class=hint>").Append(E(S("speed_unmeasured_note", []))).Append("</p>");
         sb.Append("<label class=field><span>").Append(E(S("timeout_label", []))).Append("</span>")
           .Append("<input type=text name=timeout inputmode=numeric value=\"")
-          .Append(cfg.TimeoutSeconds.ToString()).Append("\" placeholder=\"15\"></label>");
+          .Append(cfg.TimeoutSeconds.ToString()).Append("\" placeholder=\"45\"></label>");
         sb.Append("<p class=hint>").Append(E(S("timeout_hint", []))).Append("</p>");
         sb.Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></section>");
     }

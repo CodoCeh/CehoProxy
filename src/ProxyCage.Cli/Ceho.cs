@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using ProxyCage.Core;
 
 namespace ProxyCage.Cli;
@@ -30,16 +31,28 @@ public static class Ceho
 
     private enum FetchPersona { Client, Clash, Browser }
 
+    private const int FetchAttempts = 5;
+    private const int MinSubscriptionTimeoutSeconds = 45;
+
+    private static int SubscriptionTimeout(int timeoutSeconds) =>
+        Math.Max(MinSubscriptionTimeoutSeconds, timeoutSeconds);
+
     private static HttpClient MakeClient(
-        string? proxy = null, FetchPersona persona = FetchPersona.Client, int timeoutSeconds = 15)
+        string? proxy = null, FetchPersona persona = FetchPersona.Client, int timeoutSeconds = 45)
     {
-        var handler = new HttpClientHandler();
+        var handler = new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+        };
         if (proxy is not null)
         {
             handler.Proxy = new WebProxyStub(proxy);
             handler.UseProxy = true;
         }
-        var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(Math.Max(1, timeoutSeconds)) };
+        var c = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromSeconds(Math.Max(1, timeoutSeconds)),
+        };
         switch (persona)
         {
             case FetchPersona.Browser:
@@ -150,20 +163,30 @@ public static class Ceho
         return fromRemarks is null ? null : new SubscriptionInfo(fromRemarks, null, null, null);
     }
 
-    private const int FetchAttempts = 3;
-
     private readonly record struct Fetched(string? Body, string? Failure, string? UserInfo);
 
     private static FetchPersona PersonaOf(int attempt) => attempt switch
     {
         1 => FetchPersona.Client,
         2 => FetchPersona.Clash,
-        _ => FetchPersona.Browser,
+        3 => FetchPersona.Browser,
+        _ => FetchPersona.Client,
     };
 
-    private static async Task<Fetched> FetchWithRetriesAsync(
-        string url, IStageReport? report = null, string lang = "ru", int timeoutSeconds = 15)
+    private static async Task<(string Body, long? ExpectedLength)> ReadBodyAsync(HttpResponseMessage response)
     {
+        var expected = response.Content.Headers.ContentLength;
+        var body = await response.Content.ReadAsStringAsync();
+        return (body, expected);
+    }
+
+    private static bool IsIncomplete(long? expectedLength, int receivedLength) =>
+        expectedLength is > 0 && receivedLength < expectedLength.Value;
+
+    private static async Task<Fetched> FetchWithRetriesAsync(
+        string url, IStageReport? report = null, string lang = "ru", int timeoutSeconds = 45)
+    {
+        var fetchTimeout = SubscriptionTimeout(timeoutSeconds);
         string? failure = null;
         string? webPage = null;
         for (var attempt = 1; attempt <= FetchAttempts; attempt++)
@@ -171,27 +194,36 @@ public static class Ceho
             report?.Note(Strings.T(lang, "sub_fetch_attempt", attempt, FetchAttempts));
             try
             {
-                using var http = MakeClient(null, PersonaOf(attempt), timeoutSeconds);
-                using var response = await http.GetAsync(url);
+                using var http = MakeClient(null, PersonaOf(attempt), fetchTimeout);
+                using var request = new HttpRequestMessage(HttpMethod.Get, url)
+                {
+                    Version = HttpVersion.Version11,
+                };
+                using var response = await http.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead);
                 var userInfo = UserInfoHeader(response);
                 if (response.IsSuccessStatusCode)
                 {
                     report?.Note(Strings.T(lang, "sub_reading_data"));
-                    var body = await response.Content.ReadAsStringAsync();
+                    var (body, expectedLength) = await ReadBodyAsync(response);
                     if (body.Trim().Length == 0)
                     {
                         failure = $"пустой ответ (попытка {attempt})";
+                        report?.Note(failure);
+                    }
+                    else if (IsIncomplete(expectedLength, body.Length))
+                    {
+                        failure = Strings.T(lang, "sub_incomplete", body.Length, expectedLength!.Value);
                         report?.Note(failure);
                     }
                     else if (LooksLikeWebPage(body))
                     {
                         webPage ??= body;
                     }
-                    else if (SubscriptionParser.LooksLikeHwidGate(body) || HeaderTrue(response, "x-hwid-max-devices-reached")
-                             || HeaderTrue(response, "x-hwid-limit"))
+                    else if (SubscriptionParser.LooksLikeHwidGate(body)
+                             || HeaderTrue(response, "x-hwid-max-devices-reached"))
                     {
                         failure = Strings.T(lang, HeaderTrue(response, "x-hwid-max-devices-reached")
-                            || HeaderTrue(response, "x-hwid-limit")
                             ? "sub_hwid_limit"
                             : "sub_hwid_gate");
                         report?.Note(failure);
@@ -218,7 +250,8 @@ public static class Ceho
                     report?.Note(Strings.T(lang, "sub_fetch_retry", attempt, failure));
             }
 
-            if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(1));
+            if (attempt < FetchAttempts)
+                await Task.Delay(TimeSpan.FromSeconds(Math.Min(8, attempt * 2)));
         }
 
         return webPage is not null && failure is null
@@ -397,7 +430,7 @@ public static class Ceho
         }
     }
 
-    public static async Task<string> DiagnoseSubscriptionAsync(string url, string lang, int timeoutSeconds = 15)
+    public static async Task<string> DiagnoseSubscriptionAsync(string url, string lang, int timeoutSeconds = 45)
     {
         var text = url.Trim();
 
@@ -409,42 +442,63 @@ public static class Ceho
                 ? Strings.T(lang, "diag_file_bad")
                 : Strings.T(lang, "diag_not_a_link");
 
+        var fetchTimeout = SubscriptionTimeout(timeoutSeconds);
         try
         {
-            using var http = MakeClient(null, FetchPersona.Client, timeoutSeconds);
-            HttpResponseMessage response = null!;
+            string? failure = null;
             for (var attempt = 1; attempt <= FetchAttempts; attempt++)
             {
-                response?.Dispose();
-                response = await http.GetAsync(uri);
-                if (response.IsSuccessStatusCode) break;
-                if (attempt < FetchAttempts) await Task.Delay(TimeSpan.FromSeconds(2));
+                using var http = MakeClient(null, PersonaOf(attempt), fetchTimeout);
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri)
+                {
+                    Version = HttpVersion.Version11,
+                };
+                using var response = await http.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead);
+                var code = (int)response.StatusCode;
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    failure = Strings.T(lang, code >= 500 ? "diag_server_down" : "diag_http_error", code);
+                    if (attempt < FetchAttempts)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(Math.Min(8, attempt * 2)));
+                        continue;
+                    }
+                    return failure;
+                }
+
+                var (body, expectedLength) = await ReadBodyAsync(response);
+                if (body.Trim().Length == 0) return Strings.T(lang, "diag_empty");
+                if (IsIncomplete(expectedLength, body.Length))
+                {
+                    failure = Strings.T(lang, "sub_incomplete", body.Length, expectedLength!.Value);
+                    if (attempt < FetchAttempts)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(Math.Min(8, attempt * 2)));
+                        continue;
+                    }
+                    return failure;
+                }
+
+                if (SubscriptionParser.LooksLikeHwidGate(body)
+                    || HeaderTrue(response, "x-hwid-max-devices-reached"))
+                {
+                    return Strings.T(lang, HeaderTrue(response, "x-hwid-max-devices-reached")
+                        ? "sub_hwid_limit"
+                        : "sub_hwid_gate");
+                }
+
+                var parsed = SubscriptionParser.Parse(body, lang);
+                if (parsed.Count > 0)
+                    return Strings.T(lang, "sub_parsed", parsed.Count);
+
+                var looksHtml = LooksLikeWebPage(body);
+                return Strings.T(lang, looksHtml ? "diag_html" : "diag_unknown_format",
+                    body.Trim().Length);
             }
-            using var _ = response;
-            var code = (int)response.StatusCode;
 
-            if (!response.IsSuccessStatusCode)
-                return Strings.T(lang, code >= 500 ? "diag_server_down" : "diag_http_error", code);
-
-            var body = await response.Content.ReadAsStringAsync();
-            if (body.Trim().Length == 0) return Strings.T(lang, "diag_empty");
-            if (SubscriptionParser.LooksLikeHwidGate(body)
-                || HeaderTrue(response, "x-hwid-max-devices-reached")
-                || HeaderTrue(response, "x-hwid-limit"))
-            {
-                return Strings.T(lang, HeaderTrue(response, "x-hwid-max-devices-reached")
-                    || HeaderTrue(response, "x-hwid-limit")
-                    ? "sub_hwid_limit"
-                    : "sub_hwid_gate");
-            }
-
-            var parsed = SubscriptionParser.Parse(body, lang);
-            if (parsed.Count > 0)
-                return Strings.T(lang, "sub_parsed", parsed.Count);
-
-            var looksHtml = LooksLikeWebPage(body);
-            return Strings.T(lang, looksHtml ? "diag_html" : "diag_unknown_format",
-                body.Trim().Length);
+            return failure ?? Strings.T(lang, "diag_no_answer", Strings.T(lang, "sub_timeout"));
         }
         catch (TaskCanceledException)
         {

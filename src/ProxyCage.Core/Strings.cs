@@ -287,6 +287,19 @@ public static class Strings
             + "который его ставил.",
             "Turn the proxy off in Settings -> Network & Internet -> Proxy, or bring back the client "
             + "that set it up."),
+        ["doc_proxy_ours"] = new(
+            "В Windows включён системный прокси на {0}",
+            "Windows system proxy is enabled on {0}"),
+        ["doc_proxy_ours_detail"] = new(
+            "CehoProxy этот прокси не включает — его обычно оставляет другой клиент. Cursor и браузеры "
+            + "начинают ходить через mixed-порт параллельно с TUN, из‑за этого HTTP/2-соединения рвутся "
+            + "и в Cursor висит «Reconnecting».",
+            "CehoProxy never turns this on — another client usually leaves it behind. Cursor and browsers "
+            + "then use the mixed port alongside TUN, HTTP/2 streams break, and Cursor shows "
+            + "«Reconnecting»."),
+        ["doc_proxy_ours_fix"] = new(
+            "Выключите прокси: «Параметры → Сеть и Интернет → Прокси → Использовать прокси-сервер».",
+            "Turn it off: Settings -> Network & Internet -> Proxy -> Use a proxy server."),
         ["doc_alien_tun"] = new(
             "Рядом работает другой туннель: {0}",
             "Another tunnel is running alongside: {0}"),
@@ -942,6 +955,9 @@ public static class Strings
         ["sub_timeout"] = new(
             "таймаут ожидания ответа",
             "connection timed out"),
+        ["sub_incomplete"] = new(
+            "ответ оборвался ({0} из {1} байт) — повторяю",
+            "response truncated ({0} of {1} bytes) — retrying"),
         ["sub_hwid_gate"] = new(
             "Панель не отдала ноды: она требует идентификатор устройства, как Happ. Если Happ уже привязан — в боте отвяжите лишний клиент и проверьте подписку снова.",
             "The panel did not return nodes: it wants a device id, like Happ. If Happ is already bound, unlink an extra client in the bot and check the subscription again."),
