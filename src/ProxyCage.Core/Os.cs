@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
@@ -115,6 +118,42 @@ public static class Os
     }
 
     public const string PublicResolver = "1.1.1.1";
+
+    /// <summary>
+    /// IPv4 физического адаптера для исходящих соединений в обход TUN.
+    /// </summary>
+    public static IPAddress? PhysicalBindAddress(string? tunAddress = null)
+    {
+        var tunIp = tunAddress?.Split('/')[0];
+        var tunPrefix = tunIp is { Length: > 0 } && tunIp.Contains('.')
+            ? tunIp[..(tunIp.LastIndexOf('.') + 1)]
+            : null;
+
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (nic.OperationalStatus != OperationalStatus.Up) continue;
+            if (nic.NetworkInterfaceType is NetworkInterfaceType.Loopback
+                or NetworkInterfaceType.Tunnel) continue;
+
+            var desc = nic.Description;
+            if (desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase)) continue;
+            if (desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase)) continue;
+            if (desc.Contains("TAP-", StringComparison.OrdinalIgnoreCase)) continue;
+
+            foreach (var ua in nic.GetIPProperties().UnicastAddresses)
+            {
+                if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                var s = ua.Address.ToString();
+                if (s.StartsWith("127.", StringComparison.Ordinal)) continue;
+                if (s.StartsWith("169.254.", StringComparison.Ordinal)) continue;
+                if (tunPrefix != null && s.StartsWith(tunPrefix, StringComparison.Ordinal)) continue;
+                if (LooksLikeTunnelAddress(s)) continue;
+                return ua.Address;
+            }
+        }
+
+        return null;
+    }
 
     private static bool LooksLikeTunnelAddress(string address)
     {

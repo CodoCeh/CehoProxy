@@ -110,6 +110,28 @@ public class AppTunnelTests
     }
 
     [Fact]
+    public void Own_processes_bypass_tunnel()
+    {
+        var root = Root(Nodes(), TwoApps());
+        var own = SingBoxConfigGenerator.OwnProcessRegexes().Select(x => (string)x!).ToList();
+
+        var direct = root["route"]!["rules"]!.AsArray().FirstOrDefault(r =>
+            (string?)r?["outbound"] == "direct"
+            && r["process_path_regex"] is JsonArray arr
+            && own.All(rx => arr.Any(x => string.Equals((string?)x, rx, StringComparison.Ordinal))));
+
+        Assert.NotNull(direct);
+
+        var dnsOwn = root["dns"]!["rules"]!.AsArray().FirstOrDefault(r =>
+            (string?)r?["server"] == "dns-direct"
+            && r["process_path_regex"] is JsonArray arr
+            && own.All(rx => arr.Any(x => string.Equals((string?)x, rx, StringComparison.Ordinal))));
+
+        Assert.NotNull(dnsOwn);
+        Assert.Matches(own[0], @"C:\ProgramData\CehoProxy\cehoproxy.exe");
+    }
+
+    [Fact]
     public void Allowed_nodes_survive_saving_and_loading()
     {
         var path = Path.Combine(Path.GetTempPath(), "chp-tunnel-" + Guid.NewGuid().ToString("N")[..8] + ".json");

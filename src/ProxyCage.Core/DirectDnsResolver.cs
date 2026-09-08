@@ -12,7 +12,8 @@ public static class DirectDnsResolver
 {
     private static readonly string[] Resolvers = { Os.PublicResolver, "8.8.8.8", "9.9.9.9" };
 
-    public static async Task<IPAddress[]> ResolveAsync(string host, CancellationToken cancellationToken = default)
+    public static async Task<IPAddress[]> ResolveAsync(
+        string host, CancellationToken cancellationToken = default, string? tunAddress = null)
     {
         if (IPAddress.TryParse(host, out var literal))
             return new[] { literal };
@@ -25,7 +26,7 @@ public static class DirectDnsResolver
         {
             try
             {
-                var addresses = await QueryAsync(server, normalized, cancellationToken);
+                var addresses = await QueryAsync(server, normalized, cancellationToken, tunAddress);
                 if (addresses.Length > 0) return addresses;
             }
             catch (OperationCanceledException) { throw; }
@@ -36,11 +37,14 @@ public static class DirectDnsResolver
     }
 
     private static async Task<IPAddress[]> QueryAsync(
-        string server, string host, CancellationToken cancellationToken)
+        string server, string host, CancellationToken cancellationToken, string? tunAddress)
     {
         var query = BuildQuery(host, (ushort)Random.Shared.Next(ushort.MaxValue));
         using var udp = new UdpClient();
         udp.Client.ReceiveTimeout = 4000;
+        var bind = Os.PhysicalBindAddress(tunAddress);
+        if (bind is not null)
+            udp.Client.Bind(new IPEndPoint(bind, 0));
 
         var endpoint = new IPEndPoint(IPAddress.Parse(server), 53);
         await udp.SendAsync(query, query.Length, endpoint);
