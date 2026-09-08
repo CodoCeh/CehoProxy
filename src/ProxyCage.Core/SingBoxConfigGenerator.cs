@@ -336,6 +336,13 @@ public static class SingBoxConfigGenerator
         var config = new JsonObject
         {
             ["log"] = BuildLog(cfg),
+            ["experimental"] = new JsonObject
+            {
+                ["clash_api"] = new JsonObject
+                {
+                    ["external_controller"] = $"127.0.0.1:{cfg.ClashApiPort}",
+                },
+            },
             ["dns"] = new JsonObject
             {
                 ["servers"] = dnsServers,

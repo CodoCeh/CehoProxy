@@ -49,6 +49,9 @@ public sealed class CehoConfig
 
     public int MixedPort { get; set; } = 2080;
 
+    /// <summary>Clash API sing-box для urltest-задержек в панели.</summary>
+    public int ClashApiPort { get; set; } = 9090;
+
     /// <summary>
     /// Свой адрес туннеля. Не 172.19.0.1: это заводской адрес sing-box, его же ставит Happ
     /// и другие клиенты. Если совпасть, уборка следов принимает чужой адаптер за свой.

@@ -10,6 +10,35 @@ public static class NodeProbe
     public sealed record CountryRow(
         string Code, string? Name, int Nodes, int Alive, int? BestMs, IReadOnlyList<Measured> Items);
 
+    /// <summary>
+    /// Прямой TCP-замер имеет смысл только когда наш движок не поднят:
+    /// иначе TUN принимает соединения локально и цифры врут.
+    /// </summary>
+    public static bool MeasureBlocked(string tunAddress, bool engineRunning) =>
+        engineRunning && TunnelIsUp(tunAddress);
+
+    public static int? LatencyFor(
+        ProxyNode node,
+        CehoConfig cfg,
+        IReadOnlyDictionary<string, int>? liveByTag = null)
+    {
+        if (liveByTag?.TryGetValue(node.Tag, out var live) == true && live > 0)
+            return live;
+        return cfg.NodeLatency.TryGetValue(node.Key, out var saved) ? saved : null;
+    }
+
+    public static IReadOnlyList<CountryRow> Summarize(
+        IReadOnlyList<ProxyNode> nodes,
+        CehoConfig cfg,
+        IReadOnlyDictionary<string, int>? liveByTag = null)
+    {
+        var real = nodes.Where(n => !n.IsMeta).ToList();
+        var measured = real
+            .Select(n => new Measured(n, LatencyFor(n, cfg, liveByTag)))
+            .ToList();
+        return GroupByCountry(measured);
+    }
+
     public static async Task<Measured> MeasureAsync(ProxyNode node, int timeoutMs = 2500)
     {
         if (node.Protocol is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic)
@@ -38,9 +67,10 @@ public static class NodeProbe
         if (System.Net.IPAddress.TryParse(host, out var parsed)) return parsed;
         try
         {
-            var lookup = System.Net.Dns.GetHostAddressesAsync(host);
-            var done = await Task.WhenAny(lookup, Task.Delay(timeoutMs));
-            return done == lookup ? lookup.Result.FirstOrDefault() : null;
+            using var cts = new CancellationTokenSource(timeoutMs);
+            var addresses = await DirectDnsResolver.ResolveAsync(host, cts.Token);
+            return addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
+                   ?? addresses.FirstOrDefault();
         }
         catch
         {
@@ -84,8 +114,11 @@ public static class NodeProbe
     {
         var real = nodes.Where(n => !n.IsMeta).ToList();
         var measured = await Task.WhenAll(real.Select(n => MeasureAsync(n, timeoutMs)));
+        return GroupByCountry(measured);
+    }
 
-        return measured
+    private static IReadOnlyList<CountryRow> GroupByCountry(IReadOnlyList<Measured> measured) =>
+        measured
             .GroupBy(m => m.Node.CountryCode ?? CountryResolver.Unknown)
             .Select(g => new CountryRow(
                 g.Key,
@@ -97,5 +130,4 @@ public static class NodeProbe
                 g.OrderBy(m => m.LatencyMs ?? int.MaxValue).ToList()))
             .OrderBy(r => r.BestMs ?? int.MaxValue)
             .ToList();
-    }
 }

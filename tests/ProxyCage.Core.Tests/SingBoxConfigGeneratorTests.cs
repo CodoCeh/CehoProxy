@@ -137,4 +137,18 @@ public class SingBoxConfigGeneratorTests
         Assert.Equal("xtls-rprx-vision", (string?)vision["flow"]);
         Assert.Equal("457fab2ac885dbe0", (string?)vision["tls"]!["reality"]!["short_id"]);
     }
+
+    [Fact]
+    public void Ceho_runtime_config_exposes_clash_api_for_urltest_delays()
+    {
+        var cfg = new CehoConfig
+        {
+            Apps = { new AppEntry { Name = "Test", Folder = @"C:\Apps\Test", Enabled = true } },
+            ClashApiPort = 19090,
+        };
+        var json = SingBoxConfigGenerator.GenerateForConfig(Nodes(), cfg);
+        var controller = JsonNode.Parse(json)!["experimental"]!["clash_api"]!["external_controller"];
+
+        Assert.Equal("127.0.0.1:19090", (string?)controller);
+    }
 }

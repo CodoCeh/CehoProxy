@@ -589,6 +589,12 @@ public static class Cli
 
     public static async Task<int?> MeasureAndFilterAsync(CehoConfig cfg, int limitMs)
     {
+        if (NodeProbe.MeasureBlocked(cfg.TunAddress, TunCleanup.IsOurEngineRunning(Ceho.RuntimeConfigPath, Ceho.Root)))
+        {
+            Console.WriteLine("  " + S(cfg, "measure_blocked"));
+            return null;
+        }
+
         IReadOnlyList<ProxyNode> nodes;
         try
         {
