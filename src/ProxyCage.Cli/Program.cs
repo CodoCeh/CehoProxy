@@ -1642,22 +1642,22 @@ if (cmd is "daemon" or "web")
         var shut = TunnelShutdown.Release(c, Ceho.Root, Ceho.RuntimeConfigPath, m => report.Note(m));
         if (!shut.Ok) return Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot");
 
-        try
-        {
-            report.Stage(Strings.T(c.Language, "stage_writing_rules"), 35);
-            await Ceho.ApplyAsync(report);
-        }
-        catch (Exception ex)
-        {
-            return ex.Message;
-        }
-
         report.Stage(Strings.T(c.Language, "stage_download",
             release.Version, release.Size / 1024 / 1024), 40);
         await Updater.InstallAsync(release, Ceho.OwnExecutablePath, m => report.Note(m));
 
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
         Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
+
+        try
+        {
+            report.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);
+            await Ceho.ApplyAsync(report);
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
         report.Stage(Strings.T(c.Language, "upd_relaunch"), 95);
         DaemonControl.SpawnRelaunchHelper(Ceho.OwnExecutablePath, Ceho.Root);
         _ = Task.Run(async () =>

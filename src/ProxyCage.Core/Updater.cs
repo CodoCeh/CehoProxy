@@ -35,8 +35,7 @@ public static class Updater
         if (string.IsNullOrWhiteSpace(repo))
             throw new InvalidOperationException("Не задан репозиторий обновлений.");
 
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "CehoProxy");
+        using var http = DirectHttp.CreateClient(TimeSpan.FromSeconds(30));
         http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/vnd.github+json");
 
         var response = await http.GetAsync($"https://api.github.com/repos/{repo}/releases/latest");
@@ -89,9 +88,8 @@ public static class Updater
         var temp = targetPath + ".new";
         var backup = targetPath + ".old";
 
-        using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
+        using (var http = DirectHttp.CreateClient(TimeSpan.FromMinutes(10)))
         {
-            http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "CehoProxy");
             log?.Invoke($"скачиваю {release.Version} ({release.Size / 1024 / 1024} МБ)");
 
             await using var stream = await http.GetStreamAsync(release.Url);
