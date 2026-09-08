@@ -220,7 +220,7 @@ public static class SingBoxConfigGenerator
 
         var outbounds = new JsonArray();
         foreach (var node in engineNodes)
-            outbounds.Add(OutboundBuilder.Build(NodeDialPreparer.Prepare(node, cfg.TunAddress)));
+            outbounds.Add(OutboundBuilder.Build(node));
 
         var poolTags = new JsonArray();
         foreach (var node in pool) poolTags.Add(node.Tag);
@@ -541,9 +541,7 @@ public static class SingBoxConfigGenerator
     private static JsonObject BuildDirectOutbound(string? tunAddress)
     {
         var direct = new JsonObject { ["type"] = "direct", ["tag"] = DirectTag };
-        var bind = Os.PhysicalBindAddress(tunAddress)?.ToString();
-        if (bind is not null)
-            direct["inet4_bind_address"] = bind;
+        ApplyPhysicalBind(direct, tunAddress);
         return direct;
     }
 
@@ -556,14 +554,8 @@ public static class SingBoxConfigGenerator
         var servers = new JsonArray();
         if (engineOnly)
         {
-            servers.Add(new JsonObject
-            {
-                ["type"] = "udp", ["tag"] = "dns-direct", ["server"] = Os.PublicResolver,
-            });
-            servers.Add(new JsonObject
-            {
-                ["type"] = "udp", ["tag"] = "dns-direct-2", ["server"] = "8.8.8.8",
-            });
+            servers.Add(DirectUdpDnsServer("dns-direct", Os.PublicResolver, tunAddress));
+            servers.Add(DirectUdpDnsServer("dns-direct-2", "8.8.8.8", tunAddress));
             return servers;
         }
 
@@ -571,21 +563,39 @@ public static class SingBoxConfigGenerator
 
         if (system.Count == 0)
         {
-            servers.Add(new JsonObject
-            {
-                ["type"] = "udp", ["tag"] = "dns-direct", ["server"] = Os.PublicResolver,
-            });
+            servers.Add(DirectUdpDnsServer("dns-direct", Os.PublicResolver, tunAddress));
             return servers;
         }
 
         for (var i = 0; i < system.Count; i++)
-            servers.Add(new JsonObject
-            {
-                ["type"] = "udp",
-                ["tag"] = i == 0 ? "dns-direct" : $"dns-direct-{i + 1}",
-                ["server"] = system[i],
-            });
+            servers.Add(DirectUdpDnsServer(
+                i == 0 ? "dns-direct" : $"dns-direct-{i + 1}",
+                system[i],
+                tunAddress));
         return servers;
+    }
+
+    /// <summary>
+    /// UDP DNS в обход TUN: bind на физический интерфейс, иначе Windows шлёт запросы
+    /// в петлю urltest и резолв server нод (origin.example.com) не доходит до 1.1.1.1.
+    /// </summary>
+    private static JsonObject DirectUdpDnsServer(string tag, string server, string? tunAddress)
+    {
+        var dns = new JsonObject
+        {
+            ["type"] = "udp",
+            ["tag"] = tag,
+            ["server"] = server,
+        };
+        ApplyPhysicalBind(dns, tunAddress);
+        return dns;
+    }
+
+    private static void ApplyPhysicalBind(JsonObject dial, string? tunAddress)
+    {
+        var bind = Os.PhysicalBindAddress(tunAddress)?.ToString();
+        if (bind is not null)
+            dial["inet4_bind_address"] = bind;
     }
 
     private static JsonObject BuildRoute(string folderRegex, ProxyCageSettings settings)

@@ -4,70 +4,73 @@ using ProxyCage.Core;
 
 namespace ProxyCage.Core.Tests;
 
+/// <summary>
+/// Регрессия v1.2.24: pre-resolve server в IP ломал REALITY/urltest под TUN.
+/// </summary>
 public class NodeDialPreparerTests
 {
-    [Fact]
-    public void Prepare_resolves_domain_and_keeps_sni()
+    private static CehoConfig MinimalCfg() => new()
     {
-        var node = new ProxyNode
-        {
-            Tag = "test",
-            Server = "one.one.one.one",
-            Port = 443,
-            Security = "reality",
-            PublicKey = "pk",
-            ShortId = "sid",
-        };
+        Apps = { new AppEntry { Name = "Test", Folder = @"C:\Apps\Test", Enabled = true } },
+    };
 
-        var prepared = NodeDialPreparer.Prepare(node, CehoConfig.DefaultTunAddress);
+    private static ProxyNode RealityNode(string server, string? sni = null) => new()
+    {
+        Tag = "us-1",
+        Server = server,
+        Port = 8444,
+        Protocol = ProxyProtocol.Vless,
+        Security = "reality",
+        Credential = "00000000-0000-4000-8000-000000000001",
+        Sni = sni,
+        PublicKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        ShortId = "0123456789abcdef",
+        CountryCode = "US",
+    };
 
-        Assert.True(IPAddress.TryParse(prepared.Server, out _));
-        Assert.Equal("one.one.one.one", prepared.Sni);
+    [Fact]
+    public void Engine_config_keeps_domain_server_for_urltest_not_preresolved_ip()
+    {
+        const string domain = "origin.example.com";
+        var nodes = new List<ProxyNode> { RealityNode(domain, "www.bing.com") };
+        var json = SingBoxConfigGenerator.GenerateForConfig(nodes, MinimalCfg());
+        var outbound = JsonNode.Parse(json)!["outbounds"]!.AsArray()
+            .First(o => (string?)o!["tag"] == "us-1")!;
+
+        Assert.Equal(domain, (string?)outbound["server"]);
+        Assert.Equal("www.bing.com", (string?)outbound["tls"]!["server_name"]);
+        Assert.False(IPAddress.TryParse((string?)outbound["server"]!, out _));
     }
 
     [Fact]
-    public void Prepare_leaves_ip_server_unchanged()
+    public void Engine_config_leaves_literal_ip_server_unchanged()
     {
-        var node = new ProxyNode { Tag = "ip", Server = "1.2.3.4", Port = 443 };
-        var prepared = NodeDialPreparer.Prepare(node, CehoConfig.DefaultTunAddress);
-        Assert.Equal("1.2.3.4", prepared.Server);
-        Assert.Null(prepared.Sni);
+        var nodes = new List<ProxyNode> { RealityNode("198.51.100.72", "example.com") };
+        var json = SingBoxConfigGenerator.GenerateForConfig(nodes, MinimalCfg());
+        var outbound = JsonNode.Parse(json)!["outbounds"]!.AsArray()
+            .First(o => (string?)o!["tag"] == "us-1")!;
+
+        Assert.Equal("198.51.100.72", (string?)outbound["server"]);
     }
 
     [Fact]
-    public void Engine_config_uses_public_dns_and_direct_bind()
+    public void Engine_config_uses_public_dns_direct_bind_on_dns_and_direct()
     {
-        var cfg = new CehoConfig
-        {
-            Apps = { new AppEntry { Name = "Test", Folder = @"C:\Apps\Test", Enabled = true } },
-        };
-        var nodes = new List<ProxyNode>
-        {
-            new()
-            {
-                Tag = "us-1",
-                Server = "198.51.100.72",
-                Port = 8444,
-                Protocol = ProxyProtocol.Vless,
-                Security = "reality",
-                Credential = "00000000-0000-4000-8000-000000000001",
-                Sni = "example.com",
-                PublicKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                ShortId = "0123456789abcdef",
-                CountryCode = "US",
-            },
-        };
-
+        var nodes = new List<ProxyNode> { RealityNode("198.51.100.72", "example.com") };
+        var cfg = MinimalCfg();
         var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg);
         var root = JsonNode.Parse(json)!;
 
         var direct = root["outbounds"]!.AsArray().First(o => (string?)o!["tag"] == "direct")!;
-        var bind = (string?)direct["inet4_bind_address"];
-        if (Os.PhysicalBindAddress(cfg.TunAddress) is not null)
-            Assert.False(string.IsNullOrEmpty(bind));
-
         var dnsDirect = root["dns"]!["servers"]!.AsArray()
             .First(s => (string?)s!["tag"] == "dns-direct")!;
+
         Assert.Equal(Os.PublicResolver, (string?)dnsDirect["server"]);
+
+        var bind = Os.PhysicalBindAddress(cfg.TunAddress)?.ToString();
+        if (bind is null) return;
+
+        Assert.Equal(bind, (string?)direct["inet4_bind_address"]);
+        Assert.Equal(bind, (string?)dnsDirect["inet4_bind_address"]);
     }
 }
