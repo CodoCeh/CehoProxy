@@ -290,7 +290,7 @@ switch (cmd)
             var how = a.AllowedNodes.Count == 0
                 ? Cli.S(cfg, "app_tunnel_general")
                 : Cli.S(cfg, "app_tunnel_pinned", a.AllowedNodes.Count);
-            Console.WriteLine($"{a.Name,-24} {a.Folder}  · {how}");
+            Console.WriteLine($"{a.Label,-24} {a.Folder}  · {how}");
         }
         return 0;
     }
@@ -302,7 +302,7 @@ switch (cmd)
         if (which is null)
         {
             if (!Assistant.Interactive) { Console.Error.WriteLine(Cli.S(cfg, "err_need_path")); return 1; }
-            var i = Assistant.Pick(cfg, cfg.Apps.Select(a => $"{a.Name,-20} {a.Folder}").ToList(),
+            var i = Assistant.Pick(cfg, cfg.Apps.Select(a => $"{a.Label,-20} {a.Folder}").ToList(),
                 Cli.S(cfg, "apps_title"));
             if (i < 0) return 0;
             which = cfg.Apps[i].Folder;
@@ -316,6 +316,70 @@ switch (cmd)
         Console.WriteLine(Cli.S(cfg, n > 0 ? "removed" : "err_not_in_list"));
         if (n > 0) await Cli.RebuildQuietlyAsync(cfg);
         return n > 0 ? 0 : 1;
+    }
+
+    case "rename-app":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        AppEntry? app = null;
+        string? label = null;
+
+        if (args.Length >= 3)
+        {
+            var which = args[1];
+            label = args[2].Trim();
+            if (int.TryParse(which, out var idx) && idx >= 1 && idx <= cfg.Apps.Count)
+                app = cfg.Apps[idx - 1];
+            else
+            {
+                var target = Os.RealPath(which);
+                app = cfg.Apps.FirstOrDefault(a =>
+                    a.Folder.Equals(which, StringComparison.OrdinalIgnoreCase) ||
+                    a.Folder.Equals(target, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        else if (args.Length == 2 && Assistant.Interactive)
+        {
+            var which = args[1];
+            var target = Os.RealPath(which);
+            app = cfg.Apps.FirstOrDefault(a =>
+                a.Folder.Equals(which, StringComparison.OrdinalIgnoreCase) ||
+                a.Folder.Equals(target, StringComparison.OrdinalIgnoreCase));
+            if (app is null && int.TryParse(which, out var idx) && idx >= 1 && idx <= cfg.Apps.Count)
+                app = cfg.Apps[idx - 1];
+
+            if (app is not null)
+                label = Cli.Ask("  " + Cli.S(cfg, "rename_app_ask")).Trim();
+            else
+            {
+                label = which.Trim();
+                var i = Assistant.Pick(cfg, cfg.Apps.Select(a => $"{a.Label,-20} {a.Folder}").ToList(),
+                    Cli.S(cfg, "apps_title"));
+                if (i < 0) return 0;
+                app = cfg.Apps[i];
+            }
+        }
+        else if (Assistant.Interactive)
+        {
+            var i = Assistant.Pick(cfg, cfg.Apps.Select(a => $"{a.Label,-20} {a.Folder}").ToList(),
+                Cli.S(cfg, "apps_title"));
+            if (i < 0) return 0;
+            app = cfg.Apps[i];
+            label = Cli.Ask("  " + Cli.S(cfg, "rename_app_ask")).Trim();
+        }
+        else
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "err_rename_usage"));
+            return 1;
+        }
+
+        if (label is null || label.Length == 0) { Console.Error.WriteLine(Cli.S(cfg, "err_need_name")); return 1; }
+        if (app is null) { Console.Error.WriteLine(Cli.S(cfg, "err_not_in_list")); return 1; }
+
+        app.DisplayName = label;
+        cfg.Save(Ceho.ConfigPath);
+        Console.WriteLine(Cli.S(cfg, "app_renamed", app.Label));
+        return 0;
     }
 
     case "tunnel":
@@ -336,7 +400,7 @@ switch (cmd)
             var how = a.AllowedNodes.Count == 0
                 ? Cli.S(cfg, "app_tunnel_general")
                 : Cli.S(cfg, "app_tunnel_pinned", a.AllowedNodes.Count);
-            Console.WriteLine($"  {i + 1,3}. {a.Name,-20} {how}");
+            Console.WriteLine($"  {i + 1,3}. {a.Label,-20} {how}");
         }
 
         var appsAnswer = Cli.Ask("  " + Cli.S(cfg, "tunnel_ask_apps") + " (" + Cli.S(cfg, "ask_skip") + ")");
@@ -384,7 +448,7 @@ switch (cmd)
         foreach (var i in appIdx)
         {
             cfg.Apps[i].AllowedNodes = keys.ToList();
-            names.Add(cfg.Apps[i].Name);
+            names.Add(cfg.Apps[i].Label);
         }
 
         cfg.Save(Ceho.ConfigPath);
@@ -1252,7 +1316,7 @@ switch (cmd)
         foreach (var app in cfg.Apps.Where(a => a.Enabled))
         {
             var r = Ceho.VerifyApp(app, cfg.TunAddress, cfg.Language);
-            Console.WriteLine(app.Name);
+            Console.WriteLine(app.Label);
             if (r.Problem is not null)
             {
                 Console.WriteLine("   " + r.Problem);

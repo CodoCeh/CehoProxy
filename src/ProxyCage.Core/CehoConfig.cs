@@ -7,6 +7,12 @@ public sealed class AppEntry
 {
     public string Name { get; set; } = "";
 
+    /// <summary>Подпись в списке; пусто — автоимя из exe (<see cref="Name"/>).</summary>
+    public string? DisplayName { get; set; }
+
+    [JsonIgnore]
+    public string Label => string.IsNullOrWhiteSpace(DisplayName) ? Name : DisplayName.Trim();
+
     public string Folder { get; set; } = "";
 
     public string? Launch { get; set; }
