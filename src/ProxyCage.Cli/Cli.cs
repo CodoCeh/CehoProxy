@@ -23,8 +23,7 @@ public static class Cli
             ("Setup", [
                 ("chp setup", "go through the setup again"),
                 ("chp add-app [path]", "isolate a program (no path — pick from a list)"),
-                ("chp apps · chp remove-app · chp rename-app", "list, remove, rename an app"),
-                ("chp tunnel", "pick nodes per app"),
+                ("chp apps · chp remove-app · chp tunnel", "list, remove, pick nodes per app"),
                 ("chp sub-add [name link]", "add a subscription (no arguments — I will ask)"),
                 ("chp subs · chp sub-remove", "list, expiry, traffic and removal"),
                 ("chp sub-off · sub-on <name>", "keep a subscription out of the pool without deleting it"),
@@ -64,8 +63,7 @@ public static class Cli
             ("Настройка", [
                 ("chp setup", "пройти настройку заново"),
                 ("chp add-app [путь]", "изолировать программу (без пути — выбор из списка)"),
-                ("chp apps · chp remove-app · chp rename-app", "список, удаление, своё имя"),
-                ("chp tunnel", "ноды для программы"),
+                ("chp apps · chp remove-app · chp tunnel", "список, удаление, ноды для программы"),
                 ("chp sub-add [имя ссылка]", "добавить подписку (без аргументов — спрошу)"),
                 ("chp subs · chp sub-remove", "список, срок, трафик и удаление"),
                 ("chp sub-off · sub-on <имя>", "убрать подписку из пула, не удаляя её"),
@@ -171,7 +169,7 @@ public static class Cli
 
     private static readonly HashSet<string> RemoteAllowed = new(StringComparer.Ordinal)
     {
-        "status", "doctor", "verify", "apps", "add-app", "remove-app", "rename-app",
+        "status", "doctor", "verify", "apps", "add-app", "remove-app",
         "subs", "sub-add", "sub-remove", "sub-on", "sub-off", "countries", "country", "nodes", "node",
         "browser", "detect", "apply", "lang", "set-port", "autostart", "speed",
         "restart", "stop", "off", "timeout", "set-timeout", "log",
@@ -203,7 +201,7 @@ public static class Cli
 
     private static readonly HashSet<string> Mutating = new(StringComparer.Ordinal)
     {
-        "add-app", "remove-app", "rename-app", "tunnel", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
+        "add-app", "remove-app", "tunnel", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
         "lang", "passwd", "apply", "autostart", "uninstall", "speed", "timeout", "set-timeout",
     };
 

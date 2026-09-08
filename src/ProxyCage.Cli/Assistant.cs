@@ -90,7 +90,7 @@ public static class Assistant
 
         var apps = cfg.Apps.Count == 0
             ? Cli.S(cfg, "empty")
-            : string.Join(", ", cfg.Apps.Where(a => a.Enabled).Select(a => a.Label));
+            : string.Join(", ", cfg.Apps.Where(a => a.Enabled).Select(a => a.Name));
 
         var countries = cfg.PreferredCountries.Count > 0
             ? string.Join(", ", cfg.PreferredCountries)

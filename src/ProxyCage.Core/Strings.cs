@@ -550,17 +550,7 @@ public static class Strings
         ["col_state"] = new("Состояние", "State"),
         ["btn_add"] = new("Добавить", "Add"),
         ["btn_remove"] = new("Убрать", "Remove"),
-        ["btn_rename"] = new("Сохранить имя", "Save name"),
         ["btn_tunnel"] = new("Туннель", "Tunnel"),
-        ["app_renamed"] = new("Имя изменено: {0}", "Renamed to: {0}"),
-        ["rename_app_hint"] = new(
-            "Своё имя для списка — exe может называться Application.exe",
-            "Custom list label — the exe may be named Application.exe"),
-        ["rename_app_ask"] = new("Новое имя для списка", "New list name"),
-        ["err_rename_usage"] = new(
-            "chp rename-app <номер|путь> \"имя\"",
-            "chp rename-app <index|path> \"name\""),
-        ["err_need_name"] = new("Укажите имя.", "Enter a name."),
         ["btn_delete"] = new("Удалить", "Delete"),
         ["btn_save"] = new("Сохранить", "Save"),
         ["btn_on"] = new("Включить", "Turn on"),
