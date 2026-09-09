@@ -9,6 +9,7 @@ namespace ProxyCage.Core;
 public enum SubscriptionFetchPersona
 {
     SingBox,
+    Exclave,
     Clash,
     Client,
     Browser,
@@ -18,15 +19,19 @@ public static class SubscriptionFetcher
 {
     public const int MaxAttempts = 5;
 
-    /// <summary>sing-box for Android (SFA) — тот же UA, что шлёт Exclave.</summary>
+    /// <summary>sing-box for Android (SFA) — часто ожидают панели Remnawave/HWID-limit.</summary>
     private const string SingBoxUserAgent = "SFA/1.12.0 (612; sing-box 1.12.0; language en)";
+
+    /// <summary>Stock Exclave (Android) — см. ExclaveNetwork/Exclave RawUpdater.kt.</summary>
+    private const string ExclaveUserAgent = "Exclave/0.17.56";
 
     public static SubscriptionFetchPersona PersonaOf(int attempt) => attempt switch
     {
         1 => SubscriptionFetchPersona.SingBox,
-        2 => SubscriptionFetchPersona.Clash,
-        3 => SubscriptionFetchPersona.Client,
-        4 => SubscriptionFetchPersona.Browser,
+        2 => SubscriptionFetchPersona.Exclave,
+        3 => SubscriptionFetchPersona.Clash,
+        4 => SubscriptionFetchPersona.Client,
+        5 => SubscriptionFetchPersona.Browser,
         _ => SubscriptionFetchPersona.SingBox,
     };
 
@@ -41,6 +46,10 @@ public static class SubscriptionFetcher
                 headers.TryAddWithoutValidation("Accept",
                     "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
                 headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+                break;
+            case SubscriptionFetchPersona.Exclave:
+                headers.TryAddWithoutValidation("User-Agent", ExclaveUserAgent);
+                headers.TryAddWithoutValidation("Accept", "*/*");
                 break;
             case SubscriptionFetchPersona.Clash:
                 headers.TryAddWithoutValidation("User-Agent", "clash-meta/1.18.0");

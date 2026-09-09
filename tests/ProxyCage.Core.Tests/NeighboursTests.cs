@@ -243,6 +243,14 @@ public class NeighboursTests
     }
 
     [Fact]
+    public void Missing_cronet_is_explained_with_engine_update_command()
+    {
+        var hint = SingBoxProcess.Hint(
+            "FATAL create service: initialize outbound[0]: cronet: library not found", "ru");
+        Assert.Contains("chp engine update", hint);
+    }
+
+    [Fact]
     public void Our_interface_is_found_by_its_address()
     {
         // Петля есть на любой машине, поэтому проверка честная и на маке, и на Windows.

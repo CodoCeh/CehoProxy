@@ -1520,6 +1520,20 @@ if (cmd is "daemon" or "web")
 
             var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: true, report);
 
+            if (nodes.Any(n => n.Protocol == ProxyProtocol.Naive) && Installer.MissingCronetDll(Ceho.Root))
+            {
+                report?.Stage(Strings.T(c.Language, "stage_cronet_fetch"), 91);
+                try
+                {
+                    await Installer.EnsureCronetAsync(Ceho.Root, m => report?.Note(m), c.Language);
+                }
+                catch (Exception ex)
+                {
+                    lastError = Strings.T(c.Language, "inst_engine_failed", ex.Message);
+                    return lastError;
+                }
+            }
+
             report?.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
