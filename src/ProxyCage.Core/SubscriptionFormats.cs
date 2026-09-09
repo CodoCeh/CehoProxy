@@ -24,7 +24,11 @@ public static class SubscriptionFormats
 
             if (root.ValueKind == JsonValueKind.Array)
             {
-                foreach (var item in root.EnumerateArray()) ReadContainer(item, nodes, lang);
+                foreach (var item in root.EnumerateArray())
+                {
+                    if (TryAppendOutbound(item, nodes, lang, "")) continue;
+                    ReadContainer(item, nodes, lang);
+                }
                 return nodes;
             }
 
@@ -43,13 +47,12 @@ public static class SubscriptionFormats
 
         var remarks = Str(root, "remarks") ?? Str(root, "name") ?? "";
 
+        if (TryAppendOutbound(root, nodes, lang, remarks)) return;
+
         if (root.TryGetProperty("outbounds", out var outbounds) && outbounds.ValueKind == JsonValueKind.Array)
         {
             foreach (var o in outbounds.EnumerateArray())
-            {
-                var node = ReadXrayOutbound(o, remarks, lang) ?? ReadSingBoxOutbound(o, remarks, lang);
-                if (node is not null) nodes.Add(Number(node, nodes.Count + 1));
-            }
+                TryAppendOutbound(o, nodes, lang, remarks);
         }
 
         if (root.TryGetProperty("servers", out var servers) && servers.ValueKind == JsonValueKind.Array)
@@ -71,6 +74,14 @@ public static class SubscriptionFormats
                 }, name, lang), nodes.Count + 1));
             }
         }
+    }
+
+    private static bool TryAppendOutbound(JsonElement o, List<ProxyNode> nodes, string lang, string remarks)
+    {
+        var node = ReadXrayOutbound(o, remarks, lang) ?? ReadSingBoxOutbound(o, remarks, lang);
+        if (node is null) return false;
+        nodes.Add(Number(node, nodes.Count + 1));
+        return true;
     }
 
     private static ProxyNode? ReadXrayOutbound(JsonElement o, string remarks, string lang)
@@ -210,6 +221,12 @@ public static class SubscriptionFormats
             node.Security = "tls";
             node.TuicPassword = Str(o, "password");
         }
+        else if (kind is ProxyProtocol.Naive)
+        {
+            node.Credential = Str(o, "username") ?? "";
+            node.TuicPassword = Str(o, "password") ?? "";
+            node.Security = "tls";
+        }
 
         if (o.TryGetProperty("tls", out var tls) && Bool(tls, "enabled"))
         {
@@ -336,12 +353,14 @@ public static class SubscriptionFormats
             Protocol = kind.Value,
             Server = server,
             Port = port,
-            Credential = V("uuid") ?? V("password") ?? "",
+            Credential = kind is ProxyProtocol.Naive
+                ? V("username") ?? ""
+                : V("uuid") ?? V("password") ?? "",
             Method = V("cipher"),
             Flow = V("flow"),
             AlterId = int.TryParse(V("alterId"), out var aid) ? aid : 0,
             Network = kind is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic ? "quic" : network,
-            Security = kind is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic or ProxyProtocol.Trojan || tls
+            Security = kind is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic or ProxyProtocol.Trojan or ProxyProtocol.Naive || tls
                 ? "tls" : "none",
             Sni = V("sni") ?? V("servername"),
             Fingerprint = V("client-fingerprint"),
@@ -349,8 +368,11 @@ public static class SubscriptionFormats
             ServiceName = V("grpc-service-name"),
             Path = V("ws-path") ?? V("path"),
             ObfsPassword = V("obfs-password"),
-            TuicPassword = V("password"),
+            TuicPassword = kind is ProxyProtocol.Naive ? V("password") : V("password"),
         };
+
+        if (kind is ProxyProtocol.Naive && string.IsNullOrEmpty(node.Sni))
+            node.Sni = server;
 
         if (V("public-key") is { } pbk) { node.Security = "reality"; node.PublicKey = pbk; }
         if (V("short-id") is { } sid) node.ShortId = sid;

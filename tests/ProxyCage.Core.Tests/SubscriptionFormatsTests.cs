@@ -133,6 +133,81 @@ public class SubscriptionFormatsTests
     }
 
     [Fact]
+    public void Reads_singbox_naive_outbound_with_basic_auth()
+    {
+        var nodes = SubscriptionParser.Parse(Fixture("sub-caddy-naive.json"));
+        var node = Assert.Single(nodes);
+
+        Assert.Equal(ProxyProtocol.Naive, node.Protocol);
+        Assert.Equal("site.roomspace.team", node.Server);
+        Assert.Equal(8443, node.Port);
+        Assert.Equal("bsv", node.Credential);
+        Assert.Equal("REDACTED_TEST_PASSWORD", node.TuicPassword);
+        Assert.Equal("site.roomspace.team", node.Sni);
+        Assert.Equal("Caddy BSV", node.Remark);
+
+        var outbound = OutboundBuilder.Build(node);
+        Assert.Equal("naive", outbound["type"]!.GetValue<string>());
+        Assert.Equal("bsv", outbound["username"]!.GetValue<string>());
+        Assert.Equal("REDACTED_TEST_PASSWORD", outbound["password"]!.GetValue<string>());
+        Assert.Equal("site.roomspace.team", outbound["tls"]!["server_name"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Reads_singbox_naive_outbound_array_without_wrapper()
+    {
+        const string json = """
+            [
+              {
+                "type": "naive",
+                "tag": "Caddy BSV",
+                "server": "185.76.13.167",
+                "server_port": 8443,
+                "username": "bsv",
+                "password": "REDACTED_TEST_PASSWORD",
+                "tls": { "enabled": true, "server_name": "site.roomspace.team" }
+              }
+            ]
+            """;
+
+        var node = Assert.Single(SubscriptionParser.Parse(json));
+        Assert.Equal(ProxyProtocol.Naive, node.Protocol);
+        Assert.Equal("185.76.13.167", node.Server);
+        Assert.Equal("site.roomspace.team", node.Sni);
+        Assert.Equal("bsv", node.Credential);
+    }
+
+    [Fact]
+    public void Reads_clash_naive_proxy()
+    {
+        var node = Assert.Single(SubscriptionParser.Parse(Fixture("sub-caddy-naive-clash.yaml")));
+        Assert.Equal(ProxyProtocol.Naive, node.Protocol);
+        Assert.Equal("bsv", node.Credential);
+        Assert.Equal("REDACTED_TEST_PASSWORD", node.TuicPassword);
+        Assert.Equal("site.roomspace.team", node.Sni);
+    }
+
+    [Fact]
+    public void Reads_base64_caddy_naive_subscription()
+    {
+        var node = Assert.Single(SubscriptionParser.Parse(Fixture("sub-caddy-naive.b64.txt")));
+        Assert.Equal(ProxyProtocol.Naive, node.Protocol);
+        Assert.Equal("site.roomspace.team", node.Server);
+        Assert.Equal("bsv", node.Credential);
+        Assert.Equal("REDACTED_TEST_PASSWORD", node.TuicPassword);
+    }
+
+    [Fact]
+    public void Reads_naive_plus_https_share_uri()
+    {
+        var node = Assert.Single(SubscriptionParser.Parse(
+            "naive+https://bsv:REDACTED_TEST_PASSWORD@site.roomspace.team:8443?sni=site.roomspace.team#Caddy%20BSV\n"));
+        Assert.Equal(ProxyProtocol.Naive, node.Protocol);
+        Assert.Equal("bsv", node.Credential);
+        Assert.Equal("site.roomspace.team", node.Sni);
+    }
+
+    [Fact]
     public void Unknown_text_is_not_mistaken_for_a_subscription()
     {
         Assert.Empty(SubscriptionParser.Parse("<html><body>404</body></html>"));

@@ -1,0 +1,9 @@
+proxies:
+  - name: Caddy BSV
+    type: naive
+    server: site.roomspace.team
+    port: 8443
+    username: bsv
+    password: REDACTED_TEST_PASSWORD
+    sni: site.roomspace.team
+    skip-cert-verify: false

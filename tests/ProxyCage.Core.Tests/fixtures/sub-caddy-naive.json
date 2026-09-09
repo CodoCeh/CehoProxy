@@ -1,0 +1,16 @@
+{
+  "outbounds": [
+    {
+      "type": "naive",
+      "tag": "Caddy BSV",
+      "server": "site.roomspace.team",
+      "server_port": 8443,
+      "username": "bsv",
+      "password": "REDACTED_TEST_PASSWORD",
+      "tls": {
+        "enabled": true,
+        "server_name": "site.roomspace.team"
+      }
+    }
+  ]
+}

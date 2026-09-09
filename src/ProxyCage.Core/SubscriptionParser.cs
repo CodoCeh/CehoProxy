@@ -37,7 +37,7 @@ public static class SubscriptionParser
 
         foreach (var rawLine in text.Split('\n'))
         {
-            var line = rawLine.Trim();
+            var line = NormalizeNaiveShareUri(rawLine.Trim());
             if (line.Length == 0) continue;
 
             var match = Schemes.FirstOrDefault(s =>
@@ -79,9 +79,20 @@ public static class SubscriptionParser
         return kept.Count == nodes.Count ? nodes : kept;
     }
 
+    internal static string NormalizeNaiveShareUri(string line)
+    {
+        if (line.StartsWith("naive+https://", StringComparison.OrdinalIgnoreCase))
+            return "naive://" + line["naive+https://".Length..];
+        if (line.StartsWith("naive+quic://", StringComparison.OrdinalIgnoreCase))
+            return "naive://" + line["naive+quic://".Length..];
+        return line;
+    }
+
     private static string Decode(string body)
     {
-        if (Schemes.Any(s => body.Contains(s.Scheme, StringComparison.OrdinalIgnoreCase)))
+        if (Schemes.Any(s => body.Contains(s.Scheme, StringComparison.OrdinalIgnoreCase))
+            || body.Contains("naive+https://", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("naive+quic://", StringComparison.OrdinalIgnoreCase))
             return body;
 
         try
