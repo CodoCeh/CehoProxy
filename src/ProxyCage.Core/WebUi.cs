@@ -106,6 +106,11 @@ public static class WebUi
       color:var(--muted);background:var(--panel)}
 
     form.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin:10px 0 4px}
+    form.app-add input[type=text]{flex:1;min-width:220px}
+    a.pick{display:inline-flex;align-items:center;min-height:40px;padding:10px 18px;
+      border:1px solid var(--line);border-radius:10px;color:var(--text);text-decoration:none;
+      font-size:14px;font-weight:500;white-space:nowrap;box-sizing:border-box}
+    a.pick:hover{background:var(--panel2)}
     input[type=text],input[type=password],input[type=number],select{
       flex:1;min-width:200px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
       background:var(--surface);color:var(--text);font:inherit;font-size:14px;
@@ -125,6 +130,26 @@ public static class WebUi
     form.stack{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:12px 0}
     form.stack .field{width:100%;max-width:560px}
     form.stack .hint{margin:0}
+    .kind-switch{display:inline-flex;border:1px solid var(--line);border-radius:10px;
+      overflow:hidden;background:var(--panel);margin:2px 0 4px}
+    .kind-switch input{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
+    .kind-switch label{padding:9px 16px;font-size:13px;font-weight:600;color:var(--muted);
+      cursor:pointer;user-select:none;transition:background .15s ease,color .15s ease}
+    .kind-switch input:checked+label{background:var(--brand-ink);color:#f4fbf7}
+    .kind-switch input:focus-visible+label{outline:2px solid var(--brand-ink);outline-offset:-2px}
+    form.sub-add .sub-add-panel{display:none;width:100%;max-width:560px}
+    form.sub-add:has(input[name=kind][value=sub]:checked) .sub-add-url{display:flex;flex-direction:column;gap:8px}
+    form.sub-add:has(input[name=kind][value=naive]:checked) .sub-add-naive{display:flex;flex-direction:column;gap:8px}
+    .tag.kind-naive{color:var(--brand-ink)}
+    .tag.kind-sub{color:var(--info-ink)}
+    dialog.sub-modal{border:1px solid var(--line);border-radius:var(--radius);padding:0;
+      max-width:580px;width:calc(100% - 32px);background:var(--surface);color:var(--text);
+      box-shadow:0 18px 48px rgba(15,20,17,.22)}
+    dialog.sub-modal::backdrop{background:rgba(15,20,17,.42)}
+    dialog.sub-modal .modal-title{margin:0;padding:18px 22px 0;font-size:17px;font-weight:660}
+    dialog.sub-modal form.stack{margin:12px 22px 20px}
+    .modal-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+    .sub-modals{display:contents}
     button[disabled]{background:transparent;color:var(--muted);border-color:var(--line);
       font-weight:500;cursor:not-allowed}
     button[disabled]:hover{background:transparent}
@@ -248,6 +273,26 @@ public static class WebUi
     /// Полоса двигается без перезагрузки страницы. Скриптов может не быть —
     /// тогда работает meta refresh, поэтому здесь только украшение, а не единственный путь.
     /// </summary>
+    public const string SubModalScript = """
+    <script>
+    (function(){
+      document.querySelectorAll('[data-sub-edit]').forEach(function(btn){
+        btn.addEventListener('click',function(){
+          var id=btn.getAttribute('data-sub-edit');
+          var dlg=id&&document.getElementById(id);
+          if(dlg&&typeof dlg.showModal==='function')dlg.showModal();
+        });
+      });
+      document.querySelectorAll('dialog.sub-modal').forEach(function(dlg){
+        dlg.querySelectorAll('[data-sub-close]').forEach(function(btn){
+          btn.addEventListener('click',function(){dlg.close();});
+        });
+        dlg.addEventListener('click',function(e){if(e.target===dlg)dlg.close();});
+      });
+    })();
+    </script>
+    """;
+
     public const string JobScript = """
     <script>
     (function(){

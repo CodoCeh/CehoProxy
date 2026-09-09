@@ -490,12 +490,12 @@ public static class Strings
         ["apps_placeholder_mac"] = new("/Applications/Программа.app", "/Applications/App.app"),
         ["apps_placeholder_linux"] = new("/opt/программа/program", "/opt/app/program"),
         ["apps_hint"] = new(
-            "Можно указать и сам файл программы, и её папку. Папку определим сами и покажем, " +
-            "что попадёт под правило: изолируется вся папка целиком, потому что программы " +
-            "часто запускают вспомогательные процессы с другими именами.",
-            "You can point either to the program file or to its folder. We detect the folder and show " +
-            "what the rule will cover: the whole folder is isolated, because programs often start " +
-            "helper processes under different names."),
+            "Можно указать и сам файл программы, и её папку — или нажать «Выбрать на ПК». " +
+            "Папку определим сами и покажем, что попадёт под правило.",
+            "Point to the program file or its folder — or click “Choose on this PC”. " +
+            "We detect the folder and show what the rule will cover."),
+        ["btn_pick_app"] = new("Выбрать на ПК", "Choose on this PC"),
+        ["app_pick_title"] = new("Выберите программу", "Choose a program"),
         ["apps_hint_mac"] = new(
             "Для программы из /Applications укажите сам пакет — папку с расширением .app.",
             "For an app from /Applications point to the .app bundle itself."),
@@ -544,6 +544,32 @@ public static class Strings
             "Переключать подписку целиком не нужно.",
             "Nodes from all subscriptions go into one pool and the tunnel picks a working one itself. " +
             "There is no need to switch the whole subscription."),
+        ["subs_add_title"] = new("Добавить", "Add"),
+        ["btn_add_sub"] = new("Добавить подписку", "Add subscription"),
+        ["btn_edit"] = new("Изменить", "Edit"),
+        ["btn_cancel"] = new("Отмена", "Cancel"),
+        ["subs_edit_title"] = new("Редактирование: {0}", "Editing: {0}"),
+        ["subs_edit_back"] = new("К списку подписок", "Back to subscriptions"),
+        ["subs_edit_missing"] = new("Такой подписки уже нет в списке.", "That subscription is no longer in the list."),
+        ["sub_saved"] = new("Подписка сохранена: {0}", "Subscription saved: {0}"),
+        ["naive_password_keep"] = new("Пусто — пароль не менять", "Leave blank to keep the password"),
+        ["subs_kind_label"] = new("Тип подключения", "Connection type"),
+        ["subs_kind_sub"] = new("Подписка", "Subscription"),
+        ["subs_kind_naive"] = new("NaiveProxy", "NaiveProxy"),
+        ["subs_name_placeholder"] = new("Моя подписка", "My subscription"),
+        ["subs_url_placeholder"] = new("https://…", "https://…"),
+        ["subs_kind_sub_hint"] = new(
+            "Ссылка от VPN-сервиса: Vless, Hysteria, Shadowsocks и другие протоколы в одном списке.",
+            "Link from your VPN service: Vless, Hysteria, Shadowsocks and other protocols in one list."),
+        ["subs_kind_naive_hint"] = new(
+            "Прямое HTTPS-подключение с basic auth (Caddy, sing-box naive). Нода попадает в общий пул — " +
+            "для любых программ и браузера через локальный прокси, не только для Cursor.",
+            "Direct HTTPS with basic auth (Caddy, sing-box naive). The node joins the shared pool — " +
+            "for any app or browser via the local proxy, not just Cursor."),
+        ["naive_form_incomplete"] = new(
+            "Заполните сервер, пользователя и пароль NaiveProxy.",
+            "Fill in NaiveProxy server, username and password."),
+        ["naive_sni_hint"] = new("если сервер — IP, укажите домен", "if server is an IP, set the domain"),
         ["col_name"] = new("Имя", "Name"),
         ["col_link"] = new("Ссылка", "Link"),
         ["col_folder"] = new("Папка", "Folder"),
@@ -588,6 +614,27 @@ public static class Strings
         ["browser_note"] = new(
             "Прокси работает, только пока защита включена.",
             "The proxy works only while protection is on."),
+        ["naive_uri_bad"] = new(
+            "Строка naive:// не распознана. Проверьте формат: naive://user:pass@host:8443?sni=…",
+            "Could not parse naive:// line. Expected: naive://user:pass@host:8443?sni=…"),
+        ["naive_server"] = new("Сервер", "Server"),
+        ["naive_port"] = new("Порт", "Port"),
+        ["naive_user"] = new("Пользователь", "Username"),
+        ["naive_password"] = new("Пароль", "Password"),
+        ["naive_sni"] = new("SNI (TLS)", "SNI (TLS)"),
+        ["naive_expected_ip"] = new("Ожидаемый IP выхода", "Expected exit IP"),
+        ["btn_naive_test"] = new("Проверить связь", "Test connection"),
+        ["job_naive_test"] = new("Проверяю связь через локальный прокси", "Testing via local proxy"),
+        ["proxy_test_no_engine"] = new(
+            "Локальный прокси не отвечает. Включите защиту и повторите.",
+            "Local proxy is not responding. Turn protection on and retry."),
+        ["proxy_test_http"] = new("HTTP-прокси: {0}", "HTTP proxy: {0}"),
+        ["proxy_test_socks"] = new("SOCKS5: {0}", "SOCKS5: {0}"),
+        ["proxy_test_ok"] = new("Связь в порядке", "Connection OK"),
+        ["proxy_test_partial"] = new("Частичный успех — проверьте защиту и ноды", "Partial success — check protection and nodes"),
+        ["proxy_test_expected_ok"] = new("IP совпадает с ожидаемым: {0}", "IP matches expected: {0}"),
+        ["proxy_test_expected_fail"] = new("IP не совпадает с ожидаемым {0}", "IP does not match expected {0}"),
+        ["cmd_proxy_test"] = new("Проверка HTTP/SOCKS через локальный mixed-прокси", "Test HTTP/SOCKS via local mixed proxy"),
         ["check_title"] = new("Проверка и переключение", "Checking and switching"),
         ["checkurl_label"] = new("Адрес для проверки", "Address to check"),
         ["rotation_label"] = new(

@@ -334,6 +334,8 @@ public static class SingBoxConfigGenerator
             ["outbound"] = ProxyTag,
         });
 
+        var inbounds = new JsonArray { BuildTun(cfg), BuildMixedInbound(cfg.MixedPort, "mixed-in") };
+
         var config = new JsonObject
         {
             ["log"] = BuildLog(cfg),
@@ -351,17 +353,7 @@ public static class SingBoxConfigGenerator
                 ["final"] = "dns-direct",
                 ["strategy"] = "prefer_ipv4",
             },
-            ["inbounds"] = new JsonArray
-            {
-                BuildTun(cfg),
-                new JsonObject
-                {
-                    ["type"] = "mixed",
-                    ["tag"] = "mixed-in",
-                    ["listen"] = "127.0.0.1",
-                    ["listen_port"] = cfg.MixedPort,
-                },
-            },
+            ["inbounds"] = inbounds,
             ["outbounds"] = outbounds,
             ["route"] = new JsonObject
             {
@@ -379,6 +371,14 @@ public static class SingBoxConfigGenerator
             TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
         });
     }
+
+    private static JsonObject BuildMixedInbound(int port, string tag) => new()
+    {
+        ["type"] = "mixed",
+        ["tag"] = tag,
+        ["listen"] = "127.0.0.1",
+        ["listen_port"] = port,
+    };
 
     private static JsonObject UrlTest(string tag, JsonArray outboundTags, string url) => new()
     {

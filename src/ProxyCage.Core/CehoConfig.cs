@@ -72,6 +72,9 @@ public sealed class CehoConfig
     public List<AppEntry> Apps { get; set; } = new();
     public List<SubscriptionEntry> Subscriptions { get; set; } = new();
 
+    /// <summary>NaiveProxy / Caddy upstream (sing-box naive outbound).</summary>
+    public NaiveProxySettings NaiveProxy { get; set; } = new();
+
     public string? ActiveSubscription { get; set; }
 
     public List<string> PreferredCountries { get; set; } = new();
@@ -123,6 +126,8 @@ public sealed class CehoConfig
         foreach (var app in cfg.Apps)
             app.AllowedNodes ??= new();
 
+        cfg.MigrateLegacyNaive(path);
+
         // Старые установки жили на заводском адресе движка — том же, что у Happ.
         if (SharesSingBoxTun(cfg.TunAddress))
         {
@@ -145,5 +150,30 @@ public sealed class CehoConfig
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
+    }
+
+    /// <summary>Старый блок NaiveProxy в config.json переносим в подписку naive://…</summary>
+    internal void MigrateLegacyNaive(string path)
+    {
+        if (!NaiveProxy.IsConfigured) return;
+
+        var uri = NaiveProxyHelper.BuildUri(NaiveProxy);
+        if (!Subscriptions.Any(s => string.Equals(s.Url, uri, StringComparison.OrdinalIgnoreCase)))
+        {
+            var baseName = string.IsNullOrWhiteSpace(NaiveProxy.Remark) ? "NaiveProxy" : NaiveProxy.Remark.Trim();
+            var name = baseName;
+            for (var i = 2; Subscriptions.Any(s => s.Name == name); i++)
+                name = $"{baseName} {i}";
+
+            Subscriptions.Add(new SubscriptionEntry { Name = name, Url = uri, Enabled = true });
+            ActiveSubscription ??= name;
+        }
+
+        NaiveProxy = new NaiveProxySettings();
+        if (File.Exists(path))
+        {
+            try { Save(path); }
+            catch { /* в памяти уже без legacy-блока */ }
+        }
     }
 }
