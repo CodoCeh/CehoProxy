@@ -882,6 +882,14 @@ switch (cmd)
         return 0;
     }
 
+    case "proxy-test":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        var r = ProxyProbe.TestMixed(cfg.MixedPort, null);
+        Console.WriteLine(ProxyProbe.FormatResult(r, cfg.Language, null));
+        return r.Ok ? 0 : 1;
+    }
+
     case "set-port":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);

@@ -150,16 +150,27 @@ public sealed class WebServer
             return;
         }
 
+        if (path == "/apps/pick")
+        {
+            var picked = AppPathPicker.Pick(cfg.Language);
+            var q = picked is { Length: > 0 }
+                ? $"/?tab=apps&picked={Uri.EscapeDataString(picked)}"
+                : "/?tab=apps";
+            Redirect(ctx, q);
+            return;
+        }
+
         var flash = ctx.Request.QueryString["m"];
         var flashErr = ctx.Request.QueryString["e"] == "1";
         var current = ctx.Request.QueryString["tab"] ?? "state";
         var job = Jobs.Find(ctx.Request.QueryString["job"]);
         var view = ViewFromQuery(ctx.Request.QueryString["view"]);
         var tunnel = ctx.Request.QueryString["tunnel"];
+        var pickedPath = ctx.Request.QueryString["picked"];
         var st = _state();
         if (current == "exit" && st.Running)
             await RefreshLiveLatencyAsync(cfg);
-        await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel));
+        await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel, pickedPath));
     }
 
     private static bool Authorized(HttpListenerContext ctx, CehoConfig cfg)
@@ -419,18 +430,49 @@ public sealed class WebServer
 
                 case "/subs/add":
                 {
-                    var url = f.GetValueOrDefault("url", "").Trim();
                     var name = f.GetValueOrDefault("name", "").Trim();
-                    if (url.Length == 0) return (S("pf_no_subs_fix"), true, null);
                     if (name.Length == 0) name = $"sub{cfg.Subscriptions.Count + 1}";
                     if (cfg.Subscriptions.Any(s => s.Name == name))
                         return (S("err_sub_exists", name), true, null);
 
-                    cfg.Subscriptions.Add(new SubscriptionEntry { Name = name, Url = url });
+                    if (!TryBuildSubUrl(f, name, null, out var url, out var errKey))
+                        return (S(errKey!, []), true, null);
+
+                    cfg.Subscriptions.Add(new SubscriptionEntry { Name = name, Url = url! });
                     cfg.ActiveSubscription ??= name;
                     Save(cfg);
                     _pool = null;
                     return (S("sub_added", name), false, ApplyJob(cfg).Id);
+                }
+
+                case "/subs/save":
+                {
+                    var orig = f.GetValueOrDefault("origName", "").Trim();
+                    var entry = cfg.Subscriptions.FirstOrDefault(s => s.Name == orig);
+                    if (entry is null) return (S("subs_edit_missing", []), true, null);
+
+                    NaiveProxySettings? keepPass = null;
+                    if (SubscriptionKind.IsNaive(entry)
+                        && NaiveProxyHelper.TryParseUri(entry.Url, out var prev) && prev is not null)
+                        keepPass = prev;
+
+                    var name = f.GetValueOrDefault("name", "").Trim();
+                    if (name.Length == 0) name = orig;
+                    if (cfg.Subscriptions.Any(s => s.Name == name && !string.Equals(s.Name, orig, StringComparison.Ordinal)))
+                        return (S("err_sub_exists", name), true, null);
+
+                    if (!TryBuildSubUrl(f, name, keepPass, out var url, out var errKey))
+                        return (S(errKey!, []), true, null);
+
+                    if (string.Equals(cfg.ActiveSubscription, orig, StringComparison.Ordinal)
+                        && !string.Equals(name, orig, StringComparison.Ordinal))
+                        cfg.ActiveSubscription = name;
+
+                    entry.Name = name;
+                    entry.Url = url!;
+                    Save(cfg);
+                    _pool = null;
+                    return (S("sub_saved", name), false, ApplyJob(cfg).Id);
                 }
 
                 case "/subs/check":
@@ -562,6 +604,20 @@ public sealed class WebServer
                             Save(back);
                             throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
                         }
+                    });
+                    return (null, false, job.Id);
+                }
+
+                case "/browser/test":
+                {
+                    var port = cfg.MixedPort;
+                    var job = Jobs.Start("proxy-test", S("job_naive_test"), async p =>
+                    {
+                        p.Stage(S("job_naive_test"), 30);
+                        await Task.Yield();
+                        var r = ProxyProbe.TestMixed(port, null);
+                        p.Stage(S("job_naive_test"), 95);
+                        return ProxyProbe.FormatResult(r, cfg.Language, null);
                     });
                     return (null, false, job.Id);
                 }
@@ -884,7 +940,7 @@ public sealed class WebServer
 
     private string RenderPage(
         CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr, Job? job,
-        LogView logView = LogView.All, string? tunnelFolder = null)
+        LogView logView = LogView.All, string? tunnelFolder = null, string? pickedPath = null)
     {
         string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
         var sb = new StringBuilder();
@@ -899,7 +955,8 @@ public sealed class WebServer
         var tabs = new (string Id, string Key)[]
         {
             ("state", "nav_state"), ("apps", "nav_apps"), ("subs", "nav_subs"),
-            ("exit", "nav_exit"), ("browser", "nav_browser"), ("doctor", "nav_doctor"),
+            ("exit", "nav_exit"), ("browser", "nav_browser"),
+            ("doctor", "nav_doctor"),
             ("log", "nav_log"), ("access", "nav_access"), ("help", "nav_help"),
         };
         sb.Append("<nav class=tabs>");
@@ -916,7 +973,7 @@ public sealed class WebServer
 
         switch (tab)
         {
-            case "apps": RenderApps(sb, cfg, S, tunnelFolder); break;
+            case "apps": RenderApps(sb, cfg, S, tunnelFolder, pickedPath); break;
             case "subs": RenderSubs(sb, cfg, S); break;
             case "exit": RenderExit(sb, cfg, S); break;
             case "browser": RenderBrowser(sb, cfg, S); break;
@@ -938,6 +995,7 @@ public sealed class WebServer
         sb.Append("</div>");
 
         if (job is { Running: true }) sb.Append(WebUi.JobScript);
+        if (tab == "subs" && cfg.Subscriptions.Count > 0) sb.Append(WebUi.SubModalScript);
         sb.Append("</body></html>");
         return sb.ToString();
     }
@@ -1188,7 +1246,7 @@ public sealed class WebServer
     }
 
     private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,
-        string? tunnelFolder)
+        string? tunnelFolder, string? pickedPath = null)
     {
         if (!string.IsNullOrEmpty(tunnelFolder))
         {
@@ -1239,8 +1297,12 @@ public sealed class WebServer
             OsKind.Mac => "apps_placeholder_mac",
             _ => "apps_placeholder_linux",
         }, []);
-        sb.Append("<form class=row method=post action=/apps/add><input type=hidden name=tab value=apps>");
-        sb.Append("<input type=text name=path placeholder=\"").Append(E(placeholder)).Append("\">");
+        sb.Append("<form class=\"row app-add\" method=post action=/apps/add><input type=hidden name=tab value=apps>");
+        sb.Append("<input type=text name=path placeholder=\"").Append(E(placeholder)).Append("\"");
+        if (!string.IsNullOrWhiteSpace(pickedPath))
+            sb.Append(" value=\"").Append(E(pickedPath)).Append("\"");
+        sb.Append(">");
+        sb.Append("<a class=\"ghost pick\" href=\"/apps/pick\">").Append(E(S("btn_pick_app", []))).Append("</a>");
         sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("apps_hint", []))).Append(' ')
           .Append(E(Os.IsMac ? S("apps_hint_mac", []) : S("apps_hint_sysdir", []))).Append("</p>");
@@ -1456,10 +1518,14 @@ public sealed class WebServer
                   .Append("</button></form></td>");
 
                 sb.Append("<td>").Append(E(s.Name));
+                if (SubscriptionKind.IsNaive(s))
+                    sb.Append(" <span class=\"tag kind-naive\">").Append(E(S("subs_kind_naive", []))).Append("</span>");
+                else
+                    sb.Append(" <span class=\"tag kind-sub\">").Append(E(S("subs_kind_sub", []))).Append("</span>");
                 if (s.LastNodes is { } nodes)
                     sb.Append("<br><span class=tag>").Append(E(S("sub_nodes_n", new object[] { nodes })))
                       .Append("</span>");
-                sb.Append("<div class=path>").Append(E(s.Url)).Append("</div></td>");
+                sb.Append("<div class=path>").Append(E(MaskNaiveUrl(s.Url))).Append("</div></td>");
 
                 sb.Append("<td>");
                 if (s.ExpiresUtc is { } when)
@@ -1506,6 +1572,9 @@ public sealed class WebServer
                 sb.Append("</td>");
 
                 sb.Append("<td class=actions>");
+                sb.Append("<button type=button class=ghost data-sub-edit=\"")
+                  .Append(SubDialogId(s.Name)).Append("\">")
+                  .Append(E(S("btn_edit", []))).Append("</button>");
                 sb.Append("<form method=post action=/subs/remove><input type=hidden name=tab value=subs>")
                   .Append("<input type=hidden name=name value=\"").Append(E(s.Name))
                   .Append("\"><button class=danger>").Append(E(S("btn_delete", []))).Append("</button></form>");
@@ -1514,17 +1583,24 @@ public sealed class WebServer
             sb.Append("</table></div>");
             sb.Append("<p class=hint>").Append(E(S("subs_toggle_hint", []))).Append("</p>");
             sb.Append("<p class=hint>").Append(E(S("subs_expiry_hint", []))).Append("</p>");
+
+            sb.Append("<div class=sub-modals>");
+            foreach (var s in cfg.Subscriptions)
+            {
+                sb.Append("<dialog id=\"").Append(SubDialogId(s.Name)).Append("\" class=sub-modal>");
+                sb.Append("<h3 class=modal-title>").Append(E(S("subs_edit_title", new object[] { s.Name }))).Append("</h3>");
+                RenderSubForm(sb, S, "/subs/save", "btn_save", s, s.Name, editPassword: true, inModal: true);
+                sb.Append("</dialog>");
+            }
+            sb.Append("</div>");
         }
 
         sb.Append("<form class=row method=post action=/subs/check><input type=hidden name=tab value=subs>")
           .Append("<button class=ghost>").Append(E(S("sub_check", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("sub_checking", []))).Append("</p>");
 
-        sb.Append("<form class=row method=post action=/subs/add><input type=hidden name=tab value=subs>");
-        sb.Append("<input type=text name=name placeholder=\"").Append(E(S("col_name", [])))
-          .Append("\" style=\"flex:0 0 180px;min-width:130px\">");
-        sb.Append("<input type=text name=url placeholder=\"https://…\">");
-        sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
+        sb.Append("<h3>").Append(E(S("subs_add_title", []))).Append("</h3>");
+        RenderSubForm(sb, S, "/subs/add", "btn_add_sub", null, null, editPassword: false, inModal: false);
 
         sb.Append("<form class=row method=post action=/subs/timeout style=\"margin-top:16px\"><input type=hidden name=tab value=subs>");
         sb.Append("<span style=\"align-self:center\">").Append(E(S("timeout_label", []))).Append(":</span>");
@@ -1711,7 +1787,155 @@ public sealed class WebServer
         sb.Append("<dt>HTTP</dt><dd>127.0.0.1:").Append(cfg.MixedPort).Append("</dd>");
         sb.Append("</dl>");
         sb.Append("<p class=hint>").Append(E(S("browser_howto", new object[] { cfg.MixedPort }))).Append("</p>");
-        sb.Append("<p class=hint>").Append(E(S("browser_note", []))).Append("</p></section>");
+        sb.Append("<p class=hint>").Append(E(S("browser_note", []))).Append("</p>");
+        sb.Append("<form method=post action=/browser/test class=row>");
+        sb.Append("<button type=submit>").Append(E(S("btn_naive_test", []))).Append("</button>");
+        sb.Append("</form></section>");
+    }
+
+    private static bool TryBuildSubUrl(
+        IReadOnlyDictionary<string, string> f,
+        string remark,
+        NaiveProxySettings? keepPasswordFrom,
+        out string? url,
+        out string? errorKey)
+    {
+        url = null;
+        errorKey = null;
+        var kind = f.GetValueOrDefault("kind", "sub").Trim();
+
+        if (string.Equals(kind, "naive", StringComparison.OrdinalIgnoreCase))
+        {
+            var settings = new NaiveProxySettings
+            {
+                Enabled = true,
+                Server = f.GetValueOrDefault("server", "").Trim(),
+                Username = f.GetValueOrDefault("username", "").Trim(),
+                ServerName = f.GetValueOrDefault("serverName", "").Trim(),
+                AllowInsecure = f.ContainsKey("allowInsecure"),
+                Remark = remark,
+            };
+            if (int.TryParse(f.GetValueOrDefault("port", "8443"), out var port))
+                settings.Port = port;
+
+            var pass = f.GetValueOrDefault("password", "").Trim();
+            settings.Password = pass.Length > 0
+                ? pass
+                : keepPasswordFrom?.Password ?? "";
+
+            if (!settings.IsConfigured)
+            {
+                errorKey = "naive_form_incomplete";
+                return false;
+            }
+
+            url = NaiveProxyHelper.BuildUri(settings);
+            return true;
+        }
+
+        url = f.GetValueOrDefault("url", "").Trim();
+        if (url.Length == 0)
+        {
+            errorKey = "pf_no_subs_fix";
+            return false;
+        }
+
+        if (url.StartsWith("naive://", StringComparison.OrdinalIgnoreCase)
+            && !NaiveProxyHelper.TryParseUri(url, out _))
+        {
+            errorKey = "naive_uri_bad";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void RenderSubForm(
+        StringBuilder sb,
+        Func<string, object[], string> S,
+        string action,
+        string buttonKey,
+        SubscriptionEntry? edit,
+        string? origName,
+        bool editPassword,
+        bool inModal)
+    {
+        var isNaive = edit is not null && SubscriptionKind.IsNaive(edit);
+        NaiveProxySettings? naive = null;
+        if (isNaive && NaiveProxyHelper.TryParseUri(edit!.Url, out var parsed))
+            naive = parsed;
+
+        var radioId = edit is null ? "add" : "e" + Math.Abs(StringComparer.Ordinal.GetHashCode(origName ?? edit.Name)).ToString();
+        sb.Append("<form class=\"stack sub-add\" method=post action=").Append(action)
+          .Append("><input type=hidden name=tab value=subs>");
+        if (origName is not null)
+            sb.Append("<input type=hidden name=origName value=\"").Append(E(origName)).Append("\">");
+
+        sb.Append("<div class=kind-switch role=group aria-label=\"").Append(E(S("subs_kind_label", []))).Append("\">");
+        sb.Append("<input type=radio name=kind id=").Append(radioId).Append("-sub value=sub")
+          .Append(isNaive ? "" : " checked").Append(">");
+        sb.Append("<label for=").Append(radioId).Append("-sub>").Append(E(S("subs_kind_sub", []))).Append("</label>");
+        sb.Append("<input type=radio name=kind id=").Append(radioId).Append("-naive value=naive")
+          .Append(isNaive ? " checked" : "").Append(">");
+        sb.Append("<label for=").Append(radioId).Append("-naive>").Append(E(S("subs_kind_naive", []))).Append("</label>");
+        sb.Append("</div>");
+
+        sb.Append("<label class=field><span>").Append(E(S("col_name", []))).Append("</span><input type=text name=name");
+        if (edit is not null)
+            sb.Append(" value=\"").Append(E(edit.Name)).Append("\"");
+        else
+            sb.Append(" placeholder=\"").Append(E(S("subs_name_placeholder", []))).Append("\"");
+        sb.Append("></label>");
+
+        sb.Append("<div class=\"sub-add-panel sub-add-url\">");
+        sb.Append("<label class=field><span>").Append(E(S("col_link", []))).Append("</span><input type=text name=url");
+        if (edit is not null && !isNaive)
+            sb.Append(" value=\"").Append(E(edit.Url)).Append("\"");
+        else
+            sb.Append(" placeholder=\"").Append(E(S("subs_url_placeholder", []))).Append("\"");
+        sb.Append("></label>");
+        sb.Append("<p class=hint>").Append(E(S("subs_kind_sub_hint", []))).Append("</p></div>");
+
+        sb.Append("<div class=\"sub-add-panel sub-add-naive\">");
+        sb.Append("<label class=field><span>").Append(E(S("naive_server", []))).Append("</span><input type=text name=server");
+        if (naive is not null) sb.Append(" value=\"").Append(E(naive.Server)).Append("\"");
+        sb.Append("></label>");
+        sb.Append("<label class=field><span>").Append(E(S("naive_port", []))).Append("</span><input type=number name=port value=\"")
+          .Append(naive?.Port.ToString() ?? "8443").Append("\" min=\"1\" max=\"65535\"></label>");
+        sb.Append("<label class=field><span>").Append(E(S("naive_user", []))).Append("</span><input type=text name=username");
+        if (naive is not null) sb.Append(" value=\"").Append(E(naive.Username)).Append("\"");
+        sb.Append(" autocomplete=off></label>");
+        sb.Append("<label class=field><span>").Append(E(S("naive_password", [])))
+          .Append("</span><input type=password name=password autocomplete=new-password");
+        if (editPassword && naive?.Password.Length > 0)
+            sb.Append(" placeholder=\"").Append(E(S("naive_password_keep", []))).Append("\"");
+        sb.Append("></label>");
+        if (editPassword)
+            sb.Append("<p class=hint>").Append(E(S("naive_password_keep", []))).Append("</p>");
+        sb.Append("<label class=field><span>").Append(E(S("naive_sni", []))).Append("</span><input type=text name=serverName");
+        if (naive?.ServerName is { Length: > 0 }) sb.Append(" value=\"").Append(E(naive.ServerName)).Append("\"");
+        sb.Append(" placeholder=\"").Append(E(S("naive_sni_hint", []))).Append("\"></label>");
+        sb.Append("<label class=check><input type=checkbox name=allowInsecure")
+          .Append(naive is { AllowInsecure: true } ? " checked" : "").Append("> allowInsecure</label>");
+        sb.Append("<p class=hint>").Append(E(S("subs_kind_naive_hint", []))).Append("</p></div>");
+        sb.Append("<div class=modal-actions>");
+        sb.Append("<button type=submit>").Append(E(S(buttonKey, []))).Append("</button>");
+        if (inModal)
+            sb.Append("<button type=button class=ghost data-sub-close>").Append(E(S("btn_cancel", []))).Append("</button>");
+        sb.Append("</div></form>");
+    }
+
+    private static string SubDialogId(string name) =>
+        "subdlg-" + Math.Abs(StringComparer.Ordinal.GetHashCode(name)).ToString();
+
+    private static string MaskNaiveUrl(string url)
+    {
+        if (!url.StartsWith("naive://", StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        var at = url.LastIndexOf('@');
+        if (at < 0) return url;
+        return "naive://***:***" + url[at..];
     }
 
     private static readonly (LogView View, string Key, string Query)[] LogViews =

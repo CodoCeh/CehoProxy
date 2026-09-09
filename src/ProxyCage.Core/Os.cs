@@ -129,6 +129,7 @@ public static class Os
             ? tunIp[..(tunIp.LastIndexOf('.') + 1)]
             : null;
 
+        var candidates = new List<IPAddress>();
         foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (nic.OperationalStatus != OperationalStatus.Up) continue;
@@ -136,9 +137,12 @@ public static class Os
                 or NetworkInterfaceType.Tunnel) continue;
 
             var desc = nic.Description;
+            var name = nic.Name;
             if (desc.Contains("Wintun", StringComparison.OrdinalIgnoreCase)) continue;
             if (desc.Contains("WireGuard", StringComparison.OrdinalIgnoreCase)) continue;
             if (desc.Contains("TAP-", StringComparison.OrdinalIgnoreCase)) continue;
+            if (desc.Contains("VirtualBox Host-Only", StringComparison.OrdinalIgnoreCase)) continue;
+            if (name.Contains("VirtualBox Host-Only", StringComparison.OrdinalIgnoreCase)) continue;
 
             foreach (var ua in nic.GetIPProperties().UnicastAddresses)
             {
@@ -146,13 +150,16 @@ public static class Os
                 var s = ua.Address.ToString();
                 if (s.StartsWith("127.", StringComparison.Ordinal)) continue;
                 if (s.StartsWith("169.254.", StringComparison.Ordinal)) continue;
+                if (s.StartsWith("192.168.56.", StringComparison.Ordinal)) continue;
                 if (tunPrefix != null && s.StartsWith(tunPrefix, StringComparison.Ordinal)) continue;
                 if (LooksLikeTunnelAddress(s)) continue;
-                return ua.Address;
+                candidates.Add(ua.Address);
             }
         }
 
-        return null;
+        if (candidates.Count == 0) return null;
+        return candidates.FirstOrDefault(a => a.ToString().StartsWith("192.168.0.", StringComparison.Ordinal))
+               ?? candidates[0];
     }
 
     /// <summary>

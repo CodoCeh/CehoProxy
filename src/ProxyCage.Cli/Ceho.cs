@@ -46,7 +46,11 @@ public static class Ceho
             AutomaticDecompression = DecompressionMethods.All,
         };
         if (proxy is null)
+        {
+            // Windows system proxy (e.g. stale 127.0.0.1:2080) must not hijack subscription fetches.
+            handler.UseProxy = false;
             handler.ConnectCallback = ConnectBypassingSystemDnsAsync;
+        }
         else
         {
             handler.Proxy = new WebProxyStub(proxy);
@@ -363,15 +367,17 @@ public static class Ceho
             throw new PoolEmptyException(Strings.T(cfg.Language, "subs_all_off"));
 
         var done = 0;
-        var lists = await Task.WhenAll(active.Select(async s =>
-        {
-            var nodes = await LoadOneAsync(s, cfg.Language, preferCache, report, cfg.TimeoutSeconds);
-            var ready = Interlocked.Increment(ref done);
-            report?.Stage(
-                Strings.T(cfg.Language, "sub_progress", s.Name, nodes.Count, ready, active.Count),
-                ready * 90 / active.Count);
-            return nodes;
-        }));
+        var lists = active.Count == 0
+            ? Array.Empty<IReadOnlyList<ProxyNode>>()
+            : await Task.WhenAll(active.Select(async s =>
+            {
+                var nodes = await LoadOneAsync(s, cfg.Language, preferCache, report, cfg.TimeoutSeconds);
+                var ready = Interlocked.Increment(ref done);
+                report?.Stage(
+                    Strings.T(cfg.Language, "sub_progress", s.Name, nodes.Count, ready, active.Count),
+                    active.Count > 0 ? ready * 90 / active.Count : 90);
+                return nodes;
+            }));
 
         report?.Stage(Strings.T(cfg.Language, "sub_building_pool"), 95);
 

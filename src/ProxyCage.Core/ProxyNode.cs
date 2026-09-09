@@ -8,6 +8,7 @@ public enum ProxyProtocol
     Shadowsocks,
     Hysteria2,
     Tuic,
+    Naive,
 }
 
 public sealed class ProxyNode

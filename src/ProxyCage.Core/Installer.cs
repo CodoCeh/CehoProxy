@@ -253,8 +253,7 @@ public static class Installer
             == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "amd64";
         var os = Os.Kind switch { OsKind.Windows => "windows", OsKind.Mac => "darwin", _ => "linux" };
 
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-        http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "CehoProxy");
+        using var http = DirectHttp.CreateClient(TimeSpan.FromMinutes(10));
         http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/vnd.github+json");
 
         var json = await http.GetStringAsync("https://api.github.com/repos/SagerNet/sing-box/releases/latest");
@@ -302,9 +301,24 @@ public static class Installer
         else
             Os.Run("tar", $"-xzf \"{archive}\" -C \"{temp}\"", 120000);
 
-        var found = Directory.EnumerateFiles(temp, Os.SingBoxFileName, SearchOption.AllDirectories)
-            .FirstOrDefault();
-        if (found is not null) File.Copy(found, engine, overwrite: true);
+        var engineDir = Directory.EnumerateFiles(temp, Os.SingBoxFileName, SearchOption.AllDirectories)
+            .Select(Path.GetDirectoryName)
+            .FirstOrDefault(d => d is not null);
+        var found = engineDir is null
+            ? null
+            : Path.Combine(engineDir, Os.SingBoxFileName);
+        if (found is not null && File.Exists(found))
+            File.Copy(found, engine, overwrite: true);
+
+        // Naive outbound needs libcronet next to the engine on Windows.
+        if (engineDir is not null)
+        {
+            foreach (var dll in Directory.EnumerateFiles(engineDir, "libcronet.*", SearchOption.TopDirectoryOnly))
+            {
+                var dest = Path.Combine(root, Path.GetFileName(dll));
+                File.Copy(dll, dest, overwrite: true);
+            }
+        }
 
         try { Directory.Delete(temp, true); } catch { }
     }

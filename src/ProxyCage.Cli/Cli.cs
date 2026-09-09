@@ -173,7 +173,7 @@ public static class Cli
     {
         "status", "doctor", "verify", "apps", "add-app", "remove-app", "rename-app",
         "subs", "sub-add", "sub-remove", "sub-on", "sub-off", "countries", "country", "nodes", "node",
-        "browser", "detect", "apply", "lang", "set-port", "autostart", "speed",
+        "browser", "proxy-test", "detect", "apply", "lang", "set-port", "autostart", "speed",
         "restart", "stop", "off", "timeout", "set-timeout", "log",
     };
 

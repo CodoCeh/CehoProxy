@@ -19,6 +19,7 @@ public static class SubscriptionParser
         ("hysteria2://", ProxyProtocol.Hysteria2),
         ("hy2://", ProxyProtocol.Hysteria2),
         ("tuic://", ProxyProtocol.Tuic),
+        ("naive://", ProxyProtocol.Naive),
     };
 
     public static bool LooksLikeNodeUri(string text) =>
@@ -47,6 +48,7 @@ public static class SubscriptionParser
             {
                 ProxyProtocol.Vmess => ParseVmess(line, ++index, lang),
                 ProxyProtocol.Shadowsocks => ParseShadowsocks(line, ++index, lang),
+                ProxyProtocol.Naive => ParseNaive(line, ++index, lang),
                 _ => ParseUriStyle(line, match.Scheme, match.Protocol, ++index, lang),
             };
             if (node is not null) nodes.Add(node);
@@ -97,6 +99,18 @@ public static class SubscriptionParser
         {
             return body;
         }
+    }
+
+    private static ProxyNode? ParseNaive(string uri, int index, string lang)
+    {
+        if (!NaiveProxyHelper.TryParseUri(uri, out var s) || s is null) return null;
+        var node = NaiveProxyHelper.ToNode(s);
+        node.Tag = $"n{index:00}";
+        var country = CountryResolver.ResolveCode(node.Remark);
+        node.CountryCode = country;
+        node.CountryName = CountryResolver.DisplayName(country, lang);
+        node.IsMeta = IsMeta(node.Remark, country);
+        return node;
     }
 
     private static ProxyNode? ParseUriStyle(string uri, string scheme, ProxyProtocol protocol, int index, string lang)
