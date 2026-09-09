@@ -164,10 +164,15 @@ public sealed class SingBoxProcess : IDisposable
     /// Движок говорит по-своему. Здесь переводим на человеческий только те беды, где человек
     /// без подсказки не поймёт, что делать: чужие адаптеры мы принципиально не убираем сами.
     /// </summary>
-    public static string? Hint(string reason, string lang) =>
-        reason.Contains("already exists", StringComparison.OrdinalIgnoreCase)
-            ? Strings.T(lang, "engine_tun_busy")
-            : null;
+    public static string? Hint(string reason, string lang)
+    {
+        if (reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            return Strings.T(lang, "engine_tun_busy");
+        if (reason.Contains("cronet", StringComparison.OrdinalIgnoreCase)
+            && reason.Contains("library not found", StringComparison.OrdinalIgnoreCase))
+            return Strings.T(lang, "engine_cronet_hint", Os.IsWindows ? "" : "sudo ");
+        return null;
+    }
 
     /// <summary>Строки движка с момента этого запуска.</summary>
     public IReadOnlyList<string> EngineLogOfThisRun(int maxLines = 30)

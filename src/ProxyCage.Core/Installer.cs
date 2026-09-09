@@ -23,6 +23,15 @@ public static class Installer
         }
     }
 
+    /// <summary>Naive outbound на Windows: докачать sing-box, если рядом с ceho-engine.exe нет libcronet.dll.</summary>
+    public static async Task EnsureCronetAsync(
+        string root, Action<string> log, string lang = "ru", CancellationToken cancel = default)
+    {
+        if (!MissingCronetDll(root)) return;
+        log(Strings.T(lang, "engine_cronet_missing", root));
+        await DownloadEngineAsync(root, log, lang).WaitAsync(cancel);
+    }
+
     /// <summary>Файлы прошлой версии: их можно и нужно затирать, данных в них нет.</summary>
     private static readonly string[] VersionLeftovers =
     {
@@ -303,6 +312,9 @@ public static class Installer
         if (!File.Exists(engine))
             throw new InvalidOperationException("движок скачался, но распаковать его не удалось");
 
+        if (MissingCronetDll(root))
+            throw new InvalidOperationException(Strings.T(lang, "engine_cronet_still_missing", root));
+
         Os.AdoptOwnEngine(root);
 
         if (!Os.IsWindows) Os.Run("chmod", $"755 {engine}", 5000);
@@ -327,11 +339,16 @@ public static class Installer
         var found = engineDir is null
             ? null
             : Path.Combine(engineDir, Os.SingBoxFileName);
-        if (found is not null && File.Exists(found))
-            File.Copy(found, engine, overwrite: true);
 
+        // libcronet.dll копируем первым: ceho-engine.exe может быть занят работающим демоном.
         if (engineDir is not null)
             CopyCronetDependencies(engineDir, root);
+
+        if (found is not null && File.Exists(found))
+        {
+            try { File.Copy(found, engine, overwrite: true); }
+            catch (IOException) when (File.Exists(engine)) { }
+        }
 
         try { Directory.Delete(temp, true); } catch { }
     }

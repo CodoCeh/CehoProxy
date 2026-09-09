@@ -8,17 +8,17 @@ public class SubscriptionFetcherTests
 {
     [Theory]
     [InlineData(1, SubscriptionFetchPersona.SingBox)]
-    [InlineData(2, SubscriptionFetchPersona.Clash)]
-    [InlineData(3, SubscriptionFetchPersona.Client)]
-    [InlineData(4, SubscriptionFetchPersona.Browser)]
-    [InlineData(5, SubscriptionFetchPersona.SingBox)]
-    public void First_attempt_mimics_sing_box_client(int attempt, SubscriptionFetchPersona expected)
+    [InlineData(2, SubscriptionFetchPersona.Exclave)]
+    [InlineData(3, SubscriptionFetchPersona.Clash)]
+    [InlineData(4, SubscriptionFetchPersona.Client)]
+    [InlineData(5, SubscriptionFetchPersona.Browser)]
+    public void Persona_chain_covers_sfa_exclave_clash_client_browser(int attempt, SubscriptionFetchPersona expected)
     {
         Assert.Equal(expected, SubscriptionFetcher.PersonaOf(attempt));
     }
 
     [Fact]
-    public void SingBox_persona_sends_exclave_like_user_agent_and_hwid()
+    public void SingBox_persona_sends_sfa_user_agent_and_hwid()
     {
         var headers = new HttpRequestMessage().Headers;
         SubscriptionFetcher.ApplyPersonaHeaders(
@@ -29,6 +29,18 @@ public class SubscriptionFetcherTests
         Assert.Equal("*/*", Flat(headers, "Accept"));
         Assert.Equal("cehoa1b2c3d4e5f67890", Flat(headers, "x-hwid"));
         Assert.NotEqual("CehoProxy", Flat(headers, "x-device-model"));
+    }
+
+    [Fact]
+    public void Exclave_persona_sends_stock_exclave_user_agent()
+    {
+        var headers = new HttpRequestMessage().Headers;
+        SubscriptionFetcher.ApplyPersonaHeaders(
+            headers, SubscriptionFetchPersona.Exclave, "1.2.33", "cehoa1b2c3d4e5f67890");
+
+        Assert.StartsWith("Exclave/", Flat(headers, "User-Agent"));
+        Assert.Equal("*/*", Flat(headers, "Accept"));
+        Assert.Equal("cehoa1b2c3d4e5f67890", Flat(headers, "x-hwid"));
     }
 
     [Fact]

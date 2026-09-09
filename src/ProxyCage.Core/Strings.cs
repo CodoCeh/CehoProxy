@@ -78,6 +78,12 @@ public static class Strings
         ["pf_engine_fix_unix"] = new(
             "Скачайте движок командой: sudo chp engine. Либо поставьте sing-box пакетным менеджером системы, либо положите файл в {0}.",
             "Download the engine with: sudo chp engine. Or install sing-box with your package manager, or put the file into {0}."),
+        ["pf_cronet_missing"] = new(
+            "Для NaiveProxy не хватает libcronet.dll",
+            "libcronet.dll is missing for NaiveProxy"),
+        ["pf_cronet_detail"] = new(
+            "Движок sing-box есть, но рядом с ним в {0} нет libcronet.dll — без неё naive не стартует.",
+            "The sing-box engine is present, but libcronet.dll is missing next to it in {0}, so naive cannot start."),
         ["pf_curl_ok"] = new("Проверка выхода доступна", "Exit check available"),
         ["pf_curl_missing"] = new("Не найден curl", "curl not found"),
         ["pf_curl_detail"] = new(
@@ -774,6 +780,15 @@ public static class Strings
         ["engine_cronet_missing"] = new(
             "Для NaiveProxy нужна libcronet.dll рядом с движком в {0} — скачиваю sing-box заново.",
             "NaiveProxy needs libcronet.dll next to the engine in {0} — downloading sing-box again."),
+        ["engine_cronet_hint"] = new(
+            "Сначала chp off, затем от администратора: {0}chp engine update — положит libcronet.dll рядом с движком.",
+            "Run chp off first, then as administrator: {0}chp engine update — it will place libcronet.dll next to the engine."),
+        ["engine_cronet_still_missing"] = new(
+            "sing-box скачался, но libcronet.dll в {0} так и не появилась — проверьте права на папку.",
+            "sing-box was downloaded, but libcronet.dll did not appear in {0} — check folder permissions."),
+        ["stage_cronet_fetch"] = new(
+            "Докачиваю libcronet.dll для NaiveProxy",
+            "Fetching libcronet.dll for NaiveProxy"),
         ["engine_need_rights"] = new(
             "Движок кладётся в общую папку программы, поэтому нужны права администратора: {0}chp engine",
             "The engine goes into the shared program folder, so administrator rights are required: {0}chp engine"),

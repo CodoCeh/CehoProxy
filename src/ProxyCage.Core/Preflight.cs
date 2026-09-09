@@ -38,6 +38,13 @@ public static class Preflight
                     : S("pf_engine_fix_unix", root),
                 Repair.Engine));
 
+        if (singBox is not null && Installer.MissingCronetDll(root))
+            checks.Add(new Check(Level.Blocker,
+                S("pf_cronet_missing"),
+                S("pf_cronet_detail", root),
+                S("engine_update_hint", Os.IsWindows ? "" : "sudo "),
+                Repair.Engine));
+
         if (Os.ResolveCurl() is not null)
             checks.Add(new Check(Level.Ok, S("pf_curl_ok"), null, null));
         else
