@@ -771,6 +771,9 @@ public static class Strings
         ["engine_update_hint"] = new(
             "Обновить его до свежей версии: {0}chp engine update",
             "Update it to the latest version: {0}chp engine update"),
+        ["engine_cronet_missing"] = new(
+            "Для NaiveProxy нужна libcronet.dll рядом с движком в {0} — скачиваю sing-box заново.",
+            "NaiveProxy needs libcronet.dll next to the engine in {0} — downloading sing-box again."),
         ["engine_need_rights"] = new(
             "Движок кладётся в общую папку программы, поэтому нужны права администратора: {0}chp engine",
             "The engine goes into the shared program folder, so administrator rights are required: {0}chp engine"),
