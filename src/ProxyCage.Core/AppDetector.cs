@@ -91,6 +91,7 @@ public static class AppDetector
         var climbed = ClimbOutOfNestedDir(folder);
         var climbedNote = climbed != folder ? Strings.T(lang, "det_climbed") : "";
         folder = climbed;
+        folder = NormalizeBrowserInstallFolder(folder);
 
         if (IsSystemFolder(folder))
         {
@@ -252,6 +253,21 @@ public static class AppDetector
                 AddIfMissing(@"^.*[\\/]claude$");
             }
         }
+        else if (IsOpera(app))
+        {
+            if (isWinPath)
+            {
+                AddIfMissing(@"(?i)^.*[\\/]AppData[\\/]Local[\\/]Programs[\\/]Opera(?: GX)?[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]Program Files(?: \(x86\))?[\\/]Opera(?: GX)?[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]Programs[\\/]Opera(?: GX)?[\\/].*[\\/](?:opera|launcher)\.exe$");
+                AddIfMissing(@"(?i)^.*[\\/]Program Files(?: \(x86\))?[\\/]Opera(?: GX)?[\\/].*[\\/](?:opera|launcher)\.exe$");
+            }
+            else
+            {
+                AddIfMissing(@"(?i)^.*[\\/]Opera\.app[\\/]");
+                AddIfMissing(@"^.*[\\/]Opera$");
+            }
+        }
 
         return results;
     }
@@ -275,6 +291,40 @@ public static class AppDetector
         app.Folder.Contains("AnthropicClaude", StringComparison.OrdinalIgnoreCase) ||
         app.Folder.Contains(@"\claude", StringComparison.OrdinalIgnoreCase) ||
         app.Folder.Contains("/claude", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsOpera(AppEntry app) =>
+        string.Equals(app.Name, "Opera", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(app.Name, "Opera GX", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains(@"\Opera", StringComparison.OrdinalIgnoreCase) ||
+        app.Folder.Contains("/Opera", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Opera (и похожие) кладут бинарники в подпапку версии; при выборе opera.exe из неё
+    /// правило должно покрывать весь каталог установки, включая корневой launcher.
+    /// </summary>
+    private static string NormalizeBrowserInstallFolder(string folder)
+    {
+        if (!Os.IsWindows) return folder;
+
+        var current = folder.TrimEnd('\\', '/');
+        for (var i = 0; i < 2; i++)
+        {
+            var leaf = Path.GetFileName(current);
+            var parent = Path.GetDirectoryName(current);
+            if (string.IsNullOrEmpty(leaf) || string.IsNullOrEmpty(parent)) break;
+            if (!LooksLikeVersion(leaf) || !IsChromiumBrowserRoot(parent)) break;
+            current = parent.TrimEnd('\\', '/');
+        }
+
+        return current.Length == 0 ? folder : current;
+    }
+
+    private static bool IsChromiumBrowserRoot(string folder)
+    {
+        var name = Path.GetFileName(folder.TrimEnd('\\', '/'));
+        return name.Equals("Opera", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("Opera GX", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string EscapeGo(string s)
     {

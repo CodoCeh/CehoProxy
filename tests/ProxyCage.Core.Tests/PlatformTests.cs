@@ -287,4 +287,36 @@ public class PlatformTests
             @"C:\Program Files\WindowsApps\OpenAI.Codex_26.901.6511.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe");
         Assert.Equal("Codex", d.Name);
     }
+
+    [Fact]
+    public void Windows_opera_version_subfolder_climbs_to_install_root()
+    {
+        if (!Os.IsWindows) return;
+
+        var d = AppDetector.Detect(
+            @"C:\Users\Administrator\AppData\Local\Programs\Opera\135.0.5973.92\opera.exe");
+        Assert.Equal(
+            @"C:\Users\Administrator\AppData\Local\Programs\Opera",
+            d.Folder,
+            ignoreCase: true);
+    }
+
+    [Fact]
+    public void Windows_opera_regexes_match_root_and_nested_executables()
+    {
+        var app = new AppEntry
+        {
+            Name = "Opera",
+            Folder = @"C:\Users\Administrator\AppData\Local\Programs\Opera\135.0.5973.92",
+        };
+        var rxes = AppDetector.ToRegexes(app);
+
+        var rootStub = @"C:\Users\Administrator\AppData\Local\Programs\Opera\opera.exe";
+        var nested = @"C:\Users\Administrator\AppData\Local\Programs\Opera\135.0.5973.92\opera.exe";
+        var programFiles = @"C:\Program Files\Opera\opera.exe";
+
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(rootStub, r));
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(nested, r));
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(programFiles, r));
+    }
 }

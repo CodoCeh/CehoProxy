@@ -152,11 +152,17 @@ public sealed class WebServer
 
         if (path == "/apps/pick")
         {
-            var picked = AppPathPicker.Pick(cfg.Language);
-            var q = picked is { Length: > 0 }
-                ? $"/?tab=apps&picked={Uri.EscapeDataString(picked)}"
-                : "/?tab=apps";
-            Redirect(ctx, q);
+            var pick = AppPathPicker.Pick(cfg.Language, Root);
+            var q = "?tab=apps";
+            if (pick.Path is { Length: > 0 })
+            {
+                var (msg, isError, jobId) = TryAddAppFromPath(cfg, pick.Path);
+                if (msg is not null) q += $"&m={Uri.EscapeDataString(msg)}&e={(isError ? 1 : 0)}";
+                if (jobId is not null) q += $"&job={Uri.EscapeDataString(jobId)}";
+            }
+            else if (pick.ErrorKey is { Length: > 0 })
+                q += $"&m={Uri.EscapeDataString(Strings.T(cfg.Language, pick.ErrorKey))}&e=1";
+            Redirect(ctx, "/" + q);
             return;
         }
 
@@ -166,11 +172,10 @@ public sealed class WebServer
         var job = Jobs.Find(ctx.Request.QueryString["job"]);
         var view = ViewFromQuery(ctx.Request.QueryString["view"]);
         var tunnel = ctx.Request.QueryString["tunnel"];
-        var pickedPath = ctx.Request.QueryString["picked"];
         var st = _state();
         if (current == "exit" && st.Running)
             await RefreshLiveLatencyAsync(cfg);
-        await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel, pickedPath));
+        await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel));
     }
 
     private static bool Authorized(HttpListenerContext ctx, CehoConfig cfg)
@@ -338,26 +343,7 @@ public sealed class WebServer
             switch (path)
             {
                 case "/apps/add":
-                {
-                    var raw = f.GetValueOrDefault("path", "").Trim();
-                    if (raw.Length == 0) return (S("err_need_path"), true, null);
-                    if (!File.Exists(raw) && !Directory.Exists(raw))
-                        return (S("err_no_such_path", raw), true, null);
-
-                    var d = AppDetector.Detect(raw, cfg.Language);
-                    if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
-                        return (S("err_already_added"), true, null);
-
-                    cfg.Apps.Add(new AppEntry
-                    {
-                        Name = d.Name, Folder = d.Folder,
-                        VersionAgnostic = d.VersionAgnostic,
-                        SingleFile = d.SingleFile,
-                        Launch = File.Exists(raw) ? raw : null,
-                    });
-                    Save(cfg);
-                    return ($"{S("added_name", d.Name)}. {d.Explanation}", false, ApplyJob(cfg).Id);
-                }
+                    return TryAddAppFromPath(cfg, f.GetValueOrDefault("path", ""));
 
                 case "/apps/detected":
                 {
@@ -887,6 +873,29 @@ public sealed class WebServer
         Auth.RestrictConfigAccess(_configPath);
     }
 
+    private (string? Message, bool IsError, string? JobId) TryAddAppFromPath(CehoConfig cfg, string raw)
+    {
+        string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
+        raw = raw.Trim();
+        if (raw.Length == 0) return (S("err_need_path"), true, null);
+        if (!File.Exists(raw) && !Directory.Exists(raw))
+            return (S("err_no_such_path", raw), true, null);
+
+        var d = AppDetector.Detect(raw, cfg.Language);
+        if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
+            return (S("err_already_added"), true, null);
+
+        cfg.Apps.Add(new AppEntry
+        {
+            Name = d.Name, Folder = d.Folder,
+            VersionAgnostic = d.VersionAgnostic,
+            SingleFile = d.SingleFile,
+            Launch = File.Exists(raw) ? raw : null,
+        });
+        Save(cfg);
+        return ($"{S("added_name", d.Name)}. {d.Explanation}", false, ApplyJob(cfg).Id);
+    }
+
     private static async Task<Dictionary<string, string>> ReadFormAsync(HttpListenerRequest req)
     {
         using var reader = new StreamReader(req.InputStream, req.ContentEncoding);
@@ -940,7 +949,7 @@ public sealed class WebServer
 
     private string RenderPage(
         CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr, Job? job,
-        LogView logView = LogView.All, string? tunnelFolder = null, string? pickedPath = null)
+        LogView logView = LogView.All, string? tunnelFolder = null)
     {
         string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
         var sb = new StringBuilder();
@@ -973,7 +982,7 @@ public sealed class WebServer
 
         switch (tab)
         {
-            case "apps": RenderApps(sb, cfg, S, tunnelFolder, pickedPath); break;
+            case "apps": RenderApps(sb, cfg, S, tunnelFolder); break;
             case "subs": RenderSubs(sb, cfg, S); break;
             case "exit": RenderExit(sb, cfg, S); break;
             case "browser": RenderBrowser(sb, cfg, S); break;
@@ -1246,7 +1255,7 @@ public sealed class WebServer
     }
 
     private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,
-        string? tunnelFolder, string? pickedPath = null)
+        string? tunnelFolder)
     {
         if (!string.IsNullOrEmpty(tunnelFolder))
         {
@@ -1298,10 +1307,7 @@ public sealed class WebServer
             _ => "apps_placeholder_linux",
         }, []);
         sb.Append("<form class=\"row app-add\" method=post action=/apps/add><input type=hidden name=tab value=apps>");
-        sb.Append("<input type=text name=path placeholder=\"").Append(E(placeholder)).Append("\"");
-        if (!string.IsNullOrWhiteSpace(pickedPath))
-            sb.Append(" value=\"").Append(E(pickedPath)).Append("\"");
-        sb.Append(">");
+        sb.Append("<input type=text name=path placeholder=\"").Append(E(placeholder)).Append("\">");
         sb.Append("<a class=\"ghost pick\" href=\"/apps/pick\">").Append(E(S("btn_pick_app", []))).Append("</a>");
         sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("apps_hint", []))).Append(' ')

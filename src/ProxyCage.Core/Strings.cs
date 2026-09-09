@@ -496,6 +496,12 @@ public static class Strings
             "We detect the folder and show what the rule will cover."),
         ["btn_pick_app"] = new("Выбрать на ПК", "Choose on this PC"),
         ["app_pick_title"] = new("Выберите программу", "Choose a program"),
+        ["app_pick_no_user"] = new(
+            "Не удалось открыть выбор файла: нет активного пользователя на рабочем столе. Войдите через RDP и повторите.",
+            "Could not open the file picker: no interactive user on the desktop. Sign in via RDP and try again."),
+        ["app_pick_failed"] = new(
+            "Не удалось открыть окно выбора файла на этом компьютере.",
+            "Could not open the file picker on this computer."),
         ["apps_hint_mac"] = new(
             "Для программы из /Applications укажите сам пакет — папку с расширением .app.",
             "For an app from /Applications point to the .app bundle itself."),
