@@ -155,9 +155,12 @@ public static class Os
         return null;
     }
 
-    private static bool LooksLikeTunnelAddress(string address)
+    /// <summary>
+    /// Классический диапазон TUN (172.16–172.31). 10.x не отсекаем: это и корпоративные NIC,
+    /// и VirtualBox NAT (10.0.2.15) — их отфильтруют тип адаптера и tunPrefix из конфига.
+    /// </summary>
+    internal static bool LooksLikeTunnelAddress(string address)
     {
-        if (address.StartsWith("10.", StringComparison.Ordinal)) return true;
         if (!address.StartsWith("172.", StringComparison.Ordinal)) return false;
         var second = address.Split('.').ElementAtOrDefault(1);
         return int.TryParse(second, out var octet) && octet is >= 16 and <= 31;
