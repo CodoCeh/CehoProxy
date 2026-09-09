@@ -72,7 +72,7 @@ if (cmd == "install")
 
     var mayAskAboutEngine = Assistant.Interactive && !args.Contains("--no-setup");
 
-    if (Os.ResolveSingBox(Ceho.Root) is null
+    if ((Os.ResolveSingBox(Ceho.Root) is null || Installer.MissingCronetDll(Ceho.Root))
         && (args.Contains("--with-engine")
             || (mayAskAboutEngine && Cli.AskYes(Strings.T(cfg0.Language, "inst_engine_ask"), true))))
     {
@@ -120,12 +120,15 @@ if (cmd is "engine" or "движок")
     var already = Os.ResolveSingBox(Ceho.Root);
     var again = args.Length >= 2 && args[1].ToLowerInvariant() is "update" or "обновить" or "--force";
 
-    if (already is not null && !again)
+    if (already is not null && !again && !Installer.MissingCronetDll(Ceho.Root))
     {
         Console.WriteLine(Strings.T(cfg0.Language, "engine_already", already));
         Console.WriteLine(Strings.T(cfg0.Language, "engine_update_hint", Os.IsWindows ? "" : "sudo "));
         return 0;
     }
+
+    if (Installer.MissingCronetDll(Ceho.Root))
+        Console.WriteLine(Strings.T(cfg0.Language, "engine_cronet_missing", Ceho.Root));
 
     if (!Preflight.FolderIsWritable(Ceho.Root, out _))
     {
@@ -814,6 +817,19 @@ switch (cmd)
             await Updater.InstallAsync(release, Ceho.OwnExecutablePath, Console.WriteLine);
             Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
 
+            if (Installer.MissingCronetDll(Ceho.Root))
+            {
+                try
+                {
+                    Console.WriteLine(Strings.T(cfg.Language, "engine_cronet_missing", Ceho.Root));
+                    await Installer.DownloadEngineAsync(Ceho.Root, Console.WriteLine, cfg.Language);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(Strings.T(cfg.Language, "inst_engine_failed", ex.Message));
+                }
+            }
+
             try
             {
                 Console.WriteLine("  " + await Ceho.ApplyAsync());
@@ -1180,11 +1196,11 @@ switch (cmd)
 
         Installer.Remove(Ceho.Root, Console.WriteLine, cfg.Language);
 
-        foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
+        foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName, Installer.CronetFileName }.Distinct())
         {
-            var ourEngine = Path.Combine(Ceho.Root, name);
-            if (File.Exists(ourEngine))
-                try { File.Delete(ourEngine); Console.WriteLine($"удалён движок: {ourEngine}"); }
+            var file = Path.Combine(Ceho.Root, name);
+            if (File.Exists(file))
+                try { File.Delete(file); Console.WriteLine($"удалён: {file}"); }
                 catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
         }
 
@@ -1657,6 +1673,19 @@ if (cmd is "daemon" or "web")
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
         Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
 
+        if (Installer.MissingCronetDll(Ceho.Root))
+        {
+            try
+            {
+                report.Note(Strings.T(c.Language, "engine_cronet_missing", Ceho.Root));
+                await Installer.DownloadEngineAsync(Ceho.Root, m => report.Note(m), c.Language);
+            }
+            catch (Exception ex)
+            {
+                report.Note(Strings.T(c.Language, "inst_engine_failed", ex.Message));
+            }
+        }
+
         try
         {
             report.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);
@@ -1708,11 +1737,11 @@ if (cmd is "daemon" or "web")
             }
             catch { }
             Installer.Remove(Ceho.Root, _ => {}, cfg.Language);
-            foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
+            foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName, Installer.CronetFileName }.Distinct())
             {
-                var ourEngine = Path.Combine(Ceho.Root, name);
-                if (File.Exists(ourEngine))
-                    try { File.Delete(ourEngine); } catch { }
+                var file = Path.Combine(Ceho.Root, name);
+                if (File.Exists(file))
+                    try { File.Delete(file); } catch { }
             }
             if (Os.IsWindows)
             {

@@ -143,6 +143,11 @@ if (Test-Path $nearbyEngine) {
     Copy-Item -Path $nearbyEngine -Destination $engine -Force
     Write-Host "Движок установлен из локального источника: $engine"
 }
+Get-ChildItem -Path $sourceDir -Filter 'libcronet.*' -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination (Join-Path $root $_.Name) -Force
+        Write-Host "Библиотека NaiveProxy: $($_.Name)"
+    }
 
 if ((Test-Path $engine) -or (Test-Path $engineLegacy)) { Write-Host "Движок уже установлен." }
 

@@ -5,6 +5,24 @@ public static class Installer
     public static string BinaryPath(string root) =>
         Path.Combine(root, Os.IsWindows ? "cehoproxy.exe" : "cehoproxy");
 
+    public const string CronetFileName = "libcronet.dll";
+
+    /// <summary>Naive outbound on Windows needs libcronet.dll next to ceho-engine.exe.</summary>
+    public static bool MissingCronetDll(string root) =>
+        Os.IsWindows
+        && File.Exists(Path.Combine(root, Os.EngineFileName))
+        && !File.Exists(Path.Combine(root, CronetFileName));
+
+    public static void CopyCronetDependencies(string sourceDir, string root)
+    {
+        if (!Os.IsWindows || !Directory.Exists(sourceDir)) return;
+        foreach (var dll in Directory.EnumerateFiles(sourceDir, "libcronet.*", SearchOption.TopDirectoryOnly))
+        {
+            var dest = Path.Combine(root, Path.GetFileName(dll));
+            File.Copy(dll, dest, overwrite: true);
+        }
+    }
+
     /// <summary>Файлы прошлой версии: их можно и нужно затирать, данных в них нет.</summary>
     private static readonly string[] VersionLeftovers =
     {
@@ -122,6 +140,8 @@ public static class Installer
                 if (!Os.IsWindows) Os.Run("chmod", $"755 {targetEngine}", 5000);
                 log(Strings.T(lang, "inst_engine_at", targetEngine));
             }
+
+            CopyCronetDependencies(ownDir, root);
         }
 
         Os.AdoptOwnEngine(root);
@@ -310,15 +330,8 @@ public static class Installer
         if (found is not null && File.Exists(found))
             File.Copy(found, engine, overwrite: true);
 
-        // Naive outbound needs libcronet next to the engine on Windows.
         if (engineDir is not null)
-        {
-            foreach (var dll in Directory.EnumerateFiles(engineDir, "libcronet.*", SearchOption.TopDirectoryOnly))
-            {
-                var dest = Path.Combine(root, Path.GetFileName(dll));
-                File.Copy(dll, dest, overwrite: true);
-            }
-        }
+            CopyCronetDependencies(engineDir, root);
 
         try { Directory.Delete(temp, true); } catch { }
     }
