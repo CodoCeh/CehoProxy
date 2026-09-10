@@ -176,6 +176,7 @@ public static class Doctor
         {
             case Repair.Leftovers:
             {
+                using var gate = EngineMutex.Acquire(root);
                 var path = Path.Combine(root, "singbox.json");
                 var removed = TunCleanup.ReleaseOurs(path, cfg.TunAddress, root, m => p?.Note(m),
                     attempts: 3, aggressive: true);

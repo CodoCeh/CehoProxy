@@ -31,6 +31,13 @@ public class AppTunnelTests
         JsonNode.Parse(SingBoxConfigGenerator.GenerateForConfig(nodes, cfg))!;
 
     [Fact]
+    public void Dns_answers_ipv4_only_so_doq_never_gets_aaaa()
+    {
+        var root = Root(Nodes(), TwoApps());
+        Assert.Equal("ipv4_only", (string?)root["dns"]!["strategy"]);
+    }
+
+    [Fact]
     public void Empty_filter_keeps_the_app_on_the_shared_pool()
     {
         var nodes = Nodes();
@@ -172,6 +179,12 @@ public class AppTunnelTests
             (string?)r?["action"] == "reject"
             && (string?)r?["network"] == "udp"
             && r["port"] is JsonArray ports && ports.Any(p => (int)p! == 443)
+            && r["inbound"] is JsonArray inb && inb.Any(i => (string?)i == "mixed-in"));
+
+        Assert.Contains(rules, r =>
+            (string?)r?["action"] == "reject"
+            && (string?)r?["network"] == "udp"
+            && r["port"] is JsonArray ports && ports.Any(p => (int)p! == 853)
             && r["inbound"] is JsonArray inb && inb.Any(i => (string?)i == "mixed-in"));
 
         // Isolated apps reject UDP 443 before proxy

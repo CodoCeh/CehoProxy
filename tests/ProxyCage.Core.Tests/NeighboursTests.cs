@@ -317,6 +317,22 @@ public class NeighboursTests
     }
 
     [Fact]
+    public void Engine_mutex_can_be_acquired_twice_in_sequence()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "chp-gate-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        try
+        {
+            using (EngineMutex.Acquire(root)) { }
+            using (EngineMutex.Acquire(root)) { }
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Hijacked_routes_are_a_no_op_off_windows()
     {
         if (Os.IsWindows) return;

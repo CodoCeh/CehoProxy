@@ -171,6 +171,8 @@ public class NaiveProxyTests
         var json = OutboundBuilder.Build(node);
 
         Assert.Equal("ipv4_only", json["domain_strategy"]!.GetValue<string>());
+        Assert.Equal("dns-direct", json["domain_resolver"]!["server"]!.GetValue<string>());
+        Assert.Equal("ipv4_only", json["domain_resolver"]!["strategy"]!.GetValue<string>());
 
     }
 

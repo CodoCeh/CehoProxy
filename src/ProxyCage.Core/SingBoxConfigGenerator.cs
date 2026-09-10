@@ -138,7 +138,7 @@ public static class SingBoxConfigGenerator
                     new JsonObject { ["inbound"] = new JsonArray { "mixed-in" }, ["server"] = "dns-proxy" },
                 },
                 ["final"] = "dns-direct",
-                ["strategy"] = "prefer_ipv4",
+                ["strategy"] = "ipv4_only",
             },
             ["inbounds"] = new JsonArray
             {
@@ -292,7 +292,7 @@ public static class SingBoxConfigGenerator
             {
                 ["process_path_regex"] = regex.DeepClone(),
                 ["network"] = "udp",
-                ["port"] = new JsonArray { 443 },
+                ["port"] = new JsonArray { 443, 853 },
                 ["action"] = "reject",
             });
             routeRules.Add(new JsonObject
@@ -315,7 +315,7 @@ public static class SingBoxConfigGenerator
             {
                 ["process_path_regex"] = regexes.DeepClone(),
                 ["network"] = "udp",
-                ["port"] = new JsonArray { 443 },
+                ["port"] = new JsonArray { 443, 853 },
                 ["action"] = "reject",
             });
             routeRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["outbound"] = ProxyTag });
@@ -347,14 +347,14 @@ public static class SingBoxConfigGenerator
         {
             ["inbound"] = new JsonArray { "mixed-in" },
             ["network"] = "udp",
-            ["port"] = new JsonArray { 443 },
+            ["port"] = new JsonArray { 443, 853 },
             ["action"] = "reject",
         });
         routeRules.Insert(tunHijackIndex + 2, new JsonObject
         {
             ["inbound"] = new JsonArray { "tun-in" },
             ["network"] = "udp",
-            ["port"] = new JsonArray { 443 },
+            ["port"] = new JsonArray { 443, 853 },
             ["action"] = "reject",
         });
         routeRules.Insert(tunHijackIndex + 3, new JsonObject
@@ -380,7 +380,7 @@ public static class SingBoxConfigGenerator
                 ["servers"] = dnsServers,
                 ["rules"] = dnsRules,
                 ["final"] = "dns-direct",
-                ["strategy"] = "prefer_ipv4",
+                ["strategy"] = "ipv4_only",
             },
             ["inbounds"] = inbounds,
             ["outbounds"] = outbounds,
@@ -551,7 +551,7 @@ public static class SingBoxConfigGenerator
                 },
             },
             ["final"] = "dns-direct",
-            ["strategy"] = "prefer_ipv4",
+            ["strategy"] = "ipv4_only",
         };
     }
 
@@ -683,7 +683,7 @@ public static class SingBoxConfigGenerator
         rules.Add(new JsonObject
         {
             ["network"] = "udp",
-            ["port"] = new JsonArray { 443 },
+            ["port"] = new JsonArray { 443, 853 },
             ["action"] = "reject",
         });
 

@@ -94,8 +94,13 @@ public static class OutboundBuilder
         };
         if (n.AllowInsecure) tls["insecure"] = true;
         o["tls"] = tls;
-        // Naive — это HTTP/2 CONNECT, UDP он не умеет вовсе. Запрос к IPv6-адресу на
-        // машине без IPv6 давал WSAEINVAL 10022 в журнале на каждый DoQ-запрос браузера.
+        // Dial Fields: у naive domain_strategy резолвит только hostname ноды (не UDP в туннеле).
+        // С 1.12 — domain_resolver; domain_strategy оставляем для движков до 1.12.
+        o["domain_resolver"] = new JsonObject
+        {
+            ["server"] = "dns-direct",
+            ["strategy"] = "ipv4_only",
+        };
         o["domain_strategy"] = "ipv4_only";
         return o;
     }
