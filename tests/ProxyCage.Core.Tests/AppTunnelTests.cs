@@ -160,4 +160,25 @@ public class AppTunnelTests
         Assert.False(IndexList.TryParse("1,9", 4, out _));
         Assert.False(IndexList.TryParse("x", 4, out _));
     }
+
+    [Fact]
+    public void Quic_udp_443_is_rejected_for_isolated_apps_and_mixed_in()
+    {
+        var root = Root(Nodes(), TwoApps());
+        var rules = root["route"]!["rules"]!.AsArray();
+
+        // Mixed-in rejects UDP 443
+        Assert.Contains(rules, r =>
+            (string?)r?["action"] == "reject"
+            && (string?)r?["network"] == "udp"
+            && r["port"] is JsonArray ports && ports.Any(p => (int)p! == 443)
+            && r["inbound"] is JsonArray inb && inb.Any(i => (string?)i == "mixed-in"));
+
+        // Isolated apps reject UDP 443 before proxy
+        Assert.Contains(rules, r =>
+            (string?)r?["action"] == "reject"
+            && (string?)r?["network"] == "udp"
+            && r["port"] is JsonArray ports && ports.Any(p => (int)p! == 443)
+            && r["process_path_regex"] is JsonArray);
+    }
 }

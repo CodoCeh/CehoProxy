@@ -290,6 +290,13 @@ public static class SingBoxConfigGenerator
             routeRules.Add(new JsonObject
             {
                 ["process_path_regex"] = regex.DeepClone(),
+                ["network"] = "udp",
+                ["port"] = new JsonArray { 443 },
+                ["action"] = "reject",
+            });
+            routeRules.Add(new JsonObject
+            {
+                ["process_path_regex"] = regex.DeepClone(),
                 ["outbound"] = AppOutboundTag(item.Index),
             });
         }
@@ -303,6 +310,13 @@ public static class SingBoxConfigGenerator
             }
             dnsRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["server"] = "dns-proxy" });
             hijack.Add(regexes.DeepClone());
+            routeRules.Add(new JsonObject
+            {
+                ["process_path_regex"] = regexes.DeepClone(),
+                ["network"] = "udp",
+                ["port"] = new JsonArray { 443 },
+                ["action"] = "reject",
+            });
             routeRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["outbound"] = ProxyTag });
         }
 
@@ -329,6 +343,13 @@ public static class SingBoxConfigGenerator
             ["action"] = "hijack-dns",
         });
         routeRules.Insert(tunHijackIndex + 1, new JsonObject
+        {
+            ["inbound"] = new JsonArray { "mixed-in" },
+            ["network"] = "udp",
+            ["port"] = new JsonArray { 443 },
+            ["action"] = "reject",
+        });
+        routeRules.Insert(tunHijackIndex + 2, new JsonObject
         {
             ["inbound"] = new JsonArray { "mixed-in" },
             ["outbound"] = ProxyTag,
