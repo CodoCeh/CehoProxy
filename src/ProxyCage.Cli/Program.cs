@@ -72,7 +72,7 @@ if (cmd == "install")
 
     var mayAskAboutEngine = Assistant.Interactive && !args.Contains("--no-setup");
 
-    if ((Os.ResolveSingBox(Ceho.Root) is null || Installer.MissingCronetDll(Ceho.Root))
+    if (Os.ResolveSingBox(Ceho.Root) is null
         && (args.Contains("--with-engine")
             || (mayAskAboutEngine && Cli.AskYes(Strings.T(cfg0.Language, "inst_engine_ask"), true))))
     {
