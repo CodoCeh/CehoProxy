@@ -277,6 +277,53 @@ public class NeighboursTests
     }
 
     [Fact]
+    public void Stuck_adapter_clears_after_a_successful_cleanup()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "chp-tun-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        try
+        {
+            Log.Init(root, "test");
+            Log.Engine("FATAL start inbound/tun[tun-in]: configure tun interface: Cannot create a file when that file already exists.");
+            Assert.True(TunCleanup.LogShowsStuckAdapter());
+            Log.Info("снят маршрут 0.0.0.0/128.0.0.0 через 172.31.211.1");
+            Assert.False(TunCleanup.LogShowsStuckAdapter());
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Adapter_name_rotates_after_a_stuck_wintun()
+    {
+        Assert.Equal("ceho-tun", TunCleanup.AdapterName(1));
+        Assert.Equal("ceho-tun-2", TunCleanup.AdapterName(2));
+        Assert.Equal("ceho-tun-3", TunCleanup.AdapterName(3));
+    }
+
+    [Fact]
+    public void Rotated_windows_tun_name_lands_in_engine_config()
+    {
+        var cfg = new CehoConfig
+        {
+            Apps = { new AppEntry { Name = "app", Folder = Os.IsWindows ? @"C:\App" : "/tmp" } },
+        };
+        var nodes = SubscriptionParser.Parse(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "sub-example.txt")));
+        var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg, TunCleanup.AdapterName(2));
+        Assert.Contains("ceho-tun-2", json);
+    }
+
+    [Fact]
+    public void Hijacked_routes_are_a_no_op_off_windows()
+    {
+        if (Os.IsWindows) return;
+        Assert.Equal(0, TunCleanup.FlushHijackedRoutes("172.31.211.1", _ => { }));
+    }
+
+    [Fact]
     public void Dead_system_proxy_is_named_with_host_and_port()
     {
         var dead = SystemProxy.DeadAmong("0x1", "socks=127.0.0.1:10808", ourPort: 2080, _ => false);

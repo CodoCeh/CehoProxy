@@ -167,8 +167,18 @@ public static class ConnPing
                 r.Proxy.LastError ?? Strings.T(lang, "stage_failed"));
         }
 
-        return Strings.T(lang, "ping_summary_direct_fail",
-            r.Direct.LastError ?? Strings.T(lang, "stage_failed"));
+        if (!r.Direct.Ok)
+        {
+            if (TunCleanup.LogShowsStuckAdapter())
+                return Strings.T(lang, "ping_summary_tun_hijack",
+                    r.Direct.LastError ?? Strings.T(lang, "stage_failed"));
+            return Strings.T(lang, "ping_summary_direct_fail",
+                r.Direct.LastError ?? Strings.T(lang, "stage_failed"));
+        }
+
+        return Strings.T(lang, "ping_summary_proxy_fail",
+            r.Direct.SuccessPercent, r.Direct.AvgMs,
+            r.Proxy.LastError ?? Strings.T(lang, "stage_failed"));
     }
 
     private static string SimplifyError(Exception ex)

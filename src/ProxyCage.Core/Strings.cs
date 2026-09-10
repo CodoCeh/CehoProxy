@@ -184,9 +184,15 @@ public static class Strings
         ["ping_summary_both_ok"] = new("Связь отличная: напрямую {0}% ({1} мс), через прокси {2}% ({3} мс)", "Connection good: direct {0}% ({1} ms), proxy {2}% ({3} ms)"),
         ["ping_summary_proxy_fail"] = new("Прямой интернет работает ({0}%, {1} мс), но прокси не отвечает: {2}", "Direct internet works ({0}%, {1} ms), but proxy fails: {2}"),
         ["ping_summary_direct_fail"] = new("Прямой интернет недоступен ({0}). Проверьте сетевой шлюз и DNS.", "Direct internet unavailable ({0}). Check gateway and DNS."),
+        ["ping_summary_tun_hijack"] = new(
+            "Прямой интернет пропал ({0}): маршруты ушли в мёртвый туннель. Нажмите «Починить» у доктора — сниму адаптер и верну шлюз.",
+            "Direct internet is gone ({0}): routes point into a dead tunnel. Click the doctor's Repair — it will drop the adapter and restore the gateway."),
         ["ping_verdict_both"] = new("Интернет и прокси-нода работают исправно.", "Both internet and proxy node are working normally."),
         ["ping_verdict_proxy_down"] = new("Прямой интернет доступен, но прокси-нода не отвечает. Проверьте подписку или выберите другую ноду.", "Direct internet is available, but proxy node is not responding. Check subscription or switch node."),
         ["ping_verdict_direct_down"] = new("Прямой выход в интернет недоступен. Проверьте сетевой кабель/Wi-Fi, шлюз или настройки DNS сервера.", "Direct internet connection is not available. Check network cable/Wi-Fi, gateway, or DNS settings."),
+        ["ping_verdict_tun_hijack"] = new(
+            "Интернет пропал не из‑за кабеля: маршруты смотрят в мёртвый туннель. Нажмите «Починить» на вкладке «Проверка».",
+            "Internet is gone because routes point into a dead tunnel, not because of the cable. Click Repair on the Check-up tab."),
         ["cmd_ping"] = new("Проверка связи напрямую и через ноду (пинг)", "Connection check directly and via node (ping)"),
         ["doc_never"] = new(
             "Осмотра ещё не было. Нажмите «Проверить всё».",

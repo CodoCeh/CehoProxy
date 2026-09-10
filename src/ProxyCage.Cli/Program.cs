@@ -1566,7 +1566,18 @@ if (cmd is "daemon" or "web")
     string? exitCountry = null, exitIp = null;
     var probed = false;
 
+    // Кнопку «Включить» и сторож движка нельзя пускать в подъём одновременно: каждый
+    // из них перед стартом гасит чужие движки и убивает только что поднятый соседом.
+    var engineGate = new SemaphoreSlim(1, 1);
+
     async Task<string?> StartTunnel(IStageReport? report)
+    {
+        await engineGate.WaitAsync();
+        try { return await StartTunnelLocked(report); }
+        finally { engineGate.Release(); }
+    }
+
+    async Task<string?> StartTunnelLocked(IStageReport? report)
     {
         if (proc is not null) return Strings.T(cfg.Language, "already_on");
         try
@@ -1605,6 +1616,10 @@ if (cmd is "daemon" or "web")
                 TunCleanup.ReleaseOurs(
                     Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
                     attempts: 5, aggressive: true, beforeStart: beforeRetry);
+                var tunName = TunCleanup.AdapterName(attempt + 1);
+                await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
+                    SingBoxConfigGenerator.GenerateForConfig(nodes, c, tunName));
+                Log.Info($"пробую другое имя адаптера: {tunName}");
                 await Task.Delay(TimeSpan.FromSeconds(4));
                 reason = await BringEngineUp(c, report);
             }
@@ -1676,6 +1691,13 @@ if (cmd is "daemon" or "web")
     }
 
     string? StopTunnel()
+    {
+        engineGate.Wait();
+        try { return StopTunnelLocked(); }
+        finally { engineGate.Release(); }
+    }
+
+    string? StopTunnelLocked()
     {
         if (proc is null) return Strings.T(cfg.Language, "already_off");
         var clean = proc.Stop(8000);
@@ -1897,14 +1919,23 @@ if (cmd is "daemon" or "web")
         {
             if (proc is not null && !proc.IsRunning)
             {
-                var reason = proc.Explain(cfg.Language);
-                Log.Error($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
-                lastError = reason;
-                StopTunnel();
-                var again = await StartTunnel(null);
-                Log.Info(again is null
-                    ? Strings.T(cfg.Language, "state_on")
-                    : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
+                await engineGate.WaitAsync();
+                try
+                {
+                    // Пока сторож ждал очереди, движок мог поднять кто-то другой.
+                    if (proc is not null && !proc.IsRunning)
+                    {
+                        var reason = proc.Explain(cfg.Language);
+                        Log.Error($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
+                        lastError = reason;
+                        StopTunnelLocked();
+                        var again = await StartTunnelLocked(null);
+                        Log.Info(again is null
+                            ? Strings.T(cfg.Language, "state_on")
+                            : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
+                    }
+                }
+                finally { engineGate.Release(); }
             }
 
             if (proc is not null)

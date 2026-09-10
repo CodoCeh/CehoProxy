@@ -1295,6 +1295,7 @@ public sealed class WebServer
         {
             (true, true) => S("ping_verdict_both", []),
             (true, false) => S("ping_verdict_proxy_down", []),
+            _ when TunCleanup.LogShowsStuckAdapter() => S("ping_verdict_tun_hijack", []),
             _ => S("ping_verdict_direct_down", []),
         };
         sb.Append("<p style=\"margin-top:12px; margin-bottom:0; font-weight:500;\">").Append(E(verdict)).Append("</p>");

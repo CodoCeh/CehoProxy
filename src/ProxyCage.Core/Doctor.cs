@@ -130,8 +130,12 @@ public static class Doctor
         var after = await CheckAsync(CehoConfig.Load(configPath), root, tools);
 
         foreach (var check in after.Checks.Where(c => c.Level == Preflight.Level.Blocker))
+        {
             if (check.Repair == Repair.None && check.Fix is { } advice)
                 left.Add($"{check.Title} — {advice}");
+            else if (check.Repair != Repair.None && before.Checks.Any(b => b.Repair == check.Repair && b.Level == Preflight.Level.Blocker))
+                left.Add($"{check.Title} — {check.Fix}");
+        }
 
         return after with { Done = done, Left = left };
     }
@@ -173,10 +177,9 @@ public static class Doctor
             case Repair.Leftovers:
             {
                 var path = Path.Combine(root, "singbox.json");
-                TunCleanup.ReleaseOurs(path, cfg.TunAddress, root, m => p?.Note(m),
+                var removed = TunCleanup.ReleaseOurs(path, cfg.TunAddress, root, m => p?.Note(m),
                     attempts: 3, aggressive: true);
-                DaemonControl.ClearRunning(root);
-                return S("doc_did_leftovers", 0);
+                return S("doc_did_leftovers", removed);
             }
 
             case Repair.Engine:

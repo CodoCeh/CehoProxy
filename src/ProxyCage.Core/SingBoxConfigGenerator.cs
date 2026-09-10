@@ -195,7 +195,8 @@ public static class SingBoxConfigGenerator
         return allNodes.Where(n => !n.IsMeta && keys.Contains(n.Key)).ToList();
     }
 
-    public static string GenerateForConfig(IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg)
+    public static string GenerateForConfig(
+        IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg, string? tunInterfaceName = null)
     {
         var apps = cfg.Apps.Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)).ToList();
         if (apps.Count == 0)
@@ -362,7 +363,7 @@ public static class SingBoxConfigGenerator
             ["outbound"] = ProxyTag,
         });
 
-        var inbounds = new JsonArray { BuildTun(cfg), BuildMixedInbound(cfg.MixedPort, "mixed-in") };
+        var inbounds = new JsonArray { BuildTun(cfg, tunInterfaceName), BuildMixedInbound(cfg.MixedPort, "mixed-in") };
 
         var config = new JsonObject
         {
@@ -496,7 +497,7 @@ public static class SingBoxConfigGenerator
         && cfg.NodeLatency.TryGetValue(node.Key, out var ms)
         && ms > limit;
 
-    private static JsonObject BuildTun(CehoConfig cfg)
+    private static JsonObject BuildTun(CehoConfig cfg, string? tunInterfaceName = null)
     {
         // strict_route не включаем нигде. Он ставит на всю машину правила брандмауэра, которые
         // запрещают трафику идти мимо туннеля, — от этого ломаются чужие VPN, локальная сеть
@@ -510,14 +511,11 @@ public static class SingBoxConfigGenerator
             ["auto_route"] = true,
             // На Windows system-стек стабильнее для длинных TCP (HTTP/2 Cursor); gvisor — macOS/Linux.
             ["stack"] = Os.IsWindows ? "system" : "gvisor",
+            ["interface_name"] = string.IsNullOrWhiteSpace(tunInterfaceName)
+                ? TunCleanup.InterfaceName
+                : tunInterfaceName,
         };
 
-        // ceho-tun — на Linux/macOS: уборка по имени. На Windows имя не задаём: Wintun даёт
-        // устойчивый GUID, Windows помнит адрес, pnputil не всегда снимает пул — движок падает
-        // на «Cannot create a file when that file already exists». Свой адаптер узнаём по
-        // tun-devices.txt и адресу туннеля (ReleaseOurs aggressive).
-        if (!Os.IsWindows)
-            tun["interface_name"] = TunCleanup.InterfaceName;
         if (Os.IsLinux)
         {
             tun["iproute2_table_index"] = TunCleanup.Iproute2TableIndex;

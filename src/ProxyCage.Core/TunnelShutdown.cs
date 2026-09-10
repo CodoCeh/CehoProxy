@@ -32,8 +32,8 @@ public static class TunnelShutdown
             return ResultOk(cfg);
         }
 
-        var ok = TunCleanup.ReleaseOurs(runtimeConfigPath, cfg.TunAddress, root, log, attempts: 3, aggressive: true);
-        return ok ? ResultOk(cfg) : new Result(false, "upd_need_reboot", null);
+        TunCleanup.ReleaseOurs(runtimeConfigPath, cfg.TunAddress, root, log, attempts: 3, aggressive: true);
+        return ResultOk(cfg);
     }
 
     private static Result ResultOk(CehoConfig cfg)
