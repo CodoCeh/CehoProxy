@@ -94,6 +94,9 @@ public static class OutboundBuilder
         };
         if (n.AllowInsecure) tls["insecure"] = true;
         o["tls"] = tls;
+        // Naive — это HTTP/2 CONNECT, UDP он не умеет вовсе. Запрос к IPv6-адресу на
+        // машине без IPv6 давал WSAEINVAL 10022 в журнале на каждый DoQ-запрос браузера.
+        o["domain_strategy"] = "ipv4_only";
         return o;
     }
 

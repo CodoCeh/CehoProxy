@@ -1,12 +1,20 @@
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text.Json;
+using Microsoft.Win32;
 
 namespace ProxyCage.Core;
 
 public static class TunCleanup
 {
     public const string InterfaceName = "ceho-tun";
+
+    /// <summary>
+    /// Имя Wintun на эту попытку. Если ceho-tun залип (Server 2019 не умеет pnputil
+    /// /remove-device), следующий старт берёт ceho-tun-2 и движок поднимается без перезагрузки.
+    /// </summary>
+    public static string AdapterName(int attempt) =>
+        attempt <= 1 ? InterfaceName : $"{InterfaceName}-{attempt}";
 
     public const int Iproute2TableIndex = 2122;
     public const int Iproute2RuleIndex = 9100;
@@ -103,10 +111,11 @@ public static class TunCleanup
         };
 
     /// <summary>
-    /// Снять свой Wintun: сначала убить движок, потом отключить интерфейс, потом pnputil.
+    /// Снять свой Wintun: сначала убить движок, потом маршруты auto_route, потом адаптер.
     /// aggressive — после FATAL «file already exists»: снимаем всё с нашим адресом, не только по записи.
+    /// Возвращает, сколько следов сняли (маршруты + адаптеры): доктор показывает это число.
     /// </summary>
-    public static bool ReleaseOurs(
+    public static int ReleaseOurs(
         string runtimeConfigPath,
         string? tunAddress,
         string? root,
@@ -115,7 +124,8 @@ public static class TunCleanup
         bool aggressive = false,
         IReadOnlyCollection<string>? beforeStart = null)
     {
-        if (!Os.IsWindows) return RemoveLeftovers(log, tunAddress, root, beforeStart, runtimeConfigPath) >= 0;
+        if (!Os.IsWindows)
+            return Math.Max(0, RemoveLeftovers(log, tunAddress, root, beforeStart, runtimeConfigPath));
 
         KillOurProcesses(runtimeConfigPath, log);
         WaitUntilEngineGone(runtimeConfigPath, 10000, log);
@@ -123,6 +133,7 @@ public static class TunCleanup
         var ourIp = tunAddress?.Split('/')[0].Trim();
         var recorded = Ours(root);
         var lookup = Adapter(tunAddress);
+        var cleaned = 0;
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
             if (attempt > 1)
@@ -132,6 +143,11 @@ public static class TunCleanup
                 KillOurProcesses(runtimeConfigPath, log);
                 WaitUntilEngineGone(runtimeConfigPath, 5000, log);
             }
+
+            // Маршруты — сразу: на Server 2019 устройство можно и не снять, а интернет
+            // уже чёрная дыра из-за 0.0.0.0/1 через мёртвый TUN.
+            cleaned += FlushHijackedRoutes(ourIp, log);
+            cleaned += DisableOurNics(ourIp, log);
 
             var removed = 0;
             foreach (var id in WintunDevices())
@@ -146,20 +162,23 @@ public static class TunCleanup
                     continue;
 
                 removed++;
+                cleaned++;
                 if (!WaitUntilGone(id) || (nic is not null && !WaitUntilInterfaceGone(nic.Name)))
                     log?.Invoke($"устройство {id} ещё держится — продолжаю уборку");
             }
+
+            cleaned += FlushHijackedRoutes(ourIp, log);
 
             if (removed > 0) Thread.Sleep(4000);
 
             if (!AnyOursLeft(recorded, lookup, ourIp, aggressive) && !TunnelAddressBusy(ourIp))
             {
                 ClearOursFile(root);
-                return true;
+                return cleaned;
             }
         }
 
-        return !AnyOursLeft(recorded, lookup, ourIp, aggressive) && !TunnelAddressBusy(ourIp);
+        return cleaned;
     }
 
     public static int RemoveGhostAdapters(
@@ -195,22 +214,102 @@ public static class TunCleanup
     private static bool RemoveDevice(string instanceId, string? name, Action<string>? log)
     {
         var (code, output) = Os.Run("pnputil", $"/remove-device \"{instanceId}\"", 15000);
-        if (code != 0)
+        if (code == 0)
         {
-            log?.Invoke($"pnputil не снял {instanceId}: {output.Trim()}");
-            return false;
+            log?.Invoke($"снят Wintun {name ?? "без интерфейса"}: {instanceId}");
+            return true;
         }
 
-        log?.Invoke($"снят Wintun {name ?? "без интерфейса"}: {instanceId}");
-        return true;
+        if (RemoveDeviceWithPowerShell(instanceId, log))
+        {
+            log?.Invoke($"снят Wintun {name ?? "без интерфейса"}: {instanceId}");
+            return true;
+        }
+
+        var hint = PnputilLacksDeviceCommands(output)
+            ? "pnputil этой Windows не умеет /remove-device (нужна 1903+, Server 2019 — нет)"
+            : output.Trim();
+        log?.Invoke($"не снял {instanceId}: {hint}");
+        return false;
     }
+
+    private static bool RemoveDeviceWithPowerShell(string instanceId, Action<string>? log)
+    {
+        var escaped = instanceId.Replace("'", "''");
+        var cmd =
+            "Get-PnpDevice -ErrorAction SilentlyContinue | " +
+            $"Where-Object {{ $_.InstanceId -ieq '{escaped}' }} | " +
+            "ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue; " +
+            "Remove-PnpDevice -InstanceId $_.InstanceId -Confirm:$false }";
+        var (code, output) = Os.Run(
+            "powershell",
+            "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"" + cmd + "\"",
+            25000);
+        if (code == 0) return true;
+        if (!string.IsNullOrWhiteSpace(output))
+            log?.Invoke($"PowerShell не снял устройство: {output.Trim()}");
+        return false;
+    }
+
+    private static bool PnputilLacksDeviceCommands(string output) =>
+        output.Contains("Failed to process the command", StringComparison.OrdinalIgnoreCase)
+        || output.Contains("/enum-drivers", StringComparison.OrdinalIgnoreCase)
+           && !output.Contains("/remove-device", StringComparison.OrdinalIgnoreCase)
+        || output.Contains("The parameter is incorrect", StringComparison.OrdinalIgnoreCase);
 
     private static void DisableInterface(string name, Action<string>? log)
     {
         if (string.IsNullOrWhiteSpace(name)) return;
-        var (code, output) = Os.Run("netsh", $"interface set interface \"{name}\" disable", 10000);
+        var (code, output) = Os.Run("netsh", $"interface set interface name=\"{name}\" admin=DISABLED", 10000);
+        if (code != 0)
+        {
+            (code, output) = Os.Run("netsh", $"interface set interface \"{name}\" disable", 10000);
+        }
         if (code != 0 && output.Length > 0)
             log?.Invoke($"не удалось выключить интерфейс {name}: {output.Trim()}");
+    }
+
+    /// <summary>
+    /// 0.0.0.0/1 + 128.0.0.0/1 — так sing-box auto_route перехватывает дефолт.
+    /// После смерти движка маршруты остаются и прямой интернет становится таймаутом.
+    /// </summary>
+    internal static int FlushHijackedRoutes(string? ourIp, Action<string>? log)
+    {
+        if (!Os.IsWindows || string.IsNullOrWhiteSpace(ourIp)) return 0;
+        var n = 0;
+        foreach (var (dest, mask) in new[]
+                 {
+                     ("0.0.0.0", "128.0.0.0"),
+                     ("128.0.0.0", "128.0.0.0"),
+                     ("0.0.0.0", "0.0.0.0"),
+                 })
+        {
+            var (code, _) = Os.Run("route", $"delete {dest} mask {mask} {ourIp}", 8000);
+            if (code != 0) continue;
+            n++;
+            log?.Invoke($"снят маршрут {dest}/{mask} через {ourIp}");
+        }
+        return n;
+    }
+
+    private static int DisableOurNics(string? ourIp, Action<string>? log)
+    {
+        if (!Os.IsWindows) return 0;
+        var n = 0;
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                var named = nic.Name.StartsWith(InterfaceName, StringComparison.OrdinalIgnoreCase);
+                var ours = ourIp is not null && HasAddress(nic, ourIp);
+                if (!named && !ours) continue;
+                DisableInterface(nic.Name, log);
+                n++;
+                log?.Invoke($"выключен интерфейс {nic.Name}");
+            }
+        }
+        catch { }
+        return n;
     }
 
     private static bool ShouldRemove(
@@ -332,36 +431,40 @@ public static class TunCleanup
     public static bool LogShowsStuckAdapter(int tailLines = 400)
     {
         var lines = Log.Tail(tailLines, LogView.All);
-        var sawCleanup = false;
+        var stuck = false;
         foreach (var line in lines)
         {
-            if (line.Contains("удалён залипший TUN", StringComparison.OrdinalIgnoreCase)
-                || line.Contains("наш след без адаптера", StringComparison.OrdinalIgnoreCase)
-                || line.Contains("снят Wintun", StringComparison.OrdinalIgnoreCase))
-                sawCleanup = true;
+            if (line.Contains("снят Wintun", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("снят маршрут", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("удалён залипший TUN", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("наш след без адаптера", StringComparison.OrdinalIgnoreCase))
+            {
+                stuck = false;
+                continue;
+            }
 
             if (line.Contains("already exists", StringComparison.OrdinalIgnoreCase)
                 && (line.Contains("FATAL", StringComparison.OrdinalIgnoreCase)
                     || line.Contains("configure tun interface", StringComparison.OrdinalIgnoreCase)))
-                return true;
-
-            if (sawCleanup && line.Contains("движок не устоял", StringComparison.OrdinalIgnoreCase)
-                           && line.Contains("already exists", StringComparison.OrdinalIgnoreCase))
-                return true;
+                stuck = true;
         }
-        return false;
+        return stuck;
     }
 
     /// <summary>
     /// pnputil отвечает раньше, чем Windows успевает убрать устройство, а движок сразу за нами
     /// создаёт своё с тем же именем и ловит «файл уже существует». Поэтому ждём по-настоящему.
     /// </summary>
-    private static bool WaitUntilGone(string instanceId, int timeoutMs = 25000)
+    private static bool WaitUntilGone(string instanceId, int timeoutMs = 8000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
+        var guid = GuidOf(instanceId);
         while (Environment.TickCount64 < deadline)
         {
-            if (!WintunDevices().Contains(instanceId, StringComparer.OrdinalIgnoreCase)) return true;
+            var listed = WintunDevicesFromPnputil()
+                .Contains(instanceId, StringComparer.OrdinalIgnoreCase);
+            var nicGone = guid is null || Look(guid, null) is null;
+            if (!listed && nicGone) return true;
             Thread.Sleep(500);
         }
         return false;
@@ -456,6 +559,14 @@ public static class TunCleanup
 
     private static IReadOnlyList<string> WintunDevices()
     {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in WintunDevicesFromPnputil()) ids.Add(id);
+        foreach (var id in WintunDevicesFromRegistry()) ids.Add(id);
+        return ids.ToList();
+    }
+
+    private static IReadOnlyList<string> WintunDevicesFromPnputil()
+    {
         var (_, output) = Os.Run("pnputil", "/enum-devices /class Net", 20000);
         var ids = new List<string>();
         foreach (var rawLine in output.Split('\n'))
@@ -465,6 +576,28 @@ public static class TunCleanup
             if (at >= 0) ids.Add(line[at..].Trim());
         }
         return ids;
+    }
+
+    /// <summary>
+    /// Server 2019 (1809) не знает pnputil /enum-devices — команда появилась в 1903.
+    /// GUID залипшего Wintun всё равно лежит в реестре Enum\SWD\Wintun.
+    /// </summary>
+    internal static IReadOnlyList<string> WintunDevicesFromRegistry()
+    {
+        if (!OperatingSystem.IsWindows()) return Array.Empty<string>();
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\SWD\Wintun");
+            if (key is null) return Array.Empty<string>();
+            return key.GetSubKeyNames()
+                .Where(n => n.Length > 0)
+                .Select(n => @"SWD\Wintun\" + n)
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
     }
 
     /// <summary>

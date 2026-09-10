@@ -144,6 +144,40 @@ public class NaiveProxyTests
 
     [Fact]
 
+    public void Naive_never_dials_ipv6()
+
+    {
+
+        var node = NaiveProxyHelper.ToNode(new NaiveProxySettings
+
+        {
+
+            Enabled = true,
+
+            Server = "site.roomspace.team",
+
+            Port = 8443,
+
+            Username = "bsv",
+
+            Password = "test",
+
+            ServerName = "site.roomspace.team",
+
+        });
+
+
+
+        var json = OutboundBuilder.Build(node);
+
+        Assert.Equal("ipv4_only", json["domain_strategy"]!.GetValue<string>());
+
+    }
+
+
+
+    [Fact]
+
     public void GenerateForConfig_includes_naive_node_without_extra_inbound()
 
     {
