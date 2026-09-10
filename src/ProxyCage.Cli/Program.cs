@@ -1566,15 +1566,12 @@ if (cmd is "daemon" or "web")
     string? exitCountry = null, exitIp = null;
     var probed = false;
 
-    // Кнопку «Включить» и сторож движка нельзя пускать в подъём одновременно: каждый
-    // из них перед стартом гасит чужие движки и убивает только что поднятый соседом.
-    var engineGate = new SemaphoreSlim(1, 1);
-
+    // Кнопку «Включить», сторож и доктор нельзя пускать в движок одновременно —
+    // очередь общая на демон и «chp doctor fix» (именованный Mutex).
     async Task<string?> StartTunnel(IStageReport? report)
     {
-        await engineGate.WaitAsync();
-        try { return await StartTunnelLocked(report); }
-        finally { engineGate.Release(); }
+        using (EngineMutex.Acquire(Ceho.Root))
+            return await StartTunnelLocked(report);
     }
 
     async Task<string?> StartTunnelLocked(IStageReport? report)
@@ -1692,9 +1689,8 @@ if (cmd is "daemon" or "web")
 
     string? StopTunnel()
     {
-        engineGate.Wait();
-        try { return StopTunnelLocked(); }
-        finally { engineGate.Release(); }
+        using (EngineMutex.Acquire(Ceho.Root))
+            return StopTunnelLocked();
     }
 
     string? StopTunnelLocked()
@@ -1919,8 +1915,7 @@ if (cmd is "daemon" or "web")
         {
             if (proc is not null && !proc.IsRunning)
             {
-                await engineGate.WaitAsync();
-                try
+                using (EngineMutex.Acquire(Ceho.Root))
                 {
                     // Пока сторож ждал очереди, движок мог поднять кто-то другой.
                     if (proc is not null && !proc.IsRunning)
@@ -1935,7 +1930,6 @@ if (cmd is "daemon" or "web")
                             : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
                     }
                 }
-                finally { engineGate.Release(); }
             }
 
             if (proc is not null)

@@ -158,7 +158,7 @@ public static class TunCleanup
                 if (nic is not null)
                     DisableInterface(nic.Name, log);
 
-                if (!RemoveDevice(id, nic?.Name, log))
+                if (!QuarantineDevice(id, nic?.Name, log))
                     continue;
 
                 removed++;
@@ -200,7 +200,7 @@ public static class TunCleanup
             if (nic is not null)
                 DisableInterface(nic.Name, log);
 
-            if (!RemoveDevice(instanceId, name, log)) continue;
+            if (!QuarantineDevice(instanceId, name, log)) continue;
 
             removed++;
             if (!WaitUntilGone(instanceId))
@@ -211,7 +211,12 @@ public static class TunCleanup
         return removed;
     }
 
-    private static bool RemoveDevice(string instanceId, string? name, Action<string>? log)
+    /// <summary>
+    /// На 1809 устройства не удаляем: pnputil /remove-device с 2004,
+    /// Remove-PnpDevice нет в модуле PnpDevice Server 2019. Контракт — выключить.
+    /// На 2004+ сначала пробуем снять, иначе disable.
+    /// </summary>
+    private static bool QuarantineDevice(string instanceId, string? name, Action<string>? log)
     {
         var (code, output) = Os.Run("pnputil", $"/remove-device \"{instanceId}\"", 15000);
         if (code == 0)
@@ -220,34 +225,33 @@ public static class TunCleanup
             return true;
         }
 
-        if (RemoveDeviceWithPowerShell(instanceId, log))
+        if (DisableDeviceWithPowerShell(instanceId, log))
         {
-            log?.Invoke($"снят Wintun {name ?? "без интерфейса"}: {instanceId}");
+            log?.Invoke($"выключен Wintun {name ?? "без интерфейса"}: {instanceId}");
             return true;
         }
 
         var hint = PnputilLacksDeviceCommands(output)
-            ? "pnputil этой Windows не умеет /remove-device (нужна 1903+, Server 2019 — нет)"
+            ? "pnputil этой Windows не умеет /remove-device (нужна 2004+; 1809 выключает NIC)"
             : output.Trim();
         log?.Invoke($"не снял {instanceId}: {hint}");
         return false;
     }
 
-    private static bool RemoveDeviceWithPowerShell(string instanceId, Action<string>? log)
+    private static bool DisableDeviceWithPowerShell(string instanceId, Action<string>? log)
     {
         var escaped = instanceId.Replace("'", "''");
         var cmd =
             "Get-PnpDevice -ErrorAction SilentlyContinue | " +
             $"Where-Object {{ $_.InstanceId -ieq '{escaped}' }} | " +
-            "ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue; " +
-            "Remove-PnpDevice -InstanceId $_.InstanceId -Confirm:$false }";
+            "ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false }";
         var (code, output) = Os.Run(
             "powershell",
             "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"" + cmd + "\"",
             25000);
         if (code == 0) return true;
         if (!string.IsNullOrWhiteSpace(output))
-            log?.Invoke($"PowerShell не снял устройство: {output.Trim()}");
+            log?.Invoke($"Disable-PnpDevice не выключил устройство: {output.Trim()}");
         return false;
     }
 
@@ -270,12 +274,13 @@ public static class TunCleanup
     }
 
     /// <summary>
-    /// 0.0.0.0/1 + 128.0.0.0/1 — так sing-box auto_route перехватывает дефолт.
-    /// После смерти движка маршруты остаются и прямой интернет становится таймаутом.
+    /// 0.0.0.0/1 + 128.0.0.0/1 (+ IPv6 ::/1, 8000::/1) — так sing-box auto_route
+    /// перехватывает дефолт. После смерти движка маршруты остаются.
+    /// Сначала удаляем с нашим шлюзом, если on-link — без шлюза (route delete допускает).
     /// </summary>
     internal static int FlushHijackedRoutes(string? ourIp, Action<string>? log)
     {
-        if (!Os.IsWindows || string.IsNullOrWhiteSpace(ourIp)) return 0;
+        if (!Os.IsWindows) return 0;
         var n = 0;
         foreach (var (dest, mask) in new[]
                  {
@@ -284,11 +289,31 @@ public static class TunCleanup
                      ("0.0.0.0", "0.0.0.0"),
                  })
         {
-            var (code, _) = Os.Run("route", $"delete {dest} mask {mask} {ourIp}", 8000);
+            if (!string.IsNullOrWhiteSpace(ourIp))
+            {
+                var (via, _) = Os.Run("route", $"delete {dest} mask {mask} {ourIp}", 8000);
+                if (via == 0)
+                {
+                    n++;
+                    log?.Invoke($"снят маршрут {dest}/{mask} через {ourIp}");
+                    continue;
+                }
+            }
+
+            var (any, _) = Os.Run("route", $"delete {dest} mask {mask}", 8000);
+            if (any != 0) continue;
+            n++;
+            log?.Invoke($"снят маршрут {dest}/{mask}");
+        }
+
+        foreach (var prefix in new[] { "::/1", "8000::/1" })
+        {
+            var (code, _) = Os.Run("route", $"-6 delete {prefix}", 8000);
             if (code != 0) continue;
             n++;
-            log?.Invoke($"снят маршрут {dest}/{mask} через {ourIp}");
+            log?.Invoke($"снят IPv6-маршрут {prefix}");
         }
+
         return n;
     }
 
