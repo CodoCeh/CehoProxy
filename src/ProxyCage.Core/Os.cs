@@ -130,6 +130,7 @@ public static class Os
             : null;
 
         var candidates = new List<IPAddress>();
+        var candidatesWithGateway = new List<IPAddress>();
         foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (nic.OperationalStatus != OperationalStatus.Up) continue;
@@ -144,7 +145,13 @@ public static class Os
             if (desc.Contains("VirtualBox Host-Only", StringComparison.OrdinalIgnoreCase)) continue;
             if (name.Contains("VirtualBox Host-Only", StringComparison.OrdinalIgnoreCase)) continue;
 
-            foreach (var ua in nic.GetIPProperties().UnicastAddresses)
+            var ipProps = nic.GetIPProperties();
+            var hasGateway = ipProps.GatewayAddresses.Any(g =>
+                g.Address.AddressFamily == AddressFamily.InterNetwork
+                && !g.Address.Equals(IPAddress.Any)
+                && !g.Address.Equals(IPAddress.None));
+
+            foreach (var ua in ipProps.UnicastAddresses)
             {
                 if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
                 var s = ua.Address.ToString();
@@ -154,12 +161,14 @@ public static class Os
                 if (tunPrefix != null && s.StartsWith(tunPrefix, StringComparison.Ordinal)) continue;
                 if (LooksLikeTunnelAddress(s)) continue;
                 candidates.Add(ua.Address);
+                if (hasGateway) candidatesWithGateway.Add(ua.Address);
             }
         }
 
-        if (candidates.Count == 0) return null;
-        return candidates.FirstOrDefault(a => a.ToString().StartsWith("192.168.0.", StringComparison.Ordinal))
-               ?? candidates[0];
+        var pool = candidatesWithGateway.Count > 0 ? candidatesWithGateway : candidates;
+        if (pool.Count == 0) return null;
+        return pool.FirstOrDefault(a => a.ToString().StartsWith("192.168.0.", StringComparison.Ordinal))
+               ?? pool[0];
     }
 
     /// <summary>

@@ -906,6 +906,51 @@ switch (cmd)
         return r.Ok ? 0 : 1;
     }
 
+    case "ping" or "test-conn":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        var target = string.IsNullOrWhiteSpace(cfg.CheckUrl) ? ConnPing.DefaultTarget : cfg.CheckUrl;
+        Console.WriteLine(Cli.S(cfg, "cli_ping_title", target));
+        Console.WriteLine();
+
+        ConnPingReport r;
+        using (var spinner = new ConsoleSpinner(Cli.S(cfg, "job_ping_test")))
+        {
+            r = await ConnPing.RunAsync(cfg, (msg, pct) => spinner.Update(msg, pct));
+        }
+
+        Console.WriteLine("1/2 " + Cli.S(cfg, "ping_direct_title"));
+        if (r.Direct.Ok)
+        {
+            Console.WriteLine($"    {Cli.S(cfg, "ping_result_stat", r.Direct.SuccessCount, r.Direct.TotalAttempts, r.Direct.SuccessPercent, r.Direct.AvgMs)}");
+        }
+        else
+        {
+            Console.WriteLine($"    {Cli.S(cfg, "ping_result_stat_fail", r.Direct.TotalAttempts, r.Direct.LastError ?? "—")}");
+        }
+        Console.WriteLine();
+
+        Console.WriteLine("2/2 " + Cli.S(cfg, "ping_proxy_title"));
+        if (r.Proxy.Ok)
+        {
+            Console.WriteLine($"    {Cli.S(cfg, "ping_result_stat", r.Proxy.SuccessCount, r.Proxy.TotalAttempts, r.Proxy.SuccessPercent, r.Proxy.AvgMs)}");
+        }
+        else
+        {
+            Console.WriteLine($"    {Cli.S(cfg, "ping_result_stat_fail", r.Proxy.TotalAttempts, r.Proxy.LastError ?? "—")}");
+        }
+        Console.WriteLine();
+
+        var verdict = (r.Direct.Ok, r.Proxy.Ok) switch
+        {
+            (true, true) => Cli.S(cfg, "ping_verdict_both"),
+            (true, false) => Cli.S(cfg, "ping_verdict_proxy_down"),
+            _ => Cli.S(cfg, "ping_verdict_direct_down"),
+        };
+        Console.WriteLine(verdict);
+        return r.Proxy.Ok ? 0 : (r.Direct.Ok ? 1 : 2);
+    }
+
     case "set-port":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);

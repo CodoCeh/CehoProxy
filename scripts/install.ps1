@@ -149,6 +149,30 @@ Get-ChildItem -Path $sourceDir -Filter 'libcronet.*' -ErrorAction SilentlyContin
         Write-Host "Библиотека NaiveProxy: $($_.Name)"
     }
 
+$targetCronet = Join-Path $root 'libcronet.dll'
+if (-not (Test-Path $targetCronet)) {
+    $cronetUrl = "https://github.com/$Repo/releases/latest/download/libcronet.dll"
+    Write-Host "Скачиваю библиотеку NaiveProxy (libcronet.dll)..."
+    $cronetDownloaded = $false
+    if ($curl) {
+        & curl.exe -sSL --fail --retry 3 --retry-delay 2 --connect-timeout 30 --output $targetCronet $cronetUrl
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $targetCronet) -and (Get-Item $targetCronet).Length -gt 1MB) {
+            $cronetDownloaded = $true
+        }
+    }
+    if (-not $cronetDownloaded) {
+        try {
+            Invoke-WebRequest -Uri $cronetUrl -OutFile $targetCronet -UseBasicParsing -TimeoutSec 120
+            if ((Test-Path $targetCronet) -and (Get-Item $targetCronet).Length -gt 1MB) {
+                $cronetDownloaded = $true
+            }
+        } catch { }
+    }
+    if ($cronetDownloaded) {
+        Write-Host "Библиотека NaiveProxy установлена: $targetCronet"
+    }
+}
+
 if ((Test-Path $engine) -or (Test-Path $engineLegacy)) { Write-Host "Движок уже установлен." }
 
 Write-Host "Страница продукта: https://github.com/$Repo"

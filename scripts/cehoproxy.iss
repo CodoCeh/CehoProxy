@@ -1,5 +1,5 @@
 #define AppName "CehoProxy"
-#define AppVersion "1.2.36"
+#define AppVersion "1.2.37"
 #define AppPublisher "КодоЦех"
 #define AppUrl "https://codoceh.ru"
 #define RepoUrl "https://github.com/CodoCeh/CehoProxy"
@@ -40,6 +40,7 @@ Source: "..\publish\cehoproxy.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md";            DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE";              DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD-PARTY.md";       DestDir: "{app}"; Flags: ignoreversion
+Source: "..\publish\libcronet.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\Панель CehoProxy"; Filename: "{app}\cehoproxy.exe"; Parameters: "open"
