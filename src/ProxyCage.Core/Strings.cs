@@ -247,6 +247,24 @@ public static class Strings
         ["doc_exit_dead_fix"] = new(
             "Перезапустите защиту — движок возьмёт другую ноду.",
             "Restart protection — the engine will take another node."),
+        ["dead_nodes_auth"] = new(
+            "ошибка авторизации прокси: сервер отклонил логин или пароль в подписке",
+            "proxy authentication failed: server rejected credentials in subscription"),
+        ["dead_nodes_timeout"] = new(
+            "сервер прокси не отвечает (таймаут соединения)",
+            "proxy server not responding (connection timeout)"),
+        ["dead_nodes_refused"] = new(
+            "сервер прокси сбросил соединение",
+            "proxy server refused connection"),
+        ["dead_nodes_cert"] = new(
+            "ошибка сертификата TLS при подключении к прокси",
+            "TLS certificate error connecting to proxy"),
+        ["dead_nodes_none"] = new(
+            "ни одна нода не отвечает",
+            "no node responds"),
+        ["subs_refreshed_rules_reloaded"] = new(
+            "подписки обновились, правила перечитаны",
+            "subscriptions updated, rules reloaded"),
         ["doc_leftovers"] = new(
             "В системе остался туннель от прошлого запуска",
             "A tunnel from a previous run is still in the system"),

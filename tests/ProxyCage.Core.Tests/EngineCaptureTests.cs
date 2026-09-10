@@ -96,4 +96,18 @@ public class EngineCaptureTests : IDisposable
         Assert.Contains(lines, l => l.Contains("второй запуск"));
         Assert.DoesNotContain(lines, l => l.Contains("первый запуск"));
     }
+
+    [Theory]
+    [InlineData("response received, protocol: h2, status: 308")]
+    [InlineData("response received, protocol: h2, status: 407")]
+    public void Proxy_auth_failure_gives_meaningful_hint(string logLine)
+    {
+        var hintRu = SingBoxProcess.Hint(logLine, "ru");
+        Assert.NotNull(hintRu);
+        Assert.Contains("авторизаци", hintRu);
+
+        var hintEn = SingBoxProcess.Hint(logLine, "en");
+        Assert.NotNull(hintEn);
+        Assert.Contains("authentication", hintEn);
+    }
 }

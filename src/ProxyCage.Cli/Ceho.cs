@@ -418,8 +418,44 @@ public static class Ceho
         }
 
         return SubscriptionsFingerprint() != before
-            ? "подписки обновились, правила перечитаны"
-            : "ни одна нода не отвечает";
+            ? Strings.T(cfg.Language, "subs_refreshed_rules_reloaded")
+            : ExplainDeadNodes(cfg.Language);
+    }
+
+    public static string ExplainDeadNodes(string? lang)
+    {
+        try
+        {
+            var entries = Log.Entries(50, LogView.Engine);
+            for (var i = entries.Count - 1; i >= 0; i--)
+            {
+                var msg = entries[i].Message;
+                if (msg.Contains("status: 308", StringComparison.OrdinalIgnoreCase)
+                    || msg.Contains("status: 407", StringComparison.OrdinalIgnoreCase)
+                    || msg.Contains("proxy authentication", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Strings.T(lang, "dead_nodes_auth");
+                }
+                if (msg.Contains("i/o timeout", StringComparison.OrdinalIgnoreCase)
+                    || msg.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+                    || msg.Contains("context deadline exceeded", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Strings.T(lang, "dead_nodes_timeout");
+                }
+                if (msg.Contains("connection refused", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Strings.T(lang, "dead_nodes_refused");
+                }
+                if (msg.Contains("certificate", StringComparison.OrdinalIgnoreCase)
+                    || msg.Contains("tls: ", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Strings.T(lang, "dead_nodes_cert");
+                }
+            }
+        }
+        catch { }
+
+        return Strings.T(lang, "dead_nodes_none");
     }
 
     private static string SubscriptionsFingerprint()

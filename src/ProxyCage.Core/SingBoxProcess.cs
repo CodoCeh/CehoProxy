@@ -171,6 +171,9 @@ public sealed class SingBoxProcess : IDisposable
         if (reason.Contains("cronet", StringComparison.OrdinalIgnoreCase)
             && reason.Contains("library not found", StringComparison.OrdinalIgnoreCase))
             return Strings.T(lang, "engine_cronet_hint", Os.IsWindows ? "" : "sudo ");
+        if (reason.Contains("status: 308", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("status: 407", StringComparison.OrdinalIgnoreCase))
+            return Strings.T(lang, "dead_nodes_auth");
         return null;
     }
 
