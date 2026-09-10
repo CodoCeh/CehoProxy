@@ -13,19 +13,19 @@ public static class AppPathPicker
     private const string LauncherName = "pick-app-launch.vbs";
     private const string ResultName = "pick-app-result.txt";
 
-    public static AppPickResult Pick(string lang, string? root = null)
+    public static AppPickResult Pick(string lang, string? root = null, int panelPort = 0)
     {
         root ??= Os.DefaultRoot;
         var title = Strings.T(lang, "app_pick_title");
         return Os.Kind switch
         {
-            OsKind.Windows => PickWindows(title, root),
+            OsKind.Windows => PickWindows(title, root, panelPort),
             OsKind.Mac => PickMac(title),
             _ => PickLinux(title),
         };
     }
 
-    private static AppPickResult PickWindows(string title, string root)
+    private static AppPickResult PickWindows(string title, string root, int panelPort)
     {
         if (Process.GetCurrentProcess().SessionId > 0)
         {
@@ -34,7 +34,7 @@ public static class AppPathPicker
                 return direct;
         }
 
-        return PickWindowsInteractive(title, root);
+        return PickWindowsInteractive(title, root, panelPort);
     }
 
     private static AppPickResult PickWindowsDirect(string title)
@@ -62,7 +62,7 @@ if ($d.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {{ exit 2 }}
         return RunDirectPicker(psi);
     }
 
-    private static AppPickResult PickWindowsInteractive(string title, string root)
+    private static AppPickResult PickWindowsInteractive(string title, string root, int panelPort)
     {
         try
         {
@@ -73,7 +73,7 @@ if ($d.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {{ exit 2 }}
             return new(null, "app_pick_failed");
         }
 
-        var user = GetInteractiveWindowsUser();
+        var user = GetInteractiveWindowsUser(panelPort);
         if (user is null)
             return new(null, "app_pick_no_user");
 
@@ -202,7 +202,46 @@ try {{
         return null;
     }
 
-    private static string? GetInteractiveWindowsUser()
+    /// <summary>
+    /// На RDS <c>Win32_ComputerSystem.UserName</c> пустой: консоли нет, люди сидят в RDP.
+    /// Берём владельца explorer, кто открыл панель, или пользователя службы, если это не SYSTEM.
+    /// </summary>
+    internal static string? ChooseInteractiveUser(
+        string? computerSystemUser,
+        string? environmentUser,
+        IReadOnlyList<string> explorerOwners,
+        IReadOnlyList<string> panelClientOwners)
+    {
+        foreach (var u in panelClientOwners)
+            if (!AppIsolation.IsServiceAccount(u)) return u;
+
+        if (!AppIsolation.IsServiceAccount(computerSystemUser))
+            return computerSystemUser!.Trim();
+
+        var humans = explorerOwners
+            .Where(u => !AppIsolation.IsServiceAccount(u))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!AppIsolation.IsServiceAccount(environmentUser))
+        {
+            var match = humans.FirstOrDefault(h => AppIsolation.SameWindowsUser(h, environmentUser));
+            if (match is not null) return match;
+            return environmentUser!.Trim();
+        }
+
+        return humans.Count > 0 ? humans[0] : null;
+    }
+
+    private static string? GetInteractiveWindowsUser(int panelPort)
+    {
+        var computer = QueryComputerSystemUser();
+        var explorers = QueryProcessOwners("explorer.exe");
+        var panel = panelPort > 0 ? QueryPanelClientOwners(panelPort) : Array.Empty<string>();
+        return ChooseInteractiveUser(computer, Environment.UserName, explorers, panel);
+    }
+
+    private static string? QueryComputerSystemUser()
     {
         var (code, output) = Os.Run(
             "powershell.exe",
@@ -211,6 +250,32 @@ try {{
         if (code != 0) return null;
         var user = output.Trim();
         return user.Length > 0 ? user : null;
+    }
+
+    private static IReadOnlyList<string> QueryProcessOwners(string exeName)
+    {
+        var list = new List<string>();
+        foreach (var (_, user, _) in Os.WindowsProcessesOwned(exeName))
+            if (!string.IsNullOrWhiteSpace(user)) list.Add(user);
+        return list;
+    }
+
+    private static IReadOnlyList<string> QueryPanelClientOwners(int port)
+    {
+        var (code, output) = Os.Run(
+            "powershell.exe",
+            "-NoProfile -WindowStyle Hidden -Command \"" +
+            "Get-NetTCPConnection -LocalPort " + port + " -State Established -ErrorAction SilentlyContinue | " +
+            "ForEach-Object { $_.OwningProcess } | Sort-Object -Unique | ForEach-Object { " +
+            "$p=Get-CimInstance Win32_Process -Filter (\\\"ProcessId=\"+$_); if(-not $p){return}; " +
+            "$u=''; try { $o=Invoke-CimMethod -InputObject $p -MethodName GetOwner; if($o){ $u=[string]$o.User } } catch {}; " +
+            "if($u){ Write-Output $u } }\"",
+            15_000);
+        if (code != 0) return Array.Empty<string>();
+        return output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .ToList();
     }
 
     private static string EscapeSchtasksUser(string user) =>

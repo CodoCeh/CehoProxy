@@ -177,7 +177,9 @@ public static class WebUi
       margin-bottom:16px;background:var(--surface)}
     .flash.err{border-color:var(--danger-ink);color:var(--danger-ink)}
     .flash.ok{border-color:var(--ok-ink);color:var(--ok-ink)}
+    .flash.warn{border-color:var(--warn-ink);color:var(--warn-ink)}
     .flash b{display:block;margin-bottom:2px}
+    .flash form{margin:10px 0 0}
 
     ol.steps,ul.steps{margin:0;padding-left:20px;color:var(--subtext);max-width:70ch}
     ol.steps li,ul.steps li{margin-bottom:8px}

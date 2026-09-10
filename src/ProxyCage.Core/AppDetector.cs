@@ -119,6 +119,13 @@ public static class AppDetector
     private static string NiceName(string folder, string entered)
     {
         var leaf = Path.GetFileName(folder);
+        if (leaf.Equals("Application", StringComparison.OrdinalIgnoreCase))
+        {
+            var product = Path.GetFileName(Path.GetDirectoryName(folder) ?? "");
+            if (product.Equals("Chrome", StringComparison.OrdinalIgnoreCase)) return "Google Chrome";
+            if (product.Length > 0 && !LooksLikeVersion(product)) return product;
+        }
+
         if (!LooksLikeVersion(leaf)) return leaf;
 
         var parent = Path.GetFileName(Path.GetDirectoryName(folder) ?? "");
@@ -253,6 +260,37 @@ public static class AppDetector
                 AddIfMissing(@"^.*[\\/]claude$");
             }
         }
+        else if (IsChrome(app))
+        {
+            if (isWinPath)
+            {
+                AddIfMissing(@"(?i)^.*[\\/]Google[\\/]Chrome(?: Beta| SxS| Dev)?[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]Chromium[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]chrome\.exe$");
+            }
+            else
+            {
+                AddIfMissing(@"(?i)^.*[\\/]Google Chrome\.app[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/][Cc]hromium[\\/]");
+                AddIfMissing(@"^.*[\\/][Gg]oogle Chrome$");
+            }
+        }
+        else if (IsEdge(app))
+        {
+            if (isWinPath)
+            {
+                AddIfMissing(@"(?i)^.*[\\/]Microsoft[\\/]Edge[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]msedge\.exe$");
+            }
+        }
+        else if (IsBrave(app))
+        {
+            if (isWinPath)
+            {
+                AddIfMissing(@"(?i)^.*[\\/]BraveSoftware[\\/]Brave-Browser[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]brave\.exe$");
+            }
+        }
         else if (IsOpera(app))
         {
             if (isWinPath)
@@ -292,28 +330,63 @@ public static class AppDetector
         app.Folder.Contains(@"\claude", StringComparison.OrdinalIgnoreCase) ||
         app.Folder.Contains("/claude", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsOpera(AppEntry app) =>
+    internal static bool IsChromiumFamily(AppEntry app) =>
+        IsChrome(app) || IsEdge(app) || IsBrave(app) || IsOpera(app);
+
+    internal static bool IsChrome(AppEntry app)
+    {
+        var name = app.Name ?? "";
+        if (name.Contains("Remote", StringComparison.OrdinalIgnoreCase)) return false;
+        if (name.Equals("Chrome", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Google Chrome", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Chromium", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("Chrome ", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var folder = app.Folder;
+        return folder.Contains(@"\Google\Chrome", StringComparison.OrdinalIgnoreCase)
+               || folder.Contains("/Google/Chrome", StringComparison.OrdinalIgnoreCase)
+               || folder.Contains(@"\Chromium\", StringComparison.OrdinalIgnoreCase)
+               || folder.Contains("/Chromium/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsEdge(AppEntry app) =>
+        string.Equals(app.Name, "Edge", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(app.Name, "Microsoft Edge", StringComparison.OrdinalIgnoreCase)
+        || app.Folder.Contains(@"\Microsoft\Edge", StringComparison.OrdinalIgnoreCase)
+        || app.Folder.Contains("/Microsoft/Edge", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsBrave(AppEntry app) =>
+        string.Equals(app.Name, "Brave", StringComparison.OrdinalIgnoreCase)
+        || app.Folder.Contains(@"\BraveSoftware\", StringComparison.OrdinalIgnoreCase)
+        || app.Folder.Contains("/BraveSoftware/", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsOpera(AppEntry app) =>
         string.Equals(app.Name, "Opera", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(app.Name, "Opera GX", StringComparison.OrdinalIgnoreCase) ||
         app.Folder.Contains(@"\Opera", StringComparison.OrdinalIgnoreCase) ||
         app.Folder.Contains("/Opera", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Opera (и похожие) кладут бинарники в подпапку версии; при выборе opera.exe из неё
-    /// правило должно покрывать весь каталог установки, включая корневой launcher.
+    /// Chromium-браузеры кладут бинарники в Application\&lt;версия&gt; или Opera\&lt;версия&gt;.
+    /// Правило должно покрывать весь каталог установки, а не одну сборку.
     /// </summary>
     private static string NormalizeBrowserInstallFolder(string folder)
     {
         if (!Os.IsWindows) return folder;
 
         var current = folder.TrimEnd('\\', '/');
-        for (var i = 0; i < 2; i++)
+        for (var i = 0; i < 3; i++)
         {
             var leaf = Path.GetFileName(current);
             var parent = Path.GetDirectoryName(current);
             if (string.IsNullOrEmpty(leaf) || string.IsNullOrEmpty(parent)) break;
-            if (!LooksLikeVersion(leaf) || !IsChromiumBrowserRoot(parent)) break;
-            current = parent.TrimEnd('\\', '/');
+            if (LooksLikeVersion(leaf) && IsChromiumBrowserRoot(parent))
+            {
+                current = parent.TrimEnd('\\', '/');
+                continue;
+            }
+            break;
         }
 
         return current.Length == 0 ? folder : current;
@@ -322,8 +395,26 @@ public static class AppDetector
     private static bool IsChromiumBrowserRoot(string folder)
     {
         var name = Path.GetFileName(folder.TrimEnd('\\', '/'));
-        return name.Equals("Opera", StringComparison.OrdinalIgnoreCase)
-               || name.Equals("Opera GX", StringComparison.OrdinalIgnoreCase);
+        if (name.Equals("Opera", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Opera GX", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Chrome", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Chrome Beta", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Chrome SxS", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Chrome Dev", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Chromium", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Edge", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Brave-Browser", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!name.Equals("Application", StringComparison.OrdinalIgnoreCase)) return false;
+        var product = Path.GetFileName((Path.GetDirectoryName(folder) ?? "").TrimEnd('\\', '/'));
+        return product.Equals("Chrome", StringComparison.OrdinalIgnoreCase)
+               || product.Equals("Chrome Beta", StringComparison.OrdinalIgnoreCase)
+               || product.Equals("Chrome SxS", StringComparison.OrdinalIgnoreCase)
+               || product.Equals("Chrome Dev", StringComparison.OrdinalIgnoreCase)
+               || product.Equals("Chromium", StringComparison.OrdinalIgnoreCase)
+               || product.Equals("Edge", StringComparison.OrdinalIgnoreCase)
+               || product.Equals("Brave-Browser", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string EscapeGo(string s)
