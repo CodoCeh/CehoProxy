@@ -35,9 +35,22 @@ public static class DirectHttp
     {
         var host = context.DnsEndPoint.Host;
         var port = context.DnsEndPoint.Port;
-        var addresses = IPAddress.TryParse(host, out var literal)
-            ? new[] { literal }
-            : await DirectDnsResolver.ResolveAsync(host, cancellationToken, tunAddress);
+        IPAddress[] addresses;
+        if (IPAddress.TryParse(host, out var literal))
+        {
+            addresses = new[] { literal };
+        }
+        else
+        {
+            try
+            {
+                addresses = await DirectDnsResolver.ResolveAsync(host, cancellationToken, tunAddress);
+            }
+            catch
+            {
+                addresses = await Dns.GetHostAddressesAsync(host, cancellationToken);
+            }
+        }
 
         var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
         var bind = Os.PhysicalBindAddress(tunAddress);

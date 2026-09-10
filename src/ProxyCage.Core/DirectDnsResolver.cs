@@ -22,14 +22,19 @@ public static class DirectDnsResolver
         if (normalized.Length == 0)
             throw new SocketException((int)SocketError.HostNotFound);
 
-        foreach (var server in Resolvers)
+        var servers = Os.SystemDnsServers(tunAddress ?? CehoConfig.DefaultTunAddress)
+            .Concat(Resolvers)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var server in servers)
         {
             try
             {
                 var addresses = await QueryAsync(server, normalized, cancellationToken, tunAddress);
                 if (addresses.Length > 0) return addresses;
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
             catch { }
         }
 
@@ -41,7 +46,6 @@ public static class DirectDnsResolver
     {
         var query = BuildQuery(host, (ushort)Random.Shared.Next(ushort.MaxValue));
         using var udp = new UdpClient();
-        udp.Client.ReceiveTimeout = 4000;
         var bind = Os.PhysicalBindAddress(tunAddress);
         if (bind is not null)
             udp.Client.Bind(new IPEndPoint(bind, 0));
@@ -49,8 +53,10 @@ public static class DirectDnsResolver
         var endpoint = new IPEndPoint(IPAddress.Parse(server), 53);
         await udp.SendAsync(query, query.Length, endpoint);
 
-        using var timeout = cancellationToken.Register(() => udp.Close());
-        var result = await udp.ReceiveAsync(cancellationToken);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(2500));
+        using var timeout = cts.Token.Register(() => udp.Close());
+        var result = await udp.ReceiveAsync(cts.Token);
         return ParseARecords(result.Buffer, host);
     }
 

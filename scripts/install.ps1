@@ -157,7 +157,8 @@ Write-Host "Страница продукта: https://github.com/$Repo"
 # сразу получает пустой ввод. В этом случае ставим программу молча и просим
 # открыть новое окно. iex (irm …) клавиатуру не трогает — мастер идёт здесь же.
 $piped = [Console]::IsInputRedirected
-$installArgs = @('install', '--with-engine')
+$installArgs = @('install')
+if (-not (Test-Path $engine) -and -not (Test-Path $engineLegacy)) { $installArgs += '--with-engine' }
 if ($piped -or $hadConfig) { $installArgs += '--no-setup' }
 
 & $exe @installArgs
