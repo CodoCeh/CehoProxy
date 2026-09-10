@@ -54,7 +54,7 @@ public static class Installer
     /// <summary>Файлы прошлой версии: их можно и нужно затирать, данных в них нет.</summary>
     private static readonly string[] VersionLeftovers =
     {
-        "*.old", "*.new", "singbox.json", "panel.port", "cehoproxy.pid", "chp.cmd",
+        "*.old", "*.new", "singbox.json", "panel.port", "cehoproxy.pid",
         "sing-box-*.zip", "sing-box-*.tar.gz",
         // Прошлые версии вели отдельный лог движка и файл на каждое падение;
         // теперь всё это в одном журнале, а файлы только мусорят в папке.
@@ -207,11 +207,15 @@ public static class Installer
             var current = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.Machine) ?? "";
             if (current.Split(';').Any(p => p.Trim().TrimEnd('\\')
                     .Equals(root.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)))
+            {
+                RefreshProcessPath(root);
                 return;
+            }
             try
             {
                 Environment.SetEnvironmentVariable("Path",
                     current.TrimEnd(';') + ";" + root, EnvironmentVariableTarget.Machine);
+                RefreshProcessPath(root);
                 log(Strings.T(lang, "inst_alias_ok"));
                 log(Strings.T(lang, "inst_alias_reopen"));
             }
@@ -234,6 +238,19 @@ public static class Installer
             log(Strings.T(lang, "inst_alias_failed", ex.Message));
             log(Strings.T(lang, "inst_alias_fallback", BinaryPath(root)));
         }
+    }
+
+    private static void RefreshProcessPath(string root)
+    {
+        try
+        {
+            var process = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.Process) ?? "";
+            if (!process.Split(';').Any(p => p.Trim().TrimEnd('\\')
+                    .Equals(root.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)))
+                Environment.SetEnvironmentVariable("Path",
+                    root + ";" + process, EnvironmentVariableTarget.Process);
+        }
+        catch { }
     }
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]

@@ -188,12 +188,27 @@ if ($piped -or $hadConfig) { $installArgs += '--no-setup' }
 & $exe @installArgs
 $installCode = $LASTEXITCODE
 
+# Текущее окно PowerShell не видит Machine PATH, пока его не перечитать.
+$env:Path = "$root;" + ([Environment]::GetEnvironmentVariable('Path', 'Machine'))
+
 if ($hadConfig) {
     Write-Host ""
     Write-Host "Обновление завершено, прежние настройки и подписки на месте."
-    Write-Host "  chp             # состояние"
-    Write-Host "  chp subs        # подписки, сроки и трафик"
-    Write-Host "  chp log         # журнал и падения"
+    $alive = Get-Process -Name 'cehoproxy' -ErrorAction SilentlyContinue
+    if (-not $alive) {
+        Start-Process -FilePath $exe -ArgumentList 'daemon' -WorkingDirectory $root -WindowStyle Hidden
+        Start-Sleep -Seconds 2
+        $alive = Get-Process -Name 'cehoproxy' -ErrorAction SilentlyContinue
+    }
+    if ($alive) {
+        Write-Host "Защита и панель подняты. Если страница не открылась — подождите пару секунд."
+        Write-Host "  & '$exe'"
+    } else {
+        Write-Host "Панель сама не поднялась. В ЭТОМ окне:"
+        Write-Host "  & '$exe' daemon"
+    }
+    Write-Host "Команда chp появится в НОВОМ окне PowerShell. Пока можно так:"
+    Write-Host "  & '$exe'"
 } elseif ($piped) {
     Write-Host ""
     Write-Host "Программа стоит. Это окно сейчас занято командой установки —"
@@ -209,6 +224,6 @@ if ($hadConfig) {
 if (-not (Test-Path $engine) -and -not (Test-Path $engineLegacy) -and -not (Get-Command 'sing-box' -ErrorAction SilentlyContinue)) {
     Write-Host ""
     Write-Host "Движок sing-box скачать не удалось, без него туннель не поднимется."
-    Write-Host "Повторить одной командой (PowerShell от имени администратора):"
-    Write-Host "  chp engine"
+    Write-Host "Повторить в этом окне:"
+    Write-Host "  & '$exe' engine"
 }

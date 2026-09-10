@@ -89,16 +89,26 @@ if (cmd == "install")
     Console.WriteLine("  " + Strings.T(cfg0.Language, "product_page_at", Brand.RepoUrl(cfg0.UpdateRepo)));
 
     // Обновление не должно оставлять машину без защиты: что работало — включаем обратно.
+    // irm|iex / install.ps1 гасит процесс ДО «install --no-setup», поэтому WasRunning
+    // часто false — тогда поднимаем демон, если есть сохранённые настройки.
+    var resume = previous.WasRunning
+        || previous.AutostartWasOn
+        || (args.Contains("--no-setup") && File.Exists(Ceho.ConfigPath));
     if (previous.AutostartWasOn)
     {
         var err = Autostart.Enable(Installer.BinaryPath(Ceho.Root), Ceho.Root);
         Console.WriteLine("  " + (err ?? Strings.T(cfg0.Language, "inst_autostart_back")));
         if (err is null) Autostart.Restart();
+        if (!DaemonControl.WaitUntilRunning(Ceho.Root) && !DaemonControl.TryStart(installed, Ceho.Root))
+            Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_resume_failed",
+                Os.IsWindows ? "" : "sudo ", installed));
     }
-    else if (previous.WasRunning)
+    else if (resume)
     {
-        Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_start_again",
-            Os.IsWindows ? "" : "sudo "));
+        Console.WriteLine("  " + (DaemonControl.TryStart(installed, Ceho.Root)
+            ? Strings.T(cfg0.Language, "inst_resumed")
+            : Strings.T(cfg0.Language, "inst_resume_failed",
+                Os.IsWindows ? "" : "sudo ", installed)));
     }
 
     if (!args.Contains("--no-setup")) return await Cli.SetupAsync(Ceho.ConfigPath);
