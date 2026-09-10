@@ -29,6 +29,25 @@ public static class Installer
     {
         if (!MissingCronetDll(root)) return;
         log(Strings.T(lang, "engine_cronet_missing", root));
+
+        var targetDll = Path.Combine(root, CronetFileName);
+        try
+        {
+            using var http = DirectHttp.CreateClient(TimeSpan.FromSeconds(30));
+            var directUrl = "https://github.com/CodoCeh/CehoProxy/releases/latest/download/libcronet.dll";
+            var tempDll = Path.Combine(root, CronetFileName + ".dl");
+            await using (var stream = await http.GetStreamAsync(directUrl, cancel))
+            await using (var file = File.Create(tempDll))
+                await stream.CopyToAsync(file, cancel);
+            if (new FileInfo(tempDll).Length > 1_000_000)
+            {
+                File.Move(tempDll, targetDll, overwrite: true);
+                log(Strings.T(lang, "inst_engine_at", targetDll));
+                return;
+            }
+        }
+        catch { }
+
         await DownloadEngineAsync(root, log, lang).WaitAsync(cancel);
     }
 

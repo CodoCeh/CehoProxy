@@ -43,6 +43,10 @@ def main():
         files = [(os.path.join(BIN, binary), f"CehoProxy/{binname}", True, False),
                  (os.path.join(ROOT, "scripts", installer), f"CehoProxy/{installer}", True, True)]
         files += [(os.path.join(ROOT, d), f"CehoProxy/{d}", False, True) for d in DOCS]
+        if suffix == "windows":
+            cronet = os.path.join(BIN, "libcronet.dll")
+            if os.path.exists(cronet):
+                files.append((cronet, "CehoProxy/libcronet.dll", False, False))
 
         with zipfile.ZipFile(os.path.join(OUT, name), "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
             for src, arc, runnable, text_file in files:

@@ -235,7 +235,7 @@ public static class SingBoxConfigGenerator
 
         outbounds.Add(BuildDirectOutbound(cfg.TunAddress));
 
-        var dnsServers = DnsServersWithDirect(cfg.TunAddress, engineOnly: true);
+        var dnsServers = DnsServersWithDirect(cfg.TunAddress, engineOnly: false);
         var dnsRules = new JsonArray();
         var hijack = new JsonArray();
         var routeRules = new JsonArray { new JsonObject { ["action"] = "sniff" } };
@@ -350,6 +350,13 @@ public static class SingBoxConfigGenerator
             ["action"] = "reject",
         });
         routeRules.Insert(tunHijackIndex + 2, new JsonObject
+        {
+            ["inbound"] = new JsonArray { "tun-in" },
+            ["network"] = "udp",
+            ["port"] = new JsonArray { 443 },
+            ["action"] = "reject",
+        });
+        routeRules.Insert(tunHijackIndex + 3, new JsonObject
         {
             ["inbound"] = new JsonArray { "mixed-in" },
             ["outbound"] = ProxyTag,
@@ -566,14 +573,11 @@ public static class SingBoxConfigGenerator
 
     private static JsonObject BuildDirectOutbound(string? tunAddress)
     {
-        var direct = new JsonObject { ["type"] = "direct", ["tag"] = DirectTag };
-        ApplyPhysicalBind(direct, tunAddress);
-        return direct;
+        return new JsonObject { ["type"] = "direct", ["tag"] = DirectTag };
     }
 
     /// <summary>
-    /// Прямой DNS для движка. Под TUN системный DNS Windows часто уходит в петлю
-    /// или AD — urltest тогда не резолвит server нод (origin.example.com).
+    /// Прямой DNS для движка.
     /// </summary>
     private static JsonArray DirectDnsServers(string tunAddress, bool engineOnly = false)
     {
@@ -590,6 +594,7 @@ public static class SingBoxConfigGenerator
         if (system.Count == 0)
         {
             servers.Add(DirectUdpDnsServer("dns-direct", Os.PublicResolver, tunAddress));
+            servers.Add(DirectUdpDnsServer("dns-direct-2", "8.8.8.8", tunAddress));
             return servers;
         }
 
@@ -598,6 +603,9 @@ public static class SingBoxConfigGenerator
                 i == 0 ? "dns-direct" : $"dns-direct-{i + 1}",
                 system[i],
                 tunAddress));
+
+        servers.Add(DirectUdpDnsServer($"dns-direct-{system.Count + 1}", Os.PublicResolver, tunAddress));
+        servers.Add(DirectUdpDnsServer($"dns-direct-{system.Count + 2}", "8.8.8.8", tunAddress));
         return servers;
     }
 
@@ -673,6 +681,13 @@ public static class SingBoxConfigGenerator
                 ["action"] = "reject",
             });
         }
+
+        rules.Add(new JsonObject
+        {
+            ["network"] = "udp",
+            ["port"] = new JsonArray { 443 },
+            ["action"] = "reject",
+        });
 
         rules.Add(new JsonObject
         {

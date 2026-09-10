@@ -53,6 +53,7 @@ public sealed class WebServer
     // Последний осмотр держим здесь: страница показывает его сразу, без ожидания проверок.
     private Doctor.Result? _doctor;
     private DateTime _doctorAtUtc;
+    private ConnPingReport? _lastPing;
 
     public Func<IReadOnlyList<string>>? WrappedNames { get; set; }
 
@@ -645,6 +646,18 @@ public sealed class WebServer
                     return (null, false, job.Id);
                 }
 
+                case "/doctor/ping":
+                {
+                    var job = Jobs.Start("doctor-ping", S("job_ping_test"), async p =>
+                    {
+                        var fresh = CehoConfig.Load(_configPath);
+                        var r = await ConnPing.RunAsync(fresh, (msg, pct) => p.Stage(msg, pct));
+                        _lastPing = r;
+                        return ConnPing.Summary(r, fresh.Language);
+                    });
+                    return (null, false, job.Id);
+                }
+
                 case "/countries/refresh":
                 {
                     if (OnCountries is null) return (S("measure_blocked"), true, null);
@@ -1188,7 +1201,14 @@ public sealed class WebServer
           .Append("<button type=submit formaction=\"/doctor/check\">").Append(E(S("doc_check", [])))
           .Append("</button>")
           .Append("<button type=submit formaction=\"/doctor/fix\" class=ghost>").Append(E(S("doc_heal", [])))
+          .Append("</button>")
+          .Append("<button type=submit formaction=\"/doctor/ping\" class=ghost>").Append(E(S("doc_ping_btn", [])))
           .Append("</button></form>");
+
+        if (_lastPing is not null)
+        {
+            RenderPingCard(sb, _lastPing, S);
+        }
 
         var report = _doctor;
         if (report is null)
@@ -1222,6 +1242,64 @@ public sealed class WebServer
 
         RenderChecks(sb, report.Checks, S);
         sb.Append("</section>");
+    }
+
+    private static void RenderPingCard(StringBuilder sb, ConnPingReport ping, Func<string, object[], string> S)
+    {
+        sb.Append("<div class=\"ping-card\" style=\"background: var(--bg-card, #f8f9fa); border: 1px solid var(--border, #e2e8f0); border-radius: 8px; padding: 16px; margin: 16px 0;\">");
+        sb.Append("<h3 style=\"margin-top:0; margin-bottom:6px;\">").Append(E(S("ping_card_title", []))).Append("</h3>");
+        sb.Append("<p class=hint style=\"margin-top:0; margin-bottom:12px;\">").Append(E(S("ping_target_label", []))).Append(": <code>").Append(E(ping.Direct.Target)).Append("</code></p>");
+
+        sb.Append("<div style=\"display:flex; gap:16px; flex-wrap:wrap;\">");
+
+        // 1 этап: напрямую
+        var dirOk = ping.Direct.Ok;
+        sb.Append("<div style=\"flex:1; min-width:240px; border-left: 4px solid ").Append(dirOk ? "#10b981" : "#ef4444").Append("; padding: 8px 12px; background: rgba(0,0,0,0.02); border-radius: 4px;\">");
+        sb.Append("<div style=\"font-weight:600; margin-bottom:4px;\">").Append(E(S("ping_direct_title", []))).Append("</div>");
+        if (dirOk)
+        {
+            sb.Append("<span style=\"font-size:1.15em; font-weight:bold; color:").Append(ping.Direct.SuccessPercent >= 100 ? "#059669" : "#d97706").Append(";\">")
+              .Append(ping.Direct.SuccessPercent).Append("%</span> ")
+              .Append("<span class=hint>(").Append(ping.Direct.SuccessCount).Append("/").Append(ping.Direct.TotalAttempts).Append(")</span> · ")
+              .Append("<b>").Append(ping.Direct.AvgMs).Append(" мс</b>");
+        }
+        else
+        {
+            sb.Append("<span style=\"font-weight:bold; color:#dc2626;\">0%</span> · <span style=\"color:#dc2626;\">")
+              .Append(E(ping.Direct.LastError ?? "ошибка")).Append("</span>");
+        }
+        sb.Append("</div>");
+
+        // 2 этап: через ноду
+        var proxyOk = ping.Proxy.Ok;
+        sb.Append("<div style=\"flex:1; min-width:240px; border-left: 4px solid ").Append(proxyOk ? "#10b981" : "#ef4444").Append("; padding: 8px 12px; background: rgba(0,0,0,0.02); border-radius: 4px;\">");
+        sb.Append("<div style=\"font-weight:600; margin-bottom:4px;\">").Append(E(S("ping_proxy_title", []))).Append("</div>");
+        if (proxyOk)
+        {
+            sb.Append("<span style=\"font-size:1.15em; font-weight:bold; color:").Append(ping.Proxy.SuccessPercent >= 100 ? "#059669" : "#d97706").Append(";\">")
+              .Append(ping.Proxy.SuccessPercent).Append("%</span> ")
+              .Append("<span class=hint>(").Append(ping.Proxy.SuccessCount).Append("/").Append(ping.Proxy.TotalAttempts).Append(")</span> · ")
+              .Append("<b>").Append(ping.Proxy.AvgMs).Append(" мс</b>");
+        }
+        else
+        {
+            sb.Append("<span style=\"font-weight:bold; color:#dc2626;\">0%</span> · <span style=\"color:#dc2626;\">")
+              .Append(E(ping.Proxy.LastError ?? "ошибка")).Append("</span>");
+        }
+        sb.Append("</div>");
+
+        sb.Append("</div>");
+
+        // Вердикт
+        var verdict = (ping.Direct.Ok, ping.Proxy.Ok) switch
+        {
+            (true, true) => S("ping_verdict_both", []),
+            (true, false) => S("ping_verdict_proxy_down", []),
+            _ => S("ping_verdict_direct_down", []),
+        };
+        sb.Append("<p style=\"margin-top:12px; margin-bottom:0; font-weight:500;\">").Append(E(verdict)).Append("</p>");
+
+        sb.Append("</div>");
     }
 
     private static void RenderChecks(

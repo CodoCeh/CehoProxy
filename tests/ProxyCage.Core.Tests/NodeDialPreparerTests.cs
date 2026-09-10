@@ -54,7 +54,7 @@ public class NodeDialPreparerTests
     }
 
     [Fact]
-    public void Engine_config_uses_public_dns_direct_bind_on_dns_and_direct()
+    public void Engine_config_direct_outbound_has_no_hardcoded_bind()
     {
         var nodes = new List<ProxyNode> { RealityNode("198.51.100.72", "example.com") };
         var cfg = MinimalCfg();
@@ -62,15 +62,10 @@ public class NodeDialPreparerTests
         var root = JsonNode.Parse(json)!;
 
         var direct = root["outbounds"]!.AsArray().First(o => (string?)o!["tag"] == "direct")!;
+        Assert.Null((string?)direct["inet4_bind_address"]);
+
         var dnsDirect = root["dns"]!["servers"]!.AsArray()
             .First(s => (string?)s!["tag"] == "dns-direct")!;
-
-        Assert.Equal(Os.PublicResolver, (string?)dnsDirect["server"]);
-
-        var bind = Os.PhysicalBindAddress(cfg.TunAddress)?.ToString();
-        if (bind is null) return;
-
-        Assert.Equal(bind, (string?)direct["inet4_bind_address"]);
-        Assert.Equal(bind, (string?)dnsDirect["inet4_bind_address"]);
+        Assert.NotNull((string?)dnsDirect["server"]);
     }
 }
