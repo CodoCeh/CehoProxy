@@ -38,6 +38,13 @@ public class AppTunnelTests
     }
 
     [Fact]
+    public void Dns_servers_do_not_include_google_public_dns()
+    {
+        var servers = Root(Nodes(), TwoApps())["dns"]!["servers"]!.AsArray();
+        Assert.DoesNotContain(servers, s => (string?)s?["server"] is "8.8.8.8" or "8.8.4.4");
+    }
+
+    [Fact]
     public void Empty_filter_keeps_the_app_on_the_shared_pool()
     {
         var nodes = Nodes();

@@ -168,6 +168,8 @@ public sealed class SingBoxProcess : IDisposable
     {
         if (reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
             return Strings.T(lang, "engine_tun_busy");
+        if (reason.Contains("not ready", StringComparison.OrdinalIgnoreCase))
+            return Strings.T(lang, "engine_tun_not_ready");
         if (reason.Contains("cronet", StringComparison.OrdinalIgnoreCase)
             && reason.Contains("library not found", StringComparison.OrdinalIgnoreCase))
             return Strings.T(lang, "engine_cronet_hint", Os.IsWindows ? "" : "sudo ");

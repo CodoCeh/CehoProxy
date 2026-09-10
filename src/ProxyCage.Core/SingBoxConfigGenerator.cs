@@ -583,16 +583,18 @@ public static class SingBoxConfigGenerator
         if (engineOnly)
         {
             servers.Add(DirectUdpDnsServer("dns-direct", Os.PublicResolver, tunAddress));
-            servers.Add(DirectUdpDnsServer("dns-direct-2", "8.8.8.8", tunAddress));
+            servers.Add(DirectUdpDnsServer("dns-direct-2", "9.9.9.9", tunAddress));
             return servers;
         }
 
-        var system = Os.SystemDnsServers(tunAddress);
+        var system = Os.SystemDnsServers(tunAddress)
+            .Where(a => a is not ("8.8.8.8" or "8.8.4.4"))
+            .ToList();
 
         if (system.Count == 0)
         {
             servers.Add(DirectUdpDnsServer("dns-direct", Os.PublicResolver, tunAddress));
-            servers.Add(DirectUdpDnsServer("dns-direct-2", "8.8.8.8", tunAddress));
+            servers.Add(DirectUdpDnsServer("dns-direct-2", "9.9.9.9", tunAddress));
             return servers;
         }
 
@@ -603,7 +605,7 @@ public static class SingBoxConfigGenerator
                 tunAddress));
 
         servers.Add(DirectUdpDnsServer($"dns-direct-{system.Count + 1}", Os.PublicResolver, tunAddress));
-        servers.Add(DirectUdpDnsServer($"dns-direct-{system.Count + 2}", "8.8.8.8", tunAddress));
+        servers.Add(DirectUdpDnsServer($"dns-direct-{system.Count + 2}", "9.9.9.9", tunAddress));
         return servers;
     }
 

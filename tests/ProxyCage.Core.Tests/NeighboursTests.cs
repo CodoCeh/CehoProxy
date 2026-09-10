@@ -251,6 +251,15 @@ public class NeighboursTests
     }
 
     [Fact]
+    public void Disabled_wintun_is_explained_as_not_ready()
+    {
+        var hint = SingBoxProcess.Hint(
+            "FATAL start inbound/tun[tun-in]: configure tun interface: The device is not ready for use.", "ru");
+        Assert.Contains("Wintun", hint, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Enable-PnpDevice", hint);
+    }
+
+    [Fact]
     public void Our_interface_is_found_by_its_address()
     {
         // Петля есть на любой машине, поэтому проверка честная и на маке, и на Windows.
@@ -330,6 +339,17 @@ public class NeighboursTests
         {
             try { Directory.Delete(root, true); } catch { }
         }
+    }
+
+    [Fact]
+    public void Default_route_is_never_deleted_without_our_gateway()
+    {
+        Assert.Contains(TunCleanup.HijackIpv4, r =>
+            r.Dest == "0.0.0.0" && r.Mask == "0.0.0.0" && r.GatewayOnly);
+        Assert.Contains(TunCleanup.HijackIpv4, r =>
+            r.Dest == "0.0.0.0" && r.Mask == "128.0.0.0" && !r.GatewayOnly);
+        Assert.Contains(TunCleanup.HijackIpv4, r =>
+            r.Dest == "128.0.0.0" && r.Mask == "128.0.0.0" && !r.GatewayOnly);
     }
 
     [Fact]

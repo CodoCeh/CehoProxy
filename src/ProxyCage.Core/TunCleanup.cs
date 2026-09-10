@@ -238,6 +238,27 @@ public static class TunCleanup
         return false;
     }
 
+    /// <summary>
+    /// На 1809 уборка только Disable-PnpDevice: устройство остаётся в системе выключенным,
+    /// и следующий CreateAdapter падает «The device is not ready for use». Перед стартом
+    /// включаем обратно.
+    /// </summary>
+    public static int PrepareWintunForStart(Action<string>? log = null)
+    {
+        if (!Os.IsWindows) return 0;
+        var n = 0;
+        foreach (var id in WintunDevices())
+        {
+            if (!EnableDeviceWithPowerShell(id, log)) continue;
+            n++;
+            log?.Invoke($"включен Wintun: {id}");
+        }
+
+        foreach (var name in new[] { InterfaceName, AdapterName(2), AdapterName(3) })
+            EnableInterface(name);
+        return n;
+    }
+
     private static bool DisableDeviceWithPowerShell(string instanceId, Action<string>? log)
     {
         var escaped = instanceId.Replace("'", "''");
@@ -253,6 +274,31 @@ public static class TunCleanup
         if (!string.IsNullOrWhiteSpace(output))
             log?.Invoke($"Disable-PnpDevice не выключил устройство: {output.Trim()}");
         return false;
+    }
+
+    private static bool EnableDeviceWithPowerShell(string instanceId, Action<string>? log)
+    {
+        var escaped = instanceId.Replace("'", "''");
+        var cmd =
+            "Get-PnpDevice -ErrorAction SilentlyContinue | " +
+            $"Where-Object {{ $_.InstanceId -ieq '{escaped}' }} | " +
+            "ForEach-Object { Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false }";
+        var (code, output) = Os.Run(
+            "powershell",
+            "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"" + cmd + "\"",
+            25000);
+        if (code == 0) return true;
+        if (!string.IsNullOrWhiteSpace(output))
+            log?.Invoke($"Enable-PnpDevice не включил устройство: {output.Trim()}");
+        return false;
+    }
+
+    private static void EnableInterface(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var (code, _) = Os.Run("netsh", $"interface set interface name=\"{name}\" admin=ENABLED", 10000);
+        if (code != 0)
+            Os.Run("netsh", $"interface set interface \"{name}\" enable", 10000);
     }
 
     private static bool PnputilLacksDeviceCommands(string output) =>
@@ -274,20 +320,22 @@ public static class TunCleanup
     }
 
     /// <summary>
-    /// 0.0.0.0/1 + 128.0.0.0/1 (+ IPv6 ::/1, 8000::/1) — так sing-box auto_route
-    /// перехватывает дефолт. После смерти движка маршруты остаются.
-    /// Сначала удаляем с нашим шлюзом, если on-link — без шлюза (route delete допускает).
+    /// sing-box auto_route ставит 0.0.0.0/1 + 128.0.0.0/1 (+ IPv6 ::/1, 8000::/1).
+    /// 0.0.0.0/0 трогаем только если шлюз — наш TUN: иначе повторная уборка после
+    /// уже снятого hijack стирает настоящий дефолт машины.
     /// </summary>
+    internal static readonly (string Dest, string Mask, bool GatewayOnly)[] HijackIpv4 =
+    {
+        ("0.0.0.0", "128.0.0.0", false),
+        ("128.0.0.0", "128.0.0.0", false),
+        ("0.0.0.0", "0.0.0.0", true),
+    };
+
     internal static int FlushHijackedRoutes(string? ourIp, Action<string>? log)
     {
         if (!Os.IsWindows) return 0;
         var n = 0;
-        foreach (var (dest, mask) in new[]
-                 {
-                     ("0.0.0.0", "128.0.0.0"),
-                     ("128.0.0.0", "128.0.0.0"),
-                     ("0.0.0.0", "0.0.0.0"),
-                 })
+        foreach (var (dest, mask, gatewayOnly) in HijackIpv4)
         {
             if (!string.IsNullOrWhiteSpace(ourIp))
             {
@@ -299,6 +347,8 @@ public static class TunCleanup
                     continue;
                 }
             }
+
+            if (gatewayOnly) continue;
 
             var (any, _) = Os.Run("route", $"delete {dest} mask {mask}", 8000);
             if (any != 0) continue;

@@ -1569,6 +1569,11 @@ if (cmd is "daemon" or "web")
 
     // Кнопку «Включить», сторож и доктор нельзя пускать в движок одновременно —
     // очередь общая на демон и «chp doctor fix» (именованный Mutex).
+    bool EngineAdapterStuck(string reason) =>
+        reason.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+        || reason.Contains("not ready", StringComparison.OrdinalIgnoreCase)
+        || reason.Contains("device is not ready", StringComparison.OrdinalIgnoreCase);
+
     async Task<string?> StartTunnel(IStageReport? report)
     {
         using (EngineMutex.Acquire(Ceho.Root))
@@ -1605,11 +1610,11 @@ if (cmd is "daemon" or "web")
             var reason = await BringEngineUp(c, report);
             for (var attempt = 1;
                  reason is not null
-                 && reason.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                 && EngineAdapterStuck(reason)
                  && attempt < 5;
                  attempt++)
             {
-                Log.Info($"адрес туннеля занят — принудительно снимаю Wintun (попытка {attempt}/5)");
+                Log.Info($"адаптер Wintun не готов — включаю устройство и пробую снова (попытка {attempt}/5)");
                 var beforeRetry = TunCleanup.Devices();
                 TunCleanup.ReleaseOurs(
                     Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
@@ -1652,6 +1657,8 @@ if (cmd is "daemon" or "web")
             Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
             attempts: 3, aggressive: true, beforeStart: before);
         TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
+        TunCleanup.PrepareWintunForStart(Log.Info);
+        await Task.Delay(1500);
 
         report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
 
@@ -1661,7 +1668,8 @@ if (cmd is "daemon" or "web")
         Log.Info($"движок запущен, pid {p.ProcessId}");
 
         report?.Stage(Strings.T(c.Language, "stage_engine_wait"), 98);
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        for (var waited = 0; waited < 20000 && p.IsRunning; waited += 500)
+            await Task.Delay(500);
         TunCleanup.Remember(Ceho.Root, c.TunAddress, Log.Info, before);
         if (p.IsRunning)
         {
@@ -1674,7 +1682,7 @@ if (cmd is "daemon" or "web")
         Log.Error($"движок не устоял: {reason}");
         p.Dispose();
         TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
-        if (reason.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+        if (EngineAdapterStuck(reason))
         {
             TunCleanup.ReleaseOurs(
                 Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
