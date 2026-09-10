@@ -15,6 +15,7 @@ public sealed class AppEntry
 
     public string Folder { get; set; } = "";
 
+    /// <summary>Путь к exe для запуска; пусто — папка.</summary>
     public string? Launch { get; set; }
 
     public bool VersionAgnostic { get; set; }

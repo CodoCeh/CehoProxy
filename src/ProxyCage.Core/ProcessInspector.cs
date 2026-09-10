@@ -1,11 +1,25 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ProxyCage.Core;
 
 public static class ProcessInspector
 {
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint processAccess, bool inheritHandle, int processId);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageName(
+        IntPtr hProcess, int dwFlags, StringBuilder lpExeName, ref int lpdwSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
     public static IReadOnlySet<int> PidsOf(AppEntry app)
     {
         var rxes = AppDetector.ToRegexes(app)
@@ -30,17 +44,37 @@ public static class ProcessInspector
         foreach (var p in Process.GetProcesses())
         {
             int id;
-            string? path = null;
+            string? path;
             try
             {
                 id = p.Id;
-                path = p.MainModule?.FileName;
+                path = ImagePath(id) ?? TryMainModule(p);
             }
             catch { continue; }
             finally { p.Dispose(); }
 
             if (path is not null) yield return (id, path);
         }
+    }
+
+    private static string? TryMainModule(Process p)
+    {
+        try { return p.MainModule?.FileName; }
+        catch { return null; }
+    }
+
+    private static string? ImagePath(int pid)
+    {
+        var handle = OpenProcess(ProcessQueryLimitedInformation, false, pid);
+        if (handle == IntPtr.Zero) return null;
+        try
+        {
+            var sb = new StringBuilder(1024);
+            var size = sb.Capacity;
+            return QueryFullProcessImageName(handle, 0, sb, ref size) ? sb.ToString() : null;
+        }
+        catch { return null; }
+        finally { CloseHandle(handle); }
     }
 
     private static IEnumerable<(int, string)> LinuxExecutables()

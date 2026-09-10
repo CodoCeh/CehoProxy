@@ -317,4 +317,37 @@ public class PlatformTests
         Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(nested, r));
         Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(programFiles, r));
     }
+
+    [Fact]
+    public void Windows_chrome_regexes_match_program_files_and_appdata()
+    {
+        var app = new AppEntry
+        {
+            Name = "Google Chrome",
+            Folder = @"C:\Program Files\Google\Chrome\Application",
+        };
+        var rxes = AppDetector.ToRegexes(app);
+
+        var pf = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+        var local = @"C:\Users\bsv\AppData\Local\Google\Chrome\Application\chrome.exe";
+        var other = @"C:\Program Files\Mozilla Firefox\firefox.exe";
+
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(pf, r));
+        Assert.Contains(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(local, r));
+        Assert.DoesNotContain(rxes, r => System.Text.RegularExpressions.Regex.IsMatch(other, r));
+    }
+
+    [Fact]
+    public void Windows_chrome_version_subfolder_climbs_to_application()
+    {
+        if (!Os.IsWindows) return;
+
+        var d = AppDetector.Detect(
+            @"C:\Program Files\Google\Chrome\Application\131.0.6778.86\chrome.dll");
+        Assert.Equal(
+            @"C:\Program Files\Google\Chrome\Application",
+            d.Folder,
+            ignoreCase: true);
+        Assert.Equal("Google Chrome", d.Name);
+    }
 }

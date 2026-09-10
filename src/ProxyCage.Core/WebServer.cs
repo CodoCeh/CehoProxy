@@ -153,7 +153,7 @@ public sealed class WebServer
 
         if (path == "/apps/pick")
         {
-            var pick = AppPathPicker.Pick(cfg.Language, Root);
+            var pick = AppPathPicker.Pick(cfg.Language, Root, cfg.WebPort);
             var q = "?tab=apps";
             if (pick.Path is { Length: > 0 })
             {
@@ -327,9 +327,18 @@ public sealed class WebServer
         ctx.Response.Close();
     }
 
-    private Job ApplyJob(CehoConfig cfg, string? doneMessage = null) =>
-        Jobs.Start(JobApply, Strings.T(cfg.Language, "job_apply"), async p =>
+    private Job ApplyJob(CehoConfig cfg, string? doneMessage = null, bool restartIfRunning = false) =>
+        Jobs.Start(JobApply, Strings.T(cfg.Language, restartIfRunning && _state().Running ? "job_restart" : "job_apply"), async p =>
         {
+            if (restartIfRunning && _state().Running && OnRestart is not null)
+            {
+                var err = await OnRestart(p);
+                if (err is not null) throw new InvalidOperationException(err);
+                return doneMessage is null
+                    ? Strings.T(cfg.Language, "rules_applied")
+                    : $"{doneMessage} {Strings.T(cfg.Language, "rules_applied")}";
+            }
+
             var applied = OnApply is null ? Strings.T(cfg.Language, "rules_rebuilt") : await OnApply(p);
             return doneMessage is null ? applied : $"{doneMessage} {applied}";
         });
@@ -364,7 +373,15 @@ public sealed class WebServer
                         SingleFile = d.SingleFile,
                     });
                     Save(cfg);
-                    return ($"{S("added_name", name)}. {d.Explanation}", false, ApplyJob(cfg).Id);
+                    return ($"{S("added_name", name)}. {d.Explanation}", false, ApplyJob(cfg, restartIfRunning: true).Id);
+                }
+
+                case "/apps/bounce":
+                {
+                    var report = IsolatedAppBounce.ResetNetwork(cfg, _log);
+                    return report.Killed > 0
+                        ? (S("bounced_network", report.Killed, string.Join(", ", report.Labels)), false, null)
+                        : (S("bounced_network_none"), false, null);
                 }
 
                 case "/apps/remove":
@@ -372,7 +389,7 @@ public sealed class WebServer
                     var folder = f.GetValueOrDefault("folder", "");
                     cfg.Apps.RemoveAll(a => a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
                     Save(cfg);
-                    return (S("removed"), false, cfg.Apps.Count > 0 ? ApplyJob(cfg).Id : null);
+                    return (S("removed"), false, cfg.Apps.Count > 0 ? ApplyJob(cfg, restartIfRunning: true).Id : null);
                 }
 
                 case "/apps/rename":
@@ -412,7 +429,7 @@ public sealed class WebServer
                     var msg = keep.Count == 0
                         ? S("app_tunnel_cleared", app.Label)
                         : S("app_tunnel_saved", app.Label, keep.Count);
-                    return (msg, false, ApplyJob(cfg).Id);
+                    return (msg, false, ApplyJob(cfg, restartIfRunning: true).Id);
                 }
 
                 case "/subs/add":
@@ -906,7 +923,7 @@ public sealed class WebServer
             Launch = File.Exists(raw) ? raw : null,
         });
         Save(cfg);
-        return ($"{S("added_name", d.Name)}. {d.Explanation}", false, ApplyJob(cfg).Id);
+        return ($"{S("added_name", d.Name)}. {d.Explanation}", false, ApplyJob(cfg, restartIfRunning: true).Id);
     }
 
     private static async Task<Dictionary<string, string>> ReadFormAsync(HttpListenerRequest req)
@@ -1344,6 +1361,15 @@ public sealed class WebServer
 
         sb.Append("<section><h2>").Append(E(S("apps_title", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("apps_lede", []))).Append("</p>");
+
+        var liveBrowsers = IsolatedAppBounce.RunningBrowserLabels(cfg);
+        if (_state().Running && liveBrowsers.Count > 0)
+        {
+            sb.Append("<div class=\"flash warn\"><b>").Append(E(S("apps_browser_live_title", [])))
+              .Append("</b>").Append(E(S("apps_browser_live", new object[] { string.Join(", ", liveBrowsers) })))
+              .Append("<form method=post action=/apps/bounce><input type=hidden name=tab value=apps>")
+              .Append("<button>").Append(E(S("btn_bounce_network", []))).Append("</button></form></div>");
+        }
 
         if (cfg.Apps.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("apps_empty", []))).Append("</p>");

@@ -19,6 +19,24 @@ public static class Os
     public static bool IsMac => Kind == OsKind.Mac;
     public static bool IsLinux => Kind == OsKind.Linux;
 
+    /// <summary>Windows Server / RDS: одна установка Chrome на всех, сеансы разные.</summary>
+    public static bool IsWindowsServer
+    {
+        get
+        {
+            if (!OperatingSystem.IsWindows()) return false;
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+                var type = key?.GetValue("InstallationType") as string;
+                return type is not null
+                       && type.StartsWith("Server", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+    }
+
     public static string DefaultRoot => Kind switch
     {
         OsKind.Windows => Path.Combine(
@@ -366,6 +384,33 @@ public static class Os
             var tab = line.IndexOf('\t');
             if (tab <= 0 || !int.TryParse(line[..tab], out var pid)) continue;
             list.Add((pid, line[(tab + 1)..].Trim()));
+        }
+        return list;
+    }
+
+    /// <summary>Как <see cref="WindowsProcesses"/>, плюс владелец (SAM), чтобы на RDS не трогать чужие сеансы.</summary>
+    public static IReadOnlyList<(int Pid, string User, string CommandLine)> WindowsProcessesOwned(string exeName)
+    {
+        var list = new List<(int, string, string)>();
+        if (!IsWindows) return list;
+
+        var filter = exeName.Replace("'", "''");
+        var (code, output) = Run("powershell", "-NoProfile -Command " +
+            $"\"Get-CimInstance Win32_Process -Filter \\\"name='{filter}'\\\" | ForEach-Object {{ " +
+            "$u=''; try { $o=Invoke-CimMethod -InputObject $_ -MethodName GetOwner; if($o){ $u=[string]$o.User } } catch {}; " +
+            "Write-Output ($_.ProcessId.ToString() + [char]9 + $u + [char]9 + ($_.CommandLine ?? '')) }\"",
+            20000);
+        if (code != 0) return list;
+
+        foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = raw.Trim();
+            var tab = line.IndexOf('\t');
+            if (tab <= 0 || !int.TryParse(line[..tab], out var pid)) continue;
+            var rest = line[(tab + 1)..];
+            var tab2 = rest.IndexOf('\t');
+            if (tab2 < 0) { list.Add((pid, "", rest)); continue; }
+            list.Add((pid, rest[..tab2].Trim(), rest[(tab2 + 1)..].Trim()));
         }
         return list;
     }
