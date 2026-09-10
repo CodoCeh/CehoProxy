@@ -102,6 +102,7 @@ public static class OutboundBuilder
             ["strategy"] = "ipv4_only",
         };
         o["domain_strategy"] = "ipv4_only";
+        o["quic"] = false;
         return o;
     }
 

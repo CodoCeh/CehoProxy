@@ -958,6 +958,11 @@ public static class Strings
             "was not removed. Turn protection off and on again. If another VPN is running, turn that " +
             "client off, or disable its adapter in Network Connections: we never delete adapters that " +
             "are not ours."),
+        ["engine_tun_not_ready"] = new(
+            "адаптер Wintun выключен после уборки и Windows не отдаёт его движку. " +
+            "В PowerShell от администратора: Get-PnpDevice | Where-Object InstanceId -like 'SWD\\WINTUN*' | Enable-PnpDevice -Confirm:$false — затем включите защиту снова.",
+            "the Wintun adapter was left disabled after cleanup, so Windows will not give it to the engine. " +
+            "In an elevated PowerShell run: Get-PnpDevice | Where-Object InstanceId -like 'SWD\\WINTUN*' | Enable-PnpDevice -Confirm:$false — then turn protection on again."),
         ["start_failed"] = new("Защита не включилась", "Protection did not start"),
         ["engine_gone"] = new(
             "Движок остановился сам, поднимаю заново", "The engine stopped on its own, starting it again"),
