@@ -19,7 +19,28 @@ public static class Installer
         foreach (var dll in Directory.EnumerateFiles(sourceDir, "libcronet.*", SearchOption.TopDirectoryOnly))
         {
             var dest = Path.Combine(root, Path.GetFileName(dll));
-            File.Copy(dll, dest, overwrite: true);
+            // install.ps1 кладёт DLL в ту же папку, откуда потом вызывается
+            // `cehoproxy install`. CopyFile на самого себя на Windows даёт
+            // ERROR_SHARING_VIOLATION («файл занят другим процессом»).
+            if (Os.RealPath(dll).Equals(Os.RealPath(dest), StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                try
+                {
+                    File.Copy(dll, dest, overwrite: true);
+                    break;
+                }
+                catch (IOException) when (File.Exists(dest))
+                {
+                    break;
+                }
+                catch (IOException) when (attempt < 5)
+                {
+                    Thread.Sleep(400);
+                }
+            }
         }
     }
 
@@ -87,14 +108,16 @@ public static class Installer
             log(Strings.T(lang, "inst_stopping"));
             if (autostartWasOn) Autostart.StopService();
             if (DaemonControl.RequestStop(root)) Thread.Sleep(3000);
+        }
 
-            if (DaemonControl.IsRunning(root))
-            {
-                TunCleanup.KillOurProcesses(Path.Combine(root, "singbox.json"), _ => { });
-                TunCleanup.RemoveLeftovers(
-                    log, CehoConfig.Load(Path.Combine(root, "config.json")).TunAddress, root);
-                DaemonControl.ClearRunning(root);
-            }
+        // Движок мог остаться после сбоя uninstall или удаления папки:
+        // процесс жив и держит libcronet.dll, а pid-файл уже нет.
+        TunCleanup.KillOurProcesses(Path.Combine(root, "singbox.json"), _ => { });
+        if (DaemonControl.IsRunning(root))
+        {
+            TunCleanup.RemoveLeftovers(
+                log, CehoConfig.Load(Path.Combine(root, "config.json")).TunAddress, root);
+            DaemonControl.ClearRunning(root);
         }
 
         var (wiped, kept) = WipeVersionLeftovers(root);

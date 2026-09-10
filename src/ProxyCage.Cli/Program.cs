@@ -1206,6 +1206,7 @@ switch (cmd)
     }
 
     case "uninstall":
+    case "uninstal":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
         if (!args.Contains("--yes"))

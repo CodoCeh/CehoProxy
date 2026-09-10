@@ -48,4 +48,34 @@ public class InstallerCronetTests : IDisposable
 
         Assert.Equal("cronet", File.ReadAllText(Path.Combine(_root, Installer.CronetFileName)));
     }
+
+    [Fact]
+    public void Copy_cronet_same_directory_does_not_throw()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var dll = Path.Combine(_root, Installer.CronetFileName);
+        File.WriteAllText(dll, "already-here");
+
+        Installer.CopyCronetDependencies(_root, _root);
+
+        Assert.Equal("already-here", File.ReadAllText(dll));
+    }
+
+    [Fact]
+    public void Copy_cronet_keeps_locked_destination()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var src = Path.Combine(_root, "bundle");
+        Directory.CreateDirectory(src);
+        File.WriteAllText(Path.Combine(src, Installer.CronetFileName), "new");
+        var dest = Path.Combine(_root, Installer.CronetFileName);
+        File.WriteAllText(dest, "old");
+
+        using (new FileStream(dest, FileMode.Open, FileAccess.Read, FileShare.None))
+            Installer.CopyCronetDependencies(src, _root);
+
+        Assert.Equal("old", File.ReadAllText(dest));
+    }
 }

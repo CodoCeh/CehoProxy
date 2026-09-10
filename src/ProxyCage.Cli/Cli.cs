@@ -204,7 +204,7 @@ public static class Cli
     private static readonly HashSet<string> Mutating = new(StringComparer.Ordinal)
     {
         "add-app", "remove-app", "rename-app", "tunnel", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
-        "lang", "passwd", "apply", "autostart", "uninstall", "speed", "timeout", "set-timeout",
+        "lang", "passwd", "apply", "autostart", "uninstall", "uninstal", "speed", "timeout", "set-timeout",
     };
 
     public static bool ChangesSettings(string command) => Mutating.Contains(command);
