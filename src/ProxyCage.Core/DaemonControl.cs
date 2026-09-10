@@ -37,6 +37,41 @@ public static class DaemonControl
 
     public static bool IsRunning(string root) => RunningPid(root) is not null;
 
+    /// <summary>Поднять демон, если его ещё нет. Нужно после обновления: install.ps1
+    /// гасит процесс до вызова «install --no-setup», и без этого панель не возвращается.</summary>
+    public static bool TryStart(string exe, string root)
+    {
+        if (IsRunning(root)) return true;
+        if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe)) return false;
+
+        try
+        {
+            Directory.CreateDirectory(root);
+            Process.Start(new ProcessStartInfo(exe, "daemon")
+            {
+                UseShellExecute = Os.IsWindows,
+                CreateNoWindow = true,
+                WorkingDirectory = root,
+            });
+            return WaitUntilRunning(root, 8000);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool WaitUntilRunning(string root, int timeoutMs = 8000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (IsRunning(root)) return true;
+            Thread.Sleep(250);
+        }
+        return IsRunning(root);
+    }
+
     public static void MarkRunning(string root)
     {
         try

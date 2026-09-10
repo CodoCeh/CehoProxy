@@ -1306,6 +1306,12 @@ public static class Strings
         ["inst_autostart_back"] = new(
             "автозапуск восстановлен, защита поднимается с новой версией",
             "autostart restored, protection is coming up on the new version"),
+        ["inst_resumed"] = new(
+            "защита и панель подняты на новой версии",
+            "protection and the panel are up on the new version"),
+        ["inst_resume_failed"] = new(
+            "панель сама не поднялась — в этом окне: {0}\"{1}\" daemon",
+            "the panel did not start by itself — in this window: {0}\"{1}\" daemon"),
         ["inst_start_again"] = new(
             "защита была включена — поднимите её на новой версии: {0}chp daemon",
             "protection was on — bring it up on the new version: {0}chp daemon"),
