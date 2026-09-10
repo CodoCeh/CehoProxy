@@ -105,19 +105,27 @@ if (-not (Test-Path $Source)) { Write-Host "Не найден файл прог�
 
 $hadConfig = Test-Path (Join-Path $root 'config.json')
 
-# Прошлую версию надо остановить целиком: и задачу планировщика, и сам процесс.
-# Работающий exe Windows заменить не даёт, а два экземпляра рядом — источник путаницы.
-# На чистой машине задачи нет — cmd глотает отсутствие, PowerShell из-за этого не падает.
-cmd /c "schtasks /end /tn CehoProxy >nul 2>&1" | Out-Null
-$running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
-if ($running) {
+function Stop-CehoLeftovers {
+    # На чистой машине задачи нет — cmd глотает отсутствие, PowerShell из-за этого не падает.
+    cmd /c "schtasks /end /tn CehoProxy >nul 2>&1" | Out-Null
+    cmd /c "taskkill /F /IM ceho-engine.exe >nul 2>&1" | Out-Null
+    cmd /c "taskkill /F /IM sing-box.exe >nul 2>&1" | Out-Null
+    $running = Get-Process -Name 'cehoproxy','ceho-engine','sing-box' -ErrorAction SilentlyContinue
+    if (-not $running) { return $false }
     Write-Host "Останавливаю работающий CehoProxy перед заменой..."
     if (Test-Path $exe) { & $exe stop 2>$null | Out-Null }
     Start-Sleep -Milliseconds 800
-    $running = Get-Process -Name 'cehoproxy','ceho-engine' -ErrorAction SilentlyContinue
-    if ($running) { $running | Stop-Process -Force -ErrorAction SilentlyContinue }
+    Get-Process -Name 'cehoproxy','ceho-engine','sing-box' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    cmd /c "taskkill /F /IM ceho-engine.exe >nul 2>&1" | Out-Null
+    cmd /c "taskkill /F /IM sing-box.exe >nul 2>&1" | Out-Null
     Start-Sleep -Milliseconds 600
+    return $true
 }
+
+# Прошлую версию надо остановить целиком: и задачу планировщика, и сам процесс.
+# Работающий exe Windows заменить не даёт, а два экземпляра рядом — источник путаницы.
+[void](Stop-CehoLeftovers)
 
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 
@@ -143,39 +151,60 @@ if (Test-Path $nearbyEngine) {
     Copy-Item -Path $nearbyEngine -Destination $engine -Force
     Write-Host "Движок установлен из локального источника: $engine"
 }
+# DLL рядом с уже запущенным cehoproxy.exe нельзя класть ДО `install`:
+# старые сборки копируют libcronet.dll саму на себя и падают
+# «файл занят другим процессом». Скачиваем во временный файл, переносим после.
+$cronetStaged = Join-Path $env:TEMP 'cehoproxy-libcronet.dll'
 Get-ChildItem -Path $sourceDir -Filter 'libcronet.*' -ErrorAction SilentlyContinue |
     ForEach-Object {
-        Copy-Item -Path $_.FullName -Destination (Join-Path $root $_.Name) -Force
+        Copy-Item -Path $_.FullName -Destination $cronetStaged -Force
         Write-Host "Библиотека NaiveProxy: $($_.Name)"
     }
 
 $targetCronet = Join-Path $root 'libcronet.dll'
-if (-not (Test-Path $targetCronet)) {
+if (-not $curl) { $curl = Get-Command curl.exe -ErrorAction SilentlyContinue }
+if (-not (Test-Path $cronetStaged) -and -not (Test-Path $targetCronet)) {
     $cronetUrl = "https://github.com/$Repo/releases/latest/download/libcronet.dll"
     Write-Host "Скачиваю библиотеку NaiveProxy (libcronet.dll)..."
     $cronetDownloaded = $false
     if ($curl) {
-        & curl.exe -sSL --fail --retry 3 --retry-delay 2 --connect-timeout 30 --output $targetCronet $cronetUrl
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $targetCronet) -and (Get-Item $targetCronet).Length -gt 1MB) {
+        & curl.exe -sSL --fail --retry 3 --retry-delay 2 --connect-timeout 30 --output $cronetStaged $cronetUrl
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $cronetStaged) -and (Get-Item $cronetStaged).Length -gt 1MB) {
             $cronetDownloaded = $true
         }
     }
     if (-not $cronetDownloaded) {
         try {
-            Invoke-WebRequest -Uri $cronetUrl -OutFile $targetCronet -UseBasicParsing -TimeoutSec 120
-            if ((Test-Path $targetCronet) -and (Get-Item $targetCronet).Length -gt 1MB) {
+            Invoke-WebRequest -Uri $cronetUrl -OutFile $cronetStaged -UseBasicParsing -TimeoutSec 120
+            if ((Test-Path $cronetStaged) -and (Get-Item $cronetStaged).Length -gt 1MB) {
                 $cronetDownloaded = $true
             }
         } catch { }
     }
     if ($cronetDownloaded) {
-        Write-Host "Библиотека NaiveProxy установлена: $targetCronet"
+        Write-Host "Библиотека NaiveProxy скачана."
+    } elseif (Test-Path $cronetStaged) {
+        try { Remove-Item $cronetStaged -Force } catch { }
     }
 }
 
 if ((Test-Path $engine) -or (Test-Path $engineLegacy)) { Write-Host "Движок уже установлен." }
 
 Write-Host "Страница продукта: https://github.com/$Repo"
+
+# Автозапуск мог снова поднять движок, пока мы копировали файлы.
+[void](Stop-CehoLeftovers)
+
+# 1.2.39/1.2.40 копируют libcronet.dll саму на себя, если она уже в папке
+# программы. На время `install` убираем её в TEMP.
+if (Test-Path $targetCronet) {
+    if (-not (Test-Path $cronetStaged) -or (Get-Item $cronetStaged).Length -lt 1MB) {
+        try { Move-Item -Path $targetCronet -Destination $cronetStaged -Force } catch { }
+    }
+    if (Test-Path $targetCronet) {
+        try { Remove-Item $targetCronet -Force } catch { }
+    }
+}
 
 # irm | iex подменяет клавиатуру трубой со скриптом. Мастер настройки тогда
 # сразу получает пустой ввод. В этом случае ставим программу молча и просим
@@ -187,6 +216,18 @@ if ($piped -or $hadConfig) { $installArgs += '--no-setup' }
 
 & $exe @installArgs
 $installCode = $LASTEXITCODE
+
+if ((Test-Path $cronetStaged) -and (Get-Item $cronetStaged).Length -gt 1MB) {
+    try {
+        Copy-Item -Path $cronetStaged -Destination $targetCronet -Force
+        Write-Host "Библиотека NaiveProxy установлена: $targetCronet"
+    } catch {
+        if (-not (Test-Path $targetCronet)) {
+            Write-Host "Не удалось положить libcronet.dll рядом с движком: $($_.Exception.Message)"
+        }
+    }
+    try { Remove-Item $cronetStaged -Force } catch { }
+}
 
 # Текущее окно PowerShell не видит Machine PATH, пока его не перечитать.
 $env:Path = "$root;" + ([Environment]::GetEnvironmentVariable('Path', 'Machine'))
