@@ -60,6 +60,32 @@ public class AppTunnelTests
     }
 
     [Fact]
+    public void Telegram_on_the_shared_pool_is_in_the_proxy_rule()
+    {
+        var cfg = new CehoConfig
+        {
+            Apps =
+            {
+                new AppEntry { Name = "probe-app", Folder = Folder("probe-app") },
+                new AppEntry
+                {
+                    Name = "Telegram Desktop",
+                    Folder = Os.IsWindows
+                        ? @"C:\Users\CeBers_Dev\AppData\Roaming\Telegram Desktop"
+                        : "/home/user/.local/share/TelegramDesktop",
+                },
+            },
+        };
+
+        var rules = Root(Nodes(), cfg)["route"]!["rules"]!.AsArray();
+        var proxy = rules.First(r =>
+            (string?)r?["outbound"] == "proxy" && r["process_path_regex"] is JsonArray);
+        var regexes = proxy["process_path_regex"]!.AsArray().Select(x => (string)x!).ToList();
+
+        Assert.Contains(regexes, rx => rx.Contains("Telegram", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Pinned_app_gets_its_own_urltest_and_leaves_the_other_app_on_proxy()
     {
         var nodes = Nodes();

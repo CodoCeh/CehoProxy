@@ -39,6 +39,68 @@ public class IsolatedAppBounceTests
     }
 
     [Fact]
+    public void Sticky_tcp_reset_is_for_listed_clients_not_browsers()
+    {
+        Assert.True(IsolatedAppBounce.UsesStickyTcpReset(Telegram()));
+        Assert.True(IsolatedAppBounce.UsesStickyTcpReset(Cursor()));
+        Assert.True(IsolatedAppBounce.UsesStickyTcpReset(new AppEntry
+        {
+            Name = "probe-app",
+            Folder = @"C:\CehoLab\probe-app",
+        }));
+        Assert.False(IsolatedAppBounce.UsesStickyTcpReset(Chrome()));
+        Assert.False(IsolatedAppBounce.UsesStickyTcpReset(new AppEntry
+        {
+            Name = "Opera",
+            Folder = @"C:\Users\Administrator\AppData\Local\Programs\Opera",
+        }));
+        Assert.False(IsolatedAppBounce.UsesStickyTcpReset(new AppEntry
+        {
+            Name = "Telegram Desktop",
+            Folder = @"C:\Users\s.bonich\AppData\Roaming\Telegram Desktop",
+            Enabled = false,
+        }));
+    }
+
+    [Fact]
+    public void Direct_system_tools_are_not_reset_when_apps_are_isolated()
+    {
+        var cfg = new CehoConfig
+        {
+            Apps =
+            {
+                Telegram(),
+                Cursor(),
+                Chrome(),
+            },
+        };
+
+        Assert.True(IsolatedAppBounce.WouldResetProcess(
+            cfg, @"C:\Users\s.bonich\AppData\Roaming\Telegram Desktop\Telegram.exe"));
+        Assert.True(IsolatedAppBounce.WouldResetProcess(
+            cfg, @"C:\Users\s.bonich\AppData\Local\Programs\cursor\Cursor.exe"));
+        Assert.False(IsolatedAppBounce.WouldResetProcess(
+            cfg, @"C:\Program Files\Google\Chrome\Application\chrome.exe"));
+        Assert.False(IsolatedAppBounce.WouldResetProcess(cfg, @"C:\Windows\System32\curl.exe"));
+        Assert.False(IsolatedAppBounce.WouldResetProcess(cfg, @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"));
+        Assert.False(IsolatedAppBounce.WouldResetProcess(cfg, @"C:\Windows\System32\OpenSSH\sshd.exe"));
+        Assert.False(IsolatedAppBounce.WouldResetProcess(cfg, @"C:\Windows\System32\svchost.exe"));
+    }
+
+    [Fact]
+    public void Own_engine_and_unlisted_apps_are_never_reset()
+    {
+        var cfg = new CehoConfig { Apps = { Telegram() } };
+
+        Assert.True(IsolatedAppBounce.IsProtectedImage(@"C:\ProgramData\CehoProxy\cehoproxy.exe"));
+        Assert.True(IsolatedAppBounce.IsProtectedImage(@"C:\ProgramData\CehoProxy\ceho-engine.exe"));
+        Assert.True(IsolatedAppBounce.IsProtectedImage(@"C:\Services\codex-proxy\sing-box.exe"));
+        Assert.False(IsolatedAppBounce.WouldResetProcess(cfg, @"C:\ProgramData\CehoProxy\cehoproxy.exe"));
+        Assert.False(IsolatedAppBounce.WouldResetProcess(
+            cfg, @"C:\Users\s.bonich\AppData\Local\Programs\cursor\Cursor.exe"));
+    }
+
+    [Fact]
     public void Telegram_exe_in_the_roaming_folder_matches_the_isolation_regex()
     {
         var rxes = AppDetector.ToRegexes(Telegram());

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace ProxyCage.Core;
 
@@ -9,10 +10,11 @@ namespace ProxyCage.Core;
 /// в том же Chrome. Сбрасываем только сетевой процесс — окна остаются, Chrome поднимает
 /// новый NetworkService, и свежие соединения уже идут через туннель.
 ///
-/// Telegram Desktop — один процесс без такого помощника. Убивать Telegram.exe нельзя:
+/// Остальные изолированные программы — без такого помощника. Процесс не убиваем:
 /// окно закроется, а с сеанса 0 его нельзя безопасно открыть снова. Рвём только
 /// старые IPv4 TCP, которые ещё не на TUN: клиент переподключается сам.
-/// И Chrome, и Telegram в туннеле у всех людей на машине; служебные учётки не трогаем.
+/// Программы вне списка изоляции не трогаем — их прямой интернет остаётся как был.
+/// Служебные учётки и наш движок не трогаем.
 /// </summary>
 public static class IsolatedAppBounce
 {
@@ -31,6 +33,36 @@ public static class IsolatedAppBounce
     public static bool IsTelegramUpdater(string? imagePathOrCommandLine) =>
         !string.IsNullOrWhiteSpace(imagePathOrCommandLine)
         && imagePathOrCommandLine.Contains("Updater.exe", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsProtectedImage(string? imagePathOrCommandLine)
+    {
+        if (string.IsNullOrWhiteSpace(imagePathOrCommandLine)) return false;
+        var s = imagePathOrCommandLine;
+        return Regex.IsMatch(s, @"[\\/]cehoproxy(\.exe)?(\s|""|$)", RegexOptions.IgnoreCase)
+               || Regex.IsMatch(s, @"[\\/]ceho-engine\.exe(\s|""|$)", RegexOptions.IgnoreCase)
+               || Regex.IsMatch(s, @"[\\/]sing-box\.exe(\s|""|$)", RegexOptions.IgnoreCase);
+    }
+
+    public static bool UsesStickyTcpReset(AppEntry app) =>
+        app.Enabled && !AppDetector.IsChromiumFamily(app);
+
+    public static bool WouldResetProcess(CehoConfig cfg, string imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath) || IsProtectedImage(imagePath)) return false;
+        foreach (var app in cfg.Apps.Where(UsesStickyTcpReset))
+        {
+            foreach (var rx in AppDetector.ToRegexes(app))
+            {
+                try
+                {
+                    if (Regex.IsMatch(imagePath, rx, RegexOptions.IgnoreCase)) return true;
+                }
+                catch { }
+            }
+        }
+
+        return false;
+    }
 
     public static bool ShouldResetConnection(string localAddr, string remoteAddr, string tunPrefix)
     {
@@ -118,19 +150,19 @@ public static class IsolatedAppBounce
         }
 
         var tunPrefix = TunPrefix(cfg.TunAddress);
-        foreach (var app in cfg.Apps.Where(a => a.Enabled && AppDetector.IsTelegram(a)))
+        foreach (var app in cfg.Apps.Where(UsesStickyTcpReset))
         {
             var before = connections;
             var covered = ProcessInspector.PidsOf(app);
             if (covered.Count == 0) continue;
 
-            foreach (var name in ProcessNames(app))
+            foreach (var name in ExeNamesOf(covered))
             {
-                foreach (var (pid, user, cmd) in Os.WindowsProcessesOwned(name + ".exe"))
+                foreach (var (pid, user, cmd) in Os.WindowsProcessesOwned(name))
                 {
                     if (!covered.Contains(pid)) continue;
                     if (AppIsolation.IsServiceAccount(user)) continue;
-                    if (IsTelegramUpdater(cmd)) continue;
+                    if (IsTelegramUpdater(cmd) || IsProtectedImage(cmd)) continue;
                     var n = TcpSessions.ResetEstablishedIPv4(pid, tunPrefix, log);
                     if (n <= 0) continue;
                     connections += n;
@@ -143,6 +175,23 @@ public static class IsolatedAppBounce
         }
 
         return new Report(killed, labels, connections);
+    }
+
+    private static IReadOnlyList<string> ExeNamesOf(IReadOnlySet<int> pids)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pid in pids)
+        {
+            try
+            {
+                using var p = Process.GetProcessById(pid);
+                if (!string.IsNullOrWhiteSpace(p.ProcessName))
+                    names.Add(p.ProcessName + ".exe");
+            }
+            catch { }
+        }
+
+        return names.ToList();
     }
 
     internal static string TunPrefix(string tunAddress)

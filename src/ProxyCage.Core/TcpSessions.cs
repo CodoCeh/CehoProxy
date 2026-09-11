@@ -5,7 +5,7 @@ namespace ProxyCage.Core;
 
 /// <summary>
 /// Рвёт установленные IPv4 TCP одного процесса через <c>SetTcpEntry(DELETE_TCB)</c>.
-/// Процесс не убиваем: так Telegram переподключается, а окно остаётся.
+/// Процесс не убиваем: клиент переподключается, окно остаётся.
 /// IPv6 не трогаем — у <c>SetTcpEntry</c> нет пары, DNS у нас ipv4_only.
 /// </summary>
 internal static class TcpSessions

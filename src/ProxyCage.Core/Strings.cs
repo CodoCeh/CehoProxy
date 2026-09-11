@@ -1167,16 +1167,16 @@ public static class Strings
             "The browser was already running"),
         ["apps_browser_live"] = new(
             "{0} открыт со старыми соединениями — они могут идти мимо туннеля. " +
-            "Окна закрывать не нужно: сбросим только сеть браузера.",
+            "Окна закрывать не нужно: сбросим старую сеть изолированных программ.",
             "{0} is open with old connections that may bypass the tunnel. " +
-            "You do not need to close the windows: we will reset only the browser network process."),
-        ["btn_bounce_network"] = new("Обновить сеть браузера", "Refresh browser network"),
+            "You do not need to close the windows: we will reset old sockets of isolated apps."),
+        ["btn_bounce_network"] = new("Обновить сеть программ", "Refresh app network"),
         ["bounced_network"] = new(
             "Сбросил старые соединения ({0}): {1}. Новые запросы пойдут через туннель.",
             "Reset old connections ({0}): {1}. New requests will go through the tunnel."),
         ["bounced_network_none"] = new(
-            "Отдельный сетевой процесс не нашёлся — если сайт всё ещё открывается напрямую, полностью закройте браузер и откройте снова.",
-            "No separate network process was found. If the site still goes out directly, fully quit the browser and open it again."),
+            "Старых соединений вне туннеля не нашлось. Если программа всё ещё ходит напрямую, закройте её и откройте снова.",
+            "No old sockets outside the tunnel were found. If the app still goes out directly, quit it and open it again."),
         ["stage_bounce_apps"] = new(
             "Сбрасываю старые соединения изолированных программ",
             "Resetting old connections of isolated apps"),

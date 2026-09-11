@@ -1604,6 +1604,8 @@ if (cmd is "daemon" or "web")
             }
 
             report?.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);
+            // Список программ мог измениться, пока качались подписки.
+            c = CehoConfig.Load(Ceho.ConfigPath);
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 

@@ -80,6 +80,35 @@ public class JobsTests
     }
 
     [Fact]
+    public async Task Rerun_if_busy_repeats_work_with_the_latest_config()
+    {
+        var firstGate = new TaskCompletionSource();
+        var runs = 0;
+
+        var first = Jobs.Start("test-rerun-busy", "работаю", async _ =>
+        {
+            var n = Interlocked.Increment(ref runs);
+            if (n == 1) await firstGate.Task;
+            return "круг " + n;
+        }, rerunIfBusy: true);
+
+        var second = Jobs.Start("test-rerun-busy", "работаю", async _ =>
+        {
+            await Task.Yield();
+            Interlocked.Increment(ref runs);
+            return "не должен";
+        }, rerunIfBusy: true);
+
+        Assert.Equal(first.Id, second.Id);
+        firstGate.SetResult();
+        await Finished(first);
+
+        Assert.Equal(2, runs);
+        Assert.Equal("круг 2", first.Result);
+        Assert.Equal(JobState.Done, first.State);
+    }
+
+    [Fact]
     public async Task Percent_never_leaves_the_bar()
     {
         var seen = new List<int>();
