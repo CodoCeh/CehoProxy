@@ -63,6 +63,23 @@ public class LogTests : IDisposable
     }
 
     [Fact]
+    public void Cronet_google_doh_and_tcp_resets_do_not_enter_the_journal()
+    {
+        var real = Mark();
+
+        Log.Engine("ERROR outbound/naive[n001]: open UDP connection to [2001:4860:4860::8888]:443: dial udp [2001:4860:4860::8888]:443: connect: The requested address is not valid in its context.");
+        Log.Engine("ERROR[0008] connection: connection upload closed: raw-read tcp4 172.31.211.1:51230->172.31.211.2:10006: An existing connection was forcibly closed by the remote host.");
+        Log.Engine("ERROR connection download closed: An established connection was aborted by the software in your host machine.");
+        Log.Engine("ERROR outbound/direct[direct]: dial tcp 1.1.1.1:443: i/o timeout " + real);
+
+        var text = File.ReadAllText(Path.Combine(_root, "cehoproxy.log"));
+        Assert.DoesNotContain("2001:4860:4860::8888", text);
+        Assert.DoesNotContain("forcibly closed by the remote host", text);
+        Assert.DoesNotContain("aborted by the software in your host machine", text);
+        Assert.Contains(real, text);
+    }
+
+    [Fact]
     public void Engine_severity_is_taken_from_its_own_words()
     {
         var fatal = Mark();

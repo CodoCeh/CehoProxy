@@ -100,7 +100,31 @@ public static class Log
     public static void Engine(string line)
     {
         if (string.IsNullOrWhiteSpace(line)) return;
+        if (IsEngineNoise(line)) return;
         Write(EngineLevel(line), EngineComponent, line.Trim());
+    }
+
+    /// <summary>
+    /// Cronet при старте naive всегда тычется в DoH Google по IPv6 — на Windows это
+    /// «address is not valid», связь при этом живая. Сброс TCP при bounce/выключении
+    /// sing-box пишет как ERROR. В журнал это не кладём: человек ищет поломку, а не RST.
+    /// </summary>
+    public static bool IsEngineNoise(string line)
+    {
+        var clean = AnsiStrip.Replace(line, "");
+        if (clean.Contains("2001:4860:4860::", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (clean.Contains("udp", StringComparison.OrdinalIgnoreCase)
+            && (clean.Contains("8.8.8.8]:443", StringComparison.OrdinalIgnoreCase)
+                || clean.Contains("8.8.4.4]:443", StringComparison.OrdinalIgnoreCase)))
+            return true;
+        if (clean.Contains("forcibly closed by the remote host", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (clean.Contains("aborted by the software in your host machine", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (clean.Contains("connection reset by peer", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
     }
 
     private static string EngineLevel(string line)
