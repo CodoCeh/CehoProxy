@@ -84,19 +84,4 @@ public class IsolatedAppBounceTests
             @"C:\Users\bsv\AppData\Local\Programs\cursor\Cursor.exe", r));
     }
 
-    [Fact]
-    public void Server_chrome_bounce_never_touches_another_users_process()
-    {
-        Assert.True(IsolatedAppBounce.IsOwnWindowsProcess("s.bonich", "s.bonich", windowsServer: true));
-        Assert.False(IsolatedAppBounce.IsOwnWindowsProcess("other", "s.bonich", windowsServer: true));
-        Assert.False(IsolatedAppBounce.IsOwnWindowsProcess("SYSTEM", "s.bonich", windowsServer: true));
-        Assert.False(IsolatedAppBounce.IsOwnWindowsProcess("s.bonich", "SYSTEM", windowsServer: true));
-    }
-
-    [Fact]
-    public void Desktop_bounce_still_skips_another_human_and_keeps_same_user()
-    {
-        Assert.True(IsolatedAppBounce.IsOwnWindowsProcess("s.bonich", "s.bonich", windowsServer: false));
-        Assert.False(IsolatedAppBounce.IsOwnWindowsProcess("other", "s.bonich", windowsServer: false));
-    }
 }

@@ -12,8 +12,7 @@ namespace ProxyCage.Core;
 /// Telegram Desktop — один процесс без такого помощника. Убивать Telegram.exe нельзя:
 /// окно закроется, а с сеанса 0 его нельзя безопасно открыть снова. Рвём только
 /// старые IPv4 TCP, которые ещё не на TUN: клиент переподключается сам.
-/// Telegram в туннеле у всех пользователей машины (не как Chrome на RDS),
-/// поэтому чужие сеансы здесь тоже сбрасываем — служебные учётки не трогаем.
+/// И Chrome, и Telegram в туннеле у всех людей на машине; служебные учётки не трогаем.
 /// </summary>
 public static class IsolatedAppBounce
 {
@@ -40,18 +39,6 @@ public static class IsolatedAppBounce
                || !localAddr.StartsWith(tunPrefix, StringComparison.Ordinal);
     }
 
-    public static bool IsOwnWindowsProcess(string? user, string owner, bool windowsServer)
-    {
-        if (windowsServer)
-        {
-            if (AppIsolation.IsServiceAccount(user)) return false;
-            return AppIsolation.SameWindowsUser(owner, user);
-        }
-
-        if (AppIsolation.IsServiceAccount(user)) return true;
-        return AppIsolation.SameWindowsUser(owner, user);
-    }
-
     public static IReadOnlyList<string> ProcessNames(AppEntry app)
     {
         if (AppDetector.IsChrome(app)) return new[] { "chrome" };
@@ -74,11 +61,7 @@ public static class IsolatedAppBounce
                 {
                     foreach (var (_, user, _) in Os.WindowsProcessesOwned(name + ".exe"))
                     {
-                        if (!AppIsolation.IsServiceAccount(user)
-                            && !AppIsolation.SameWindowsUser(AppIsolation.CurrentUser(), user))
-                            continue;
-                        if (Os.IsWindowsServer && AppIsolation.IsServiceAccount(user))
-                            continue;
+                        if (AppIsolation.IsServiceAccount(user)) continue;
                         mine = true;
                         break;
                     }
@@ -107,8 +90,6 @@ public static class IsolatedAppBounce
         var killed = 0;
         var connections = 0;
         var labels = new List<string>();
-        var owner = AppIsolation.CurrentUser();
-        var server = Os.IsWindowsServer;
 
         foreach (var app in cfg.Apps.Where(a => a.Enabled && AppDetector.IsChromiumFamily(a)))
         {
@@ -117,7 +98,7 @@ public static class IsolatedAppBounce
             {
                 foreach (var (pid, user, cmd) in Os.WindowsProcessesOwned(name + ".exe"))
                 {
-                    if (!IsOwnWindowsProcess(user, owner, server)) continue;
+                    if (AppIsolation.IsServiceAccount(user)) continue;
                     if (!IsNetworkServiceCommandLine(cmd)) continue;
                     try
                     {
