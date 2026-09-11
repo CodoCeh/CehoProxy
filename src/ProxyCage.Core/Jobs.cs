@@ -41,6 +41,15 @@ public sealed class Job
 
     public TimeSpan Elapsed => (FinishedUtc ?? DateTime.UtcNow) - StartedUtc;
 
+    private int _rerun;
+
+    /// <summary>
+    /// Пока задача идёт, список программ мог измениться. Следующий круг возьмёт уже новый конфиг.
+    /// </summary>
+    internal void RequestRerun() => Interlocked.Exchange(ref _rerun, 1);
+
+    internal bool TakeRerun() => Interlocked.Exchange(ref _rerun, 0) != 0;
+
     internal void AddStep(string text)
     {
         lock (_steps)
@@ -103,12 +112,19 @@ public static class Jobs
     /// <summary>
     /// Запускает действие в фоне. Если такое же уже идёт, возвращает его же:
     /// две загрузки подписок или два запуска туннеля одновременно ничего хорошего не дают.
+    /// <paramref name="rerunIfBusy"/> — после текущего круга повторить работу:
+    /// список программ мог измениться, пока шли подписки.
     /// </summary>
-    public static Job Start(string kind, string title, Func<JobProgress, Task<string>> work)
+    public static Job Start(
+        string kind, string title, Func<JobProgress, Task<string>> work, bool rerunIfBusy = false)
     {
         Forget();
 
-        if (Active(kind) is { } already) return already;
+        if (Active(kind) is { } already)
+        {
+            if (rerunIfBusy) already.RequestRerun();
+            return already;
+        }
 
         var job = new Job
         {
@@ -125,7 +141,15 @@ public static class Jobs
         {
             try
             {
-                var result = await work(progress);
+                var extra = 0;
+                string result;
+                while (true)
+                {
+                    result = await work(progress);
+                    if (!job.TakeRerun() || extra++ >= 3) break;
+                    progress.Stage(title, 0);
+                }
+
                 job.Percent = 100;
                 job.Result = result;
                 job.State = JobState.Done;

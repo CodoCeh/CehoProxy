@@ -341,7 +341,7 @@ public sealed class WebServer
 
             var applied = OnApply is null ? Strings.T(cfg.Language, "rules_rebuilt") : await OnApply(p);
             return doneMessage is null ? applied : $"{doneMessage} {applied}";
-        });
+        }, rerunIfBusy: true);
 
     private async Task<(string? Message, bool IsError, string? JobId)> ApplyPostAsync(
         string path, Dictionary<string, string> f, CehoConfig cfg)
@@ -564,7 +564,7 @@ public sealed class WebServer
                             Save(back);
                             throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
                         }
-                    });
+                    }, rerunIfBusy: true);
                     return (null, false, job.Id);
                 }
 
@@ -609,7 +609,7 @@ public sealed class WebServer
                             Save(back);
                             throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
                         }
-                    });
+                    }, rerunIfBusy: true);
                     return (null, false, job.Id);
                 }
 
@@ -734,7 +734,7 @@ public sealed class WebServer
                             Save(back);
                             throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
                         }
-                    });
+                    }, rerunIfBusy: true);
                     return (null, false, job.Id);
                 }
 
