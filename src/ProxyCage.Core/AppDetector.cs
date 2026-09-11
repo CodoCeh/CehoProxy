@@ -306,6 +306,20 @@ public static class AppDetector
                 AddIfMissing(@"^.*[\\/]Opera$");
             }
         }
+        else if (IsTelegram(app))
+        {
+            if (isWinPath)
+            {
+                AddIfMissing(@"(?i)^.*[\\/]Telegram Desktop[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]TelegramDesktop[\\/]");
+                AddIfMissing(@"(?i)^.*[\\/]Telegram\.exe$");
+            }
+            else
+            {
+                AddIfMissing(@"(?i)^.*[\\/]Telegram\.app[\\/]");
+                AddIfMissing(@"^.*[\\/][Tt]elegram$");
+            }
+        }
 
         return results;
     }
@@ -329,6 +343,17 @@ public static class AppDetector
         app.Folder.Contains("AnthropicClaude", StringComparison.OrdinalIgnoreCase) ||
         app.Folder.Contains(@"\claude", StringComparison.OrdinalIgnoreCase) ||
         app.Folder.Contains("/claude", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsTelegram(AppEntry app)
+    {
+        var name = app.Name ?? "";
+        if (name.Contains("Telegram", StringComparison.OrdinalIgnoreCase)) return true;
+        var folder = app.Folder ?? "";
+        return folder.Contains(@"\Telegram Desktop", StringComparison.OrdinalIgnoreCase)
+               || folder.Contains("/Telegram Desktop", StringComparison.OrdinalIgnoreCase)
+               || folder.Contains(@"\TelegramDesktop", StringComparison.OrdinalIgnoreCase)
+               || folder.Contains("/TelegramDesktop", StringComparison.OrdinalIgnoreCase);
+    }
 
     internal static bool IsChromiumFamily(AppEntry app) =>
         IsChrome(app) || IsEdge(app) || IsBrave(app) || IsOpera(app);
