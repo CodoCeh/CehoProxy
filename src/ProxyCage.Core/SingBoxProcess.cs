@@ -123,6 +123,8 @@ public sealed class SingBoxProcess : IDisposable
         if (string.IsNullOrWhiteSpace(line)) return;
 
         var text = line.Trim();
+        if (Log.IsEngineNoise(text)) return;
+
         LastLog = text;
 
         lock (_engineLines)
