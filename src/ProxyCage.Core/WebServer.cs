@@ -379,8 +379,9 @@ public sealed class WebServer
                 case "/apps/bounce":
                 {
                     var report = IsolatedAppBounce.ResetNetwork(cfg, _log);
-                    return report.Killed > 0
-                        ? (S("bounced_network", report.Killed, string.Join(", ", report.Labels)), false, null)
+                    var n = report.Killed + report.Connections;
+                    return n > 0
+                        ? (S("bounced_network", n, string.Join(", ", report.Labels)), false, null)
                         : (S("bounced_network_none"), false, null);
                 }
 

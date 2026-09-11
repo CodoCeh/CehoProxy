@@ -1637,8 +1637,10 @@ if (cmd is "daemon" or "web")
             probed = false;
             report?.Stage(Strings.T(c.Language, "stage_bounce_apps"), 99);
             var bounced = IsolatedAppBounce.ResetNetwork(c, Log.Info);
-            if (bounced.Killed > 0)
-                Log.Info($"сброшены сетевые процессы {string.Join(", ", bounced.Labels)}: {bounced.Killed}");
+            if (bounced.Killed + bounced.Connections > 0)
+                Log.Info(
+                    $"сброшены старые соединения {string.Join(", ", bounced.Labels)}: " +
+                    $"процессы {bounced.Killed}, TCP {bounced.Connections}");
             return null;
         }
         catch (Exception ex)
