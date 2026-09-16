@@ -532,8 +532,20 @@ public static class Strings
             "The listed apps reach the internet only through the tunnel. If no node responds, their " +
             "connections are dropped instead of going out directly. The rest of the system works as usual."),
         ["apps_empty"] = new(
-            "Пока ничего не добавлено. Укажите путь к программе ниже.",
-            "Nothing added yet. Enter a path to a program below."),
+            "Пока ничего не добавлено. Выберите установленное приложение или укажите путь ниже.",
+            "Nothing added yet. Choose an installed app or enter its path below."),
+        ["apps_installed_title"] = new("Из установленных", "From installed apps"),
+        ["apps_installed_hint"] = new(
+            "Выберите программу — путь и область правила определятся автоматически.",
+            "Choose an app and its path and rule scope will be detected automatically."),
+        ["apps_installed_choose"] = new("Выберите приложение…", "Choose an app…"),
+        ["apps_installed_none"] = new(
+            "Установленные приложения не найдены. Можно выбрать файл или указать путь вручную.",
+            "No installed apps were found. Choose a file or enter its path manually."),
+        ["apps_installed_missing"] = new(
+            "Приложение больше не найдено в системе. Обновите страницу и выберите его снова.",
+            "The app is no longer installed. Refresh the page and choose it again."),
+        ["apps_manual_title"] = new("По пути или файлу", "By path or file"),
         ["apps_placeholder_win"] = new(
             "C:\\Program Files\\Программа\\program.exe", "C:\\Program Files\\App\\program.exe"),
         ["apps_placeholder_mac"] = new("/Applications/Программа.app", "/Applications/App.app"),

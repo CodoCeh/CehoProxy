@@ -376,6 +376,33 @@ public sealed class WebServer
                     return ($"{S("added_name", name)}. {d.Explanation}", false, ApplyJob(cfg, restartIfRunning: true).Id);
                 }
 
+                case "/apps/installed":
+                {
+                    var raw = f.GetValueOrDefault("path", "").Trim();
+                    if (raw.Length == 0) return (S("apps_installed_choose"), true, null);
+                    var known = InstalledAppCatalog.Detect(cfg.Language).FirstOrDefault(a =>
+                        a.Path.Equals(raw, Os.IsLinux
+                            ? StringComparison.Ordinal
+                            : StringComparison.OrdinalIgnoreCase));
+                    if (known is null) return (S("apps_installed_missing"), true, null);
+
+                    var d = AppDetector.Detect(known.Path, cfg.Language);
+                    if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
+                        return (S("err_already_added"), true, null);
+
+                    cfg.Apps.Add(new AppEntry
+                    {
+                        Name = known.Name,
+                        Folder = d.Folder,
+                        VersionAgnostic = d.VersionAgnostic,
+                        SingleFile = d.SingleFile,
+                        Launch = File.Exists(known.Path) ? known.Path : null,
+                    });
+                    Save(cfg);
+                    return ($"{S("added_name", known.Name)}. {d.Explanation}", false,
+                        ApplyJob(cfg, restartIfRunning: true).Id);
+                }
+
                 case "/apps/bounce":
                 {
                     var report = IsolatedAppBounce.ResetNetwork(cfg, _log);
@@ -1389,11 +1416,12 @@ public sealed class WebServer
                       ? S("app_tunnel_general", [])
                       : S("app_tunnel_pinned", new object[] { a.AllowedNodes.Count })))
                   .Append("</span>");
-                sb.Append("<form class=row method=post action=/apps/rename><input type=hidden name=tab value=apps>")
+                sb.Append("<details class=rename><summary>").Append(E(S("btn_rename", []))).Append("</summary>")
+                  .Append("<form class=row method=post action=/apps/rename><input type=hidden name=tab value=apps>")
                   .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder)).Append("\">")
                   .Append("<input type=text name=displayName value=\"").Append(E(a.Label))
                   .Append("\" placeholder=\"").Append(E(S("rename_app_ask", []))).Append("\">")
-                  .Append("<button class=ghost>").Append(E(S("btn_rename", []))).Append("</button></form>");
+                  .Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></details>");
                 sb.Append("</td><td class=path>").Append(E(a.Folder)).Append("</td><td class=actions>");
                 sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")
                   .Append(Uri.EscapeDataString(a.Folder)).Append("\">")
@@ -1405,6 +1433,29 @@ public sealed class WebServer
             }
             sb.Append("</table></div>");
         }
+
+        IReadOnlyList<InstalledAppCatalog.Entry> installed;
+        try { installed = InstalledAppCatalog.Detect(cfg.Language); }
+        catch { installed = Array.Empty<InstalledAppCatalog.Entry>(); }
+
+        sb.Append("<div class=app-entry-grid><div class=app-entry><h3>")
+          .Append(E(S("apps_installed_title", []))).Append("</h3>")
+          .Append("<p class=hint>").Append(E(S("apps_installed_hint", []))).Append("</p>");
+        if (installed.Count == 0)
+            sb.Append("<p class=empty>").Append(E(S("apps_installed_none", []))).Append("</p>");
+        else
+        {
+            sb.Append("<form class=\"row installed-add\" method=post action=/apps/installed>")
+              .Append("<input type=hidden name=tab value=apps><label class=sr-only for=installed-app>")
+              .Append(E(S("apps_installed_title", []))).Append("</label>")
+              .Append("<select id=installed-app name=path required><option value=\"\">")
+              .Append(E(S("apps_installed_choose", []))).Append("</option>");
+            foreach (var app in installed)
+                sb.Append("<option value=\"").Append(E(app.Path)).Append("\">")
+                  .Append(E(app.Name)).Append(" — ").Append(E(app.Path)).Append("</option>");
+            sb.Append("</select><button>").Append(E(S("btn_add", []))).Append("</button></form>");
+        }
+        sb.Append("</div><div class=app-entry><h3>").Append(E(S("apps_manual_title", []))).Append("</h3>");
 
         var placeholder = S(Os.Kind switch
         {
@@ -1418,7 +1469,7 @@ public sealed class WebServer
         sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("apps_hint", []))).Append(' ')
           .Append(E(Os.IsMac ? S("apps_hint_mac", []) : S("apps_hint_sysdir", []))).Append("</p>");
-        sb.Append("<p class=hint>").Append(E(S("rename_app_hint", []))).Append("</p>");
+        sb.Append("</div></div><p class=hint>").Append(E(S("rename_app_hint", []))).Append("</p>");
 
         RenderDetected(sb, cfg, S);
         sb.Append("</section>");
@@ -1952,11 +2003,17 @@ public sealed class WebServer
             return false;
         }
 
-        if (url.StartsWith("naive://", StringComparison.OrdinalIgnoreCase)
-            && !NaiveProxyHelper.TryParseUri(url, out _))
+        if (NaiveProxyHelper.IsNaiveUri(url))
         {
-            errorKey = "naive_uri_bad";
-            return false;
+            if (NaiveProxyHelper.TryParseUri(url, out var s) && s is not null)
+            {
+                url = NaiveProxyHelper.BuildUri(s);
+            }
+            else
+            {
+                errorKey = "naive_uri_bad";
+                return false;
+            }
         }
 
         return true;
@@ -2042,12 +2099,16 @@ public sealed class WebServer
 
     private static string MaskNaiveUrl(string url)
     {
-        if (!url.StartsWith("naive://", StringComparison.OrdinalIgnoreCase))
+        if (!NaiveProxyHelper.IsNaiveUri(url))
             return url;
 
-        var at = url.LastIndexOf('@');
+        url = url.Trim();
+        var schemeEnd = url.IndexOf("://", StringComparison.Ordinal) + 3;
+        var authorityEnd = url.IndexOfAny(['/', '?', '#'], schemeEnd);
+        if (authorityEnd < 0) authorityEnd = url.Length;
+        var at = url.LastIndexOf('@', authorityEnd - 1, authorityEnd - schemeEnd);
         if (at < 0) return url;
-        return "naive://***:***" + url[at..];
+        return url[..schemeEnd] + "***:***" + url[at..];
     }
 
     private static readonly (LogView View, string Key, string Query)[] LogViews =

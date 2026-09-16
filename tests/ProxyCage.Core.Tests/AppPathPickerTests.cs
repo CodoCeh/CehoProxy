@@ -1,9 +1,31 @@
+using System.Text;
+
 using ProxyCage.Core;
 
 namespace ProxyCage.Core.Tests;
 
 public class AppPathPickerTests
 {
+    [Fact]
+    public void Windows_picker_launcher_preserves_cyrillic_title()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ceho-picker-{Guid.NewGuid():N}.vbs");
+        try
+        {
+            AppPathPicker.WriteLauncher(path, @"C:\CehoProxy\pick-app.ps1",
+                @"C:\CehoProxy\pick-app-result.txt", "Выберите программу");
+
+            var bytes = File.ReadAllBytes(path);
+            Assert.True(bytes.Length >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe,
+                "Windows Script Host launcher must be UTF-16 LE with BOM.");
+            Assert.Contains("Выберите программу", File.ReadAllText(path, Encoding.Unicode));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     [Theory]
     [InlineData("bsv", "bsv", true)]
     [InlineData(@"SERVER\bsv", "bsv", true)]

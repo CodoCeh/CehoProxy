@@ -53,17 +53,80 @@ public static class NaiveProxyHelper
         CountryName = s.Remark.Trim(),
     };
 
-    /// <summary>naive://user:pass@host:8443?sni=site.example.com#remark</summary>
+    /// <summary>Checks whether the string represents a NaiveProxy node URI.</summary>
+    public static bool IsNaiveUri(string? uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return false;
+        var trimmed = uri.Trim();
+        if (trimmed.StartsWith("naive://", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("naive+https://", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("naive+quic://", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("http2://", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("quic://", StringComparison.OrdinalIgnoreCase))
+        {
+            var schemeEnd = trimmed.IndexOf("://", StringComparison.Ordinal);
+            if (schemeEnd < 0) return false;
+            var afterScheme = trimmed[(schemeEnd + 3)..];
+            var slash = afterScheme.IndexOf('/');
+            var question = afterScheme.IndexOf('?');
+            var hash = afterScheme.IndexOf('#');
+            var endOfAuthority = afterScheme.Length;
+            if (slash >= 0 && slash < endOfAuthority) endOfAuthority = slash;
+            if (question >= 0 && question < endOfAuthority) endOfAuthority = question;
+            if (hash >= 0 && hash < endOfAuthority) endOfAuthority = hash;
+
+            var authority = afterScheme[..endOfAuthority];
+            return authority.Contains('@');
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Parses NaiveProxy / Caddy upstream URIs in various formats:
+    /// - naive://user:pass@host:8443?sni=site.com#remark
+    /// - naive+https://user:pass@host:8443...
+    /// - https://user:pass@host:8443/
+    /// - quic://user:pass@host:8443...
+    /// </summary>
     public static bool TryParseUri(string uri, out NaiveProxySettings? settings)
     {
         settings = null;
-        const string prefix = "naive://";
-        if (!uri.TrimStart().StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            return false;
+        if (!IsNaiveUri(uri)) return false;
 
         try
         {
-            var rest = uri.Trim()[prefix.Length..];
+            var trimmed = uri.Trim();
+            string defaultScheme = "https";
+            string rest;
+
+            if (trimmed.StartsWith("naive+https://", StringComparison.OrdinalIgnoreCase))
+            {
+                defaultScheme = "https";
+                rest = trimmed["naive+https://".Length..];
+            }
+            else if (trimmed.StartsWith("naive+quic://", StringComparison.OrdinalIgnoreCase))
+            {
+                defaultScheme = "quic";
+                rest = trimmed["naive+quic://".Length..];
+            }
+            else if (trimmed.StartsWith("naive://", StringComparison.OrdinalIgnoreCase))
+            {
+                defaultScheme = "https";
+                rest = trimmed["naive://".Length..];
+            }
+            else
+            {
+                var schemeEnd = trimmed.IndexOf("://", StringComparison.Ordinal);
+                if (schemeEnd < 0) return false;
+                defaultScheme = trimmed[..schemeEnd].ToLowerInvariant();
+                rest = trimmed[(schemeEnd + 3)..];
+            }
+
             var hash = rest.IndexOf('#');
             var fragment = hash >= 0 ? Uri.UnescapeDataString(rest[(hash + 1)..]) : "";
             if (hash >= 0) rest = rest[..hash];
@@ -72,27 +135,88 @@ public static class NaiveProxyHelper
             var query = qIdx >= 0 ? rest[(qIdx + 1)..] : "";
             if (qIdx >= 0) rest = rest[..qIdx];
 
+            var slash = rest.IndexOf('/');
+            if (slash >= 0) rest = rest[..slash];
+
             var at = rest.LastIndexOf('@');
             if (at < 0) return false;
             var cred = rest[..at];
             var hostPort = rest[(at + 1)..];
-            var colon = hostPort.LastIndexOf(':');
-            if (colon < 0 || !int.TryParse(hostPort[(colon + 1)..], out var port)) return false;
 
+            string username;
+            string password;
             var userColon = cred.IndexOf(':');
-            if (userColon < 0) return false;
+            if (userColon >= 0)
+            {
+                username = Uri.UnescapeDataString(cred[..userColon]);
+                password = Uri.UnescapeDataString(cred[(userColon + 1)..]);
+            }
+            else
+            {
+                username = Uri.UnescapeDataString(cred);
+                password = "";
+            }
+
+            string host;
+            int port;
+
+            if (hostPort.StartsWith("[", StringComparison.Ordinal))
+            {
+                var closeBracket = hostPort.IndexOf(']');
+                if (closeBracket < 0) return false;
+                host = hostPort[1..closeBracket];
+                var afterBracket = hostPort[(closeBracket + 1)..];
+                if (afterBracket.StartsWith(":", StringComparison.Ordinal))
+                {
+                    if (!int.TryParse(afterBracket[1..], out port) || port is <= 0 or > 65535)
+                        return false;
+                }
+                else
+                {
+                    port = defaultScheme == "http" ? 80 : 443;
+                }
+            }
+            else
+            {
+                var colon = hostPort.LastIndexOf(':');
+                if (colon >= 0)
+                {
+                    host = hostPort[..colon];
+                    if (!int.TryParse(hostPort[(colon + 1)..], out port) || port is <= 0 or > 65535)
+                        return false;
+                }
+                else
+                {
+                    host = hostPort;
+                    port = defaultScheme == "http" ? 80 : 443;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(username))
+                return false;
 
             var q = System.Web.HttpUtility.ParseQueryString(query);
+            var sni = q["sni"];
+            if (string.IsNullOrWhiteSpace(sni))
+            {
+                if (!System.Net.IPAddress.TryParse(host, out _))
+                    sni = host;
+            }
+
+            var remark = fragment.Length > 0
+                ? fragment
+                : (defaultScheme == "quic" ? "NaiveQuic" : "NaiveProxy");
+
             settings = new NaiveProxySettings
             {
                 Enabled = true,
-                Server = hostPort[..colon],
+                Server = host,
                 Port = port,
-                Username = Uri.UnescapeDataString(cred[..userColon]),
-                Password = Uri.UnescapeDataString(cred[(userColon + 1)..]),
-                ServerName = q["sni"],
+                Username = username,
+                Password = password,
+                ServerName = sni,
                 AllowInsecure = q["insecure"] == "1",
-                Remark = fragment.Length > 0 ? fragment : "NaiveProxy",
+                Remark = remark,
             };
             return true;
         }

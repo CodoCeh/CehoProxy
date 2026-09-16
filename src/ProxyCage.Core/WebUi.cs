@@ -51,6 +51,7 @@ public static class WebUi
     nav.tabs a.on{background:var(--brand-ink);color:#f4fbf7;font-weight:600}
 
     h2{font-size:16px;font-weight:660;margin:0 0 10px;letter-spacing:-.01em}
+    h3{font-size:14px;font-weight:660;margin:0 0 4px;letter-spacing:-.005em}
     *+h2{margin-top:26px}
     section{margin:0 0 30px}
     p{margin:0 0 12px}
@@ -74,8 +75,9 @@ public static class WebUi
       overflow-wrap:anywhere}
     /* Заголовки переносим только по пробелу: разорванное посередине слово читается как опечатка. */
     th{font-size:12px;font-weight:600;color:var(--muted);overflow-wrap:normal}
-    table.t-apps th:nth-child(1){width:26%}
-    table.t-apps th:nth-child(3){width:210px}
+    table.t-apps th:nth-child(1){width:25%}
+    table.t-apps th:nth-child(3){width:198px}
+    table.t-apps td{vertical-align:top}
     table.t-subs th:nth-child(1){width:118px}
     table.t-subs th:nth-child(3){width:108px}
     table.t-subs th:nth-child(4){width:112px}
@@ -107,6 +109,19 @@ public static class WebUi
 
     form.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin:10px 0 4px}
     form.app-add input[type=text]{flex:1;min-width:220px}
+    .app-entry-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;
+      margin-top:24px;padding-top:22px;border-top:1px solid var(--line)}
+    .app-entry{min-width:0}
+    .app-entry .hint{min-height:40px;margin-top:0}
+    form.installed-add,form.app-add{align-items:stretch}
+    form.installed-add select{min-width:0;width:100%}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+      clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    details.rename{margin-top:7px}
+    details.rename summary{width:max-content;color:var(--brand-ink);font-size:12px;cursor:pointer}
+    details.rename form.row{display:grid;grid-template-columns:minmax(0,1fr) auto;margin:7px 0 0}
+    details.rename input[type=text]{min-width:0;width:100%;padding:7px 9px}
+    details.rename button{min-height:34px;padding:7px 11px}
     a.pick{display:inline-flex;align-items:center;min-height:40px;padding:10px 18px;
       border:1px solid var(--line);border-radius:10px;color:var(--text);text-decoration:none;
       font-size:14px;font-weight:500;white-space:nowrap;box-sizing:border-box}
@@ -190,6 +205,8 @@ public static class WebUi
     .kv dt{color:var(--muted)} .kv dd{margin:0;overflow-wrap:anywhere}
     @media (max-width:520px){.kv{grid-template-columns:1fr;gap:2px 0}
       .kv dd{margin-bottom:8px}}
+    @media (max-width:700px){.app-entry-grid{grid-template-columns:1fr;gap:22px}
+      .app-entry .hint{min-height:0}}
 
     footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
       color:var(--muted);font-size:13px;display:flex;gap:14px;align-items:center;

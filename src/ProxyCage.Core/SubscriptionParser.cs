@@ -23,7 +23,8 @@ public static class SubscriptionParser
     };
 
     public static bool LooksLikeNodeUri(string text) =>
-        Schemes.Any(x => text.TrimStart().StartsWith(x.Scheme, StringComparison.OrdinalIgnoreCase));
+        Schemes.Any(x => text.TrimStart().StartsWith(x.Scheme, StringComparison.OrdinalIgnoreCase))
+        || NaiveProxyHelper.IsNaiveUri(text);
 
     public static IReadOnlyList<ProxyNode> Parse(string subscriptionBody, string lang = "ru")
     {
@@ -85,6 +86,8 @@ public static class SubscriptionParser
             return "naive://" + line["naive+https://".Length..];
         if (line.StartsWith("naive+quic://", StringComparison.OrdinalIgnoreCase))
             return "naive://" + line["naive+quic://".Length..];
+        if (NaiveProxyHelper.TryParseUri(line, out var s) && s is not null)
+            return NaiveProxyHelper.BuildUri(s);
         return line;
     }
 
@@ -92,7 +95,8 @@ public static class SubscriptionParser
     {
         if (Schemes.Any(s => body.Contains(s.Scheme, StringComparison.OrdinalIgnoreCase))
             || body.Contains("naive+https://", StringComparison.OrdinalIgnoreCase)
-            || body.Contains("naive+quic://", StringComparison.OrdinalIgnoreCase))
+            || body.Contains("naive+quic://", StringComparison.OrdinalIgnoreCase)
+            || NaiveProxyHelper.IsNaiveUri(body))
             return body;
 
         try

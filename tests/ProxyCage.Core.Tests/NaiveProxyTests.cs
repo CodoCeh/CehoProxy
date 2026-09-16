@@ -11,6 +11,61 @@ namespace ProxyCage.Core.Tests;
 public class NaiveProxyTests
 
 {
+    [Theory]
+    [InlineData("https://user:pass@site.roomspace.team:8443/", 8443)]
+    [InlineData("https://user:pass@site.roomspace.team/", 443)]
+    [InlineData("HTTPS://user:pass@site.roomspace.team:8443/", 8443)]
+    public void Https_credentials_are_a_naive_node(string uri, int port)
+    {
+        Assert.True(NaiveProxyHelper.IsNaiveUri(uri));
+        Assert.True(SubscriptionParser.LooksLikeNodeUri(uri));
+        Assert.True(SubscriptionKind.IsNaive(new SubscriptionEntry { Url = uri }));
+        Assert.True(NaiveProxyHelper.TryParseUri(uri, out var settings));
+        Assert.Equal("user", settings!.Username);
+        Assert.Equal("pass", settings.Password);
+        Assert.Equal("site.roomspace.team", settings.Server);
+        Assert.Equal("site.roomspace.team", settings.ServerName);
+        Assert.Equal(port, settings.Port);
+        var node = Assert.Single(SubscriptionParser.Parse(uri));
+        Assert.Equal(ProxyProtocol.Naive, node.Protocol);
+        Assert.Equal("user", node.Credential);
+        Assert.Equal("pass", node.TuicPassword);
+        Assert.Equal(port, node.Port);
+        var canonical = NaiveProxyHelper.BuildUri(settings);
+        Assert.StartsWith("naive://", canonical);
+        Assert.True(NaiveProxyHelper.TryParseUri(canonical, out var restored));
+        Assert.Equal(settings.Password, restored!.Password);
+        Assert.Equal(settings.Server, restored.Server);
+        Assert.Equal(settings.Port, restored.Port);
+    }
+
+    [Theory]
+    [InlineData("https://site.roomspace.team/subscription")]
+    [InlineData("https://site.roomspace.team?email=user@example.com")]
+    [InlineData("https://site.roomspace.team/sub?email=user@example.com")]
+    [InlineData("https://site.roomspace.team/#user@example.com")]
+    [InlineData("https://site.roomspace.team/user@example.com")]
+    public void Subscription_urls_are_not_naive_nodes(string uri)
+    {
+        Assert.False(NaiveProxyHelper.IsNaiveUri(uri));
+        Assert.False(SubscriptionParser.LooksLikeNodeUri(uri));
+        Assert.False(SubscriptionKind.IsNaive(new SubscriptionEntry { Url = uri }));
+        Assert.False(NaiveProxyHelper.TryParseUri(uri, out _));
+        Assert.Empty(SubscriptionParser.Parse(uri));
+    }
+
+    [Theory]
+    [InlineData("https://user:pass@host:8443/", "https://***:***@host:8443/")]
+    [InlineData("naive://user:pass@host:8443?email=a@b", "naive://***:***@host:8443?email=a@b")]
+    [InlineData("naive+https://user:pass@host/", "naive+https://***:***@host/")]
+    [InlineData("https://host/sub?email=a@b", "https://host/sub?email=a@b")]
+    public void Web_masks_only_naive_authority_credentials(string uri, string expected)
+    {
+        var mask = typeof(WebServer).GetMethod("MaskNaiveUrl",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        Assert.Equal(expected, mask.Invoke(null, [uri]));
+    }
+
 
     [Fact]
 

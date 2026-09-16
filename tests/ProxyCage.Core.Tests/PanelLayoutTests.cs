@@ -101,6 +101,18 @@ public class PanelLayoutTests : IDisposable
     }
 
     [Fact]
+    public async Task Apps_page_groups_installed_and_manual_choosers_without_inline_rename_fields()
+    {
+        var page = await _http.GetStringAsync("/?tab=apps");
+
+        Assert.Contains("class=app-entry-grid", page);
+        Assert.Contains("Из установленных", page);
+        Assert.Contains("По пути или файлу", page);
+        Assert.Contains("<details class=rename>", page);
+        Assert.DoesNotContain("<form class=row method=post action=/apps/rename", page[..page.IndexOf("<details class=rename>")]);
+    }
+
+    [Fact]
     public async Task A_page_that_refreshes_itself_does_not_replay_the_intro()
     {
         var reply = await _http.PostAsync("/pool/refresh",

@@ -136,14 +136,14 @@ try {{
         File.WriteAllText(scriptPath, script, Encoding.UTF8);
     }
 
-    private static void WriteLauncher(string launcherPath, string scriptPath, string resultPath, string title)
+    internal static void WriteLauncher(string launcherPath, string scriptPath, string resultPath, string title)
     {
         var safeTitle = title.Replace("\"", "\"\"");
         var ps =
             "powershell.exe -NoProfile -WindowStyle Hidden -STA -ExecutionPolicy Bypass -File \"" +
             scriptPath + "\" -Title \"" + safeTitle + "\" -OutFile \"" + resultPath + "\"";
         var vbs = "CreateObject(\"Wscript.Shell\").Run \"" + ps.Replace("\"", "\"\"") + "\", 0, False\r\n";
-        File.WriteAllText(launcherPath, vbs, Encoding.ASCII);
+        File.WriteAllText(launcherPath, vbs, Encoding.Unicode);
     }
 
     private static bool RunInteractiveTask(string user, string launcherPath)

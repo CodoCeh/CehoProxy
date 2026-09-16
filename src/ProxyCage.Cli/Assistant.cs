@@ -123,6 +123,8 @@ public static class Assistant
             var url = Cli.Ask("  " + Cli.S(cfg, "ask_sub_link") + " (" + Cli.S(cfg, "ask_skip") + ")");
             if (url.Length == 0) return false;
 
+            if (NaiveProxyHelper.TryParseUri(url, out var naive) && naive is not null)
+                url = NaiveProxyHelper.BuildUri(naive);
             var name = SuggestName(cfg, url);
             cfg.Subscriptions.Add(new SubscriptionEntry { Name = name, Url = url });
             cfg.ActiveSubscription ??= name;

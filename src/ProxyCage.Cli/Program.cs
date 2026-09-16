@@ -493,7 +493,10 @@ switch (cmd)
             Console.Error.WriteLine(Cli.S(cfg, "err_sub_exists", args[1]));
             return 1;
         }
-        cfg.Subscriptions.Add(new SubscriptionEntry { Name = args[1], Url = args[2] });
+        var url = args[2];
+        if (NaiveProxyHelper.TryParseUri(url, out var naive) && naive is not null)
+            url = NaiveProxyHelper.BuildUri(naive);
+        cfg.Subscriptions.Add(new SubscriptionEntry { Name = args[1], Url = url });
         cfg.ActiveSubscription ??= args[1];
         cfg.Save(Ceho.ConfigPath);
         Auth.RestrictConfigAccess(Ceho.ConfigPath);
