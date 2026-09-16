@@ -347,18 +347,20 @@ public static class Cli
     }
 
     public static string WrapPath(string name) =>
-        Path.Combine(WrapDir(), Os.IsWindows ? name + ".cmd" : name);
+        Path.Combine(WrapDir(), CommandName.WrapperFileName(name, Os.IsWindows));
 
     public static string? Wrap(string name, out string? note)
     {
         note = null;
         if (!CommandName.IsSafe(name))
             return "укажите короткое имя команды без пути, например: codex";
-        if (name.Equals("chp", StringComparison.OrdinalIgnoreCase) ||
-            name.Equals("cehoproxy", StringComparison.OrdinalIgnoreCase))
+        var canonical = CommandName.Canonical(name, Os.IsWindows);
+        if (canonical.Equals("chp", StringComparison.OrdinalIgnoreCase) ||
+            canonical.Equals("cehoproxy", StringComparison.OrdinalIgnoreCase))
             return "служебную команду CehoProxy нельзя переводить на туннель";
 
-        var real = Os.FindOnPath(Os.IsWindows ? name + ".exe" : name) ?? Os.FindOnPath(name);
+        var real = CommandName.ExecutableCandidates(name, Os.IsWindows)
+            .Select(Os.FindOnPath).FirstOrDefault(path => path is not null);
         if (real is null) return $"команда «{name}» в PATH не найдена";
 
         var dir = WrapDir();

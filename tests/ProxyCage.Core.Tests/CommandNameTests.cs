@@ -23,4 +23,13 @@ public class CommandNameTests
     [InlineData("..")]
     public void Paths_and_ambiguous_names_are_rejected(string name) =>
         Assert.False(CommandName.IsSafe(name));
+
+    [Fact]
+    public void Windows_npm_shims_and_native_commands_share_one_wrapper_name()
+    {
+        Assert.Equal("gemini.cmd", CommandName.WrapperFileName("gemini", windows: true));
+        Assert.Equal("gemini.cmd", CommandName.WrapperFileName("gemini.cmd", windows: true));
+        Assert.Equal(new[] { "gemini.exe", "gemini.cmd", "gemini.bat", "gemini" },
+            CommandName.ExecutableCandidates("gemini.cmd", windows: true));
+    }
 }
