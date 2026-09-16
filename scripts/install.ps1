@@ -1,7 +1,9 @@
-param(
-    [string]$Source = "",
-    [string]$Repo = "CodoCeh/CehoProxy"
-)
+$Source = ""
+$Repo = "CodoCeh/CehoProxy"
+for ($i = 0; $i -lt $args.Count; $i++) {
+    if ($args[$i] -eq '-Source' -and $i + 1 -lt $args.Count) { $Source = $args[++$i]; continue }
+    if ($args[$i] -eq '-Repo' -and $i + 1 -lt $args.Count) { $Repo = $args[++$i]; continue }
+}
 
 # Этот файл запускают и как .\install.ps1, и через iex. exit здесь закрывает
 # всё окно PowerShell, а stderr внешней программы при Stop превращается в
