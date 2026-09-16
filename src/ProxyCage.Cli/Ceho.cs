@@ -311,7 +311,7 @@ public static class Ceho
                 if (info.TotalBytes is not null) entry.TotalBytes = info.TotalBytes;
             }
 
-            cfg.Save(ConfigPath);
+            cfg.SaveSubscriptionStatus(ConfigPath);
         }
         catch { }
     }

@@ -153,6 +153,15 @@ public sealed class CehoConfig
         File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
     }
 
+    /// <summary>Сохраняет сведения о проверке подписки, не помечая правила движка устаревшими.</summary>
+    public void SaveSubscriptionStatus(string path)
+    {
+        var previousWriteTime = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : (DateTime?)null;
+        Save(path);
+        if (previousWriteTime is { } value)
+            File.SetLastWriteTimeUtc(path, value);
+    }
+
     /// <summary>Старый блок NaiveProxy в config.json переносим в подписку naive://…</summary>
     internal void MigrateLegacyNaive(string path)
     {
