@@ -1472,7 +1472,14 @@ switch (cmd)
                 return 1;
             }
             Autostart.StopService();
-            DaemonControl.WaitForExit(Ceho.Root, 20000);
+            if (!DaemonControl.WaitForExit(Ceho.Root, 20000))
+            {
+                // Автозапуск могли включить, пока daemon был запущен вручную.
+                // systemctl/schtasks такой процесс не знает, поэтому передаём
+                // управление службе через обычный сигнал остановки daemon.
+                DaemonControl.RequestStop(Ceho.Root);
+                DaemonControl.WaitForExit(Ceho.Root, 20000);
+            }
             await Task.Delay(1000);
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
             TunCleanup.ReleaseOurs(
