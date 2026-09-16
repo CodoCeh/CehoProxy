@@ -741,8 +741,8 @@ public static class Strings
             "Its CLI and helper processes are included in the tunnel — no need to add them separately. "
             + "If rules are stale: chp apply."),
         ["ai_script_warn"] = new(
-            "Этот помощник запускает {0} — компьютер видит её, а не его, и правило по папке не сработает. Такую команду переводят на туннель отдельно: chp wrap.",
-            "This helper is started by {0} — the computer sees that program, not the helper, so a folder rule will not match. Route such a command separately: chp wrap."),
+            "Этот CLI-инструмент запускается через {0}, поэтому правило по папке может не сработать. Настройте его короткую команду через туннель: chp wrap имя-команды.",
+            "This CLI tool is started through {0}, so a folder rule may not match. Route its short command through the tunnel: chp wrap command-name."),
         ["ai_kind_bundle"] = new("пакет программы", "application bundle"),
         ["ai_kind_native"] = new("исполняемый файл", "executable"),
         ["ai_kind_script"] = new("скрипт", "script"),
@@ -768,11 +768,11 @@ public static class Strings
             "Не удалось проверить обновления: {0}", "Could not check for updates: {0}"),
         ["upd_failed"] = new("Обновиться не удалось: {0}", "Update failed: {0}"),
         ["run_title"] = new(
-            "Помощники, которые запускаются командой",
-            "Helpers you start with a command"),
+            "CLI-инструменты с короткой командой",
+            "CLI tools invoked by a short command"),
         ["run_lede"] = new(
-            "Часть помощников запускается не значком, а командой в терминале, и своей папки на диске у них нет. Такая команда — файл, который выполняет чужая программа-исполнитель, одна на десятки разных команд. Компьютер видит её, а не вашего помощника, и отправить её в туннель нельзя: туда уедут все команды подряд. Для таких есть отдельная кнопка:",
-            "Some helpers are started by a command in a terminal rather than by an icon, and have no folder of their own. Such a command is a file executed by a shared runner program that serves dozens of different commands. The computer sees the runner, not your helper, so sending it through the tunnel is not an option: every command would go with it. There is a separate button for these:"),
+            "Некоторые CLI-инструменты вызываются из терминала короткой командой, например codex или claude. Если выбор пути программы им не подходит, настройте через туннель именно эту команду. CehoProxy создаст для неё отдельную обёртку и не затронет остальные команды:",
+            "Some CLI tools are invoked from a terminal by a short command, such as codex or claude. If selecting an application path does not fit, route that command through the tunnel. CehoProxy creates a dedicated wrapper for it and leaves other commands alone:"),
         ["run_sample_name"] = new("имя-команды", "command-name"),
         ["run_sample_hint"] = new(
             "Вместо «имя-команды» подставьте свою. Не знаете какую — наберите chp wrap без ничего: программа покажет, что нашла на компьютере.",
