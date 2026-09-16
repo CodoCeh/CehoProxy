@@ -18,6 +18,27 @@ public sealed class UpdaterIntegrityTests
     }
 
     [Fact]
+    public async Task Deferred_download_does_not_replace_running_binary()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ceho-stage-" + Guid.NewGuid());
+        Directory.CreateDirectory(root);
+        try
+        {
+            var target = Path.Combine(root, "client");
+            await File.WriteAllTextAsync(target, "original");
+            using var client = new HttpClient(new ContentHandler());
+            var staged = await Updater.DownloadAsync(
+                new("9.0.0", "https://example.test/client", 2 * 1024 * 1024, null),
+                target, client);
+
+            Assert.Equal(target + ".new", staged);
+            Assert.Equal("original", await File.ReadAllTextAsync(target));
+            Assert.Equal(2 * 1024 * 1024, new FileInfo(staged).Length);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task Valid_update_in_a_path_with_spaces_is_executable()
     {
         if (OperatingSystem.IsWindows()) return;

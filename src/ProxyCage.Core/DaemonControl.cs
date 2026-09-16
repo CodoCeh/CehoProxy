@@ -174,6 +174,61 @@ public static class DaemonControl
         });
     }
 
+    public static void SpawnUpdateRelaunchHelper(string exe, string downloaded, string root)
+    {
+        var pid = Environment.ProcessId;
+        var backup = exe + ".old";
+        var autostart = Autostart.IsEnabled();
+
+        if (Os.IsWindows)
+        {
+            static string Q(string s) => s.Replace("'", "''");
+            var start = autostart
+                ? "schtasks /run /tn CehoProxy | Out-Null"
+                : $"Start-Process -FilePath '{Q(exe)}' -ArgumentList 'daemon' -WorkingDirectory '{Q(root)}' -WindowStyle Hidden";
+            var script = Path.Combine(root, "update-relaunch.ps1");
+            File.WriteAllText(script, $$"""
+                $watch = {{pid}}
+                while (Get-Process -Id $watch -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 1 }
+                Start-Sleep -Milliseconds 500
+                Remove-Item -LiteralPath '{{Q(backup)}}' -Force -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath '{{Q(exe)}}') { Move-Item -LiteralPath '{{Q(exe)}}' -Destination '{{Q(backup)}}' -Force }
+                try { Move-Item -LiteralPath '{{Q(downloaded)}}' -Destination '{{Q(exe)}}' -Force }
+                catch { if (-not (Test-Path -LiteralPath '{{Q(exe)}}') -and (Test-Path -LiteralPath '{{Q(backup)}}')) { Move-Item -LiteralPath '{{Q(backup)}}' -Destination '{{Q(exe)}}' }; throw }
+                {{start}}
+                Remove-Item -LiteralPath '{{Q(script)}}' -Force -ErrorAction SilentlyContinue
+                """);
+            Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
+            {
+                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root,
+            });
+            return;
+        }
+
+        var sh = Path.Combine(root, "update-relaunch.sh");
+        var startUnix = autostart
+            ? (Os.IsLinux ? "systemctl start cehoproxy" : "launchctl kickstart -k system/ru.codoceh.cehoproxy")
+            : $"nohup \"{exe}\" daemon >/dev/null 2>&1 &";
+        File.WriteAllText(sh, $$"""
+            #!/bin/sh
+            while kill -0 {{pid}} 2>/dev/null; do sleep 1; done
+            sleep 1
+            rm -f "{{backup}}"
+            if [ -f "{{exe}}" ]; then mv "{{exe}}" "{{backup}}"; fi
+            if ! mv "{{downloaded}}" "{{exe}}"; then
+              [ -f "{{exe}}" ] || mv "{{backup}}" "{{exe}}"
+              exit 1
+            fi
+            chmod 755 "{{exe}}"
+            {{startUnix}}
+            rm -f "{{sh}}"
+            """);
+        Process.Start(new ProcessStartInfo("/bin/sh", sh)
+        {
+            UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root,
+        });
+    }
+
     public static bool RequestStop(string root)
     {
         if (OperatingSystem.IsWindows()) return RequestStopWindows();

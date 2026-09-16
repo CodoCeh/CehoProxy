@@ -89,10 +89,26 @@ public static class Updater
         return await InstallAsync(release, targetPath, http, log);
     }
 
+    public static async Task<string> DownloadAsync(Release release, string targetPath, Action<string>? log = null)
+    {
+        using var http = DirectHttp.CreateClient(TimeSpan.FromMinutes(10));
+        return await DownloadAsync(release, targetPath, http, log);
+    }
+
     internal static async Task<string> InstallAsync(Release release, string targetPath, HttpClient http, Action<string>? log = null)
     {
-        var temp = targetPath + ".new";
+        var temp = await DownloadAsync(release, targetPath, http, log);
         var backup = targetPath + ".old";
+
+        ReplaceDownloadedFile(temp, targetPath, backup);
+
+        log?.Invoke($"установлено: {release.Version}");
+        return release.Version;
+    }
+
+    internal static async Task<string> DownloadAsync(Release release, string targetPath, HttpClient http, Action<string>? log = null)
+    {
+        var temp = targetPath + ".new";
 
         {
             log?.Invoke($"скачиваю {release.Version} ({release.Size / 1024 / 1024} МБ)");
@@ -113,11 +129,7 @@ public static class Updater
             UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
             UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
             UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-
-        ReplaceDownloadedFile(temp, targetPath, backup);
-
-        log?.Invoke($"установлено: {release.Version}");
-        return release.Version;
+        return temp;
     }
 
     internal static void ReplaceDownloadedFile(string temp, string targetPath, string backup)

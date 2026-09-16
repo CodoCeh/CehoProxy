@@ -827,8 +827,7 @@ switch (cmd)
                 return 1;
             }
 
-            await Updater.InstallAsync(release, Ceho.OwnExecutablePath, Console.WriteLine);
-            Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
+            var downloaded = await Updater.DownloadAsync(release, Ceho.OwnExecutablePath, Console.WriteLine);
 
             if (Installer.MissingCronetDll(Ceho.Root))
             {
@@ -852,7 +851,7 @@ switch (cmd)
                 Console.WriteLine("  " + ex.Message);
             }
 
-            if (Autostart.IsEnabled()) Autostart.Restart();
+            DaemonControl.SpawnUpdateRelaunchHelper(Ceho.OwnExecutablePath, downloaded, Ceho.Root);
             Console.WriteLine(Cli.S(cfg, "upd_done", release.Version));
             return 0;
         }
@@ -1784,10 +1783,10 @@ if (cmd is "daemon" or "web")
 
         report.Stage(Strings.T(c.Language, "stage_download",
             release.Version, release.Size / 1024 / 1024), 40);
-        await Updater.InstallAsync(release, Ceho.OwnExecutablePath, m => report.Note(m));
+        var downloaded = await Updater.DownloadAsync(
+            release, Ceho.OwnExecutablePath, m => report.Note(m));
 
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
-        Cli.MakeShortcut(Ceho.OwnExecutablePath, out _);
 
         if (Installer.MissingCronetDll(Ceho.Root))
         {
@@ -1812,7 +1811,8 @@ if (cmd is "daemon" or "web")
             return ex.Message;
         }
         report.Stage(Strings.T(c.Language, "upd_relaunch"), 95);
-        DaemonControl.SpawnRelaunchHelper(Ceho.OwnExecutablePath, Ceho.Root);
+        DaemonControl.SpawnUpdateRelaunchHelper(
+            Ceho.OwnExecutablePath, downloaded, Ceho.Root);
         _ = Task.Run(async () =>
         {
             await Task.Delay(2500);
