@@ -5,7 +5,7 @@ param(
 
 # Этот файл запускают и как .\install.ps1, и через iex. exit здесь закрывает
 # всё окно PowerShell, а stderr внешней программы при Stop превращается в
-# остановку скрипта — поэтому только return и Continue.
+# остановку скрипта: поэтому только return и Continue.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Continue'
@@ -28,7 +28,7 @@ $engineLegacy = Join-Path $root 'sing-box.exe'
 
 if (Test-Path $exe) {
     $old = & $exe version 2>$null | Select-Object -First 1
-    if ($old) { Write-Host "Была установлена версия $old — заменяю её." }
+    if ($old) { Write-Host "Была установлена версия $old, заменяю её." }
 }
 
 # Запись в «Установке и удалении программ» от прежнего установщика осталась бы висеть
@@ -49,7 +49,7 @@ if (-not $Source) {
 
     $url = "https://github.com/$Repo/releases/latest/download/cehoproxy-win-x64.exe"
     $tmp = Join-Path $env:TEMP 'cehoproxy-download.exe'
-    Write-Host "Скачиваю программу из релизов $Repo…"
+    Write-Host "Скачиваю программу из релизов $Repo..."
 
     $downloaded = $false
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
@@ -78,11 +78,11 @@ if (-not $Source) {
     }
 
     $len = (Get-Item $tmp).Length
-    # Self-contained сборка — десятки мегабайт. Обрыв оставляет огрызок в пару мегабайт,
+    # Self-contained сборка: десятки мегабайт. Обрыв оставляет огрызок в пару мегабайт,
     # его нельзя запускать: Windows скажет «не является приложением Win32».
     if ($len -lt 10MB) {
         Write-Host "Скачивание оборвалось: получили $len байт вместо полной программы."
-        Write-Host "Повторите команду. Если снова оборвётся — скачайте файл вручную:"
+        Write-Host "Повторите команду. Если снова оборвётся - скачайте файл вручную:"
         Write-Host "  https://github.com/$Repo/releases/latest"
         try { Remove-Item $tmp -Force } catch { }
         return
@@ -93,7 +93,7 @@ if (-not $Source) {
     [void]$fs.Read($mz, 0, 2)
     $fs.Close()
     if ($mz[0] -ne 0x4D -or $mz[1] -ne 0x5A) {
-        Write-Host "Скачанный файл — не программа Windows. Повторите команду."
+        Write-Host "Скачанный файл - не программа Windows. Повторите команду."
         try { Remove-Item $tmp -Force } catch { }
         return
     }
@@ -106,7 +106,7 @@ if (-not (Test-Path $Source)) { Write-Host "Не найден файл прог�
 $hadConfig = Test-Path (Join-Path $root 'config.json')
 
 function Stop-CehoLeftovers {
-    # На чистой машине задачи нет — cmd глотает отсутствие, PowerShell из-за этого не падает.
+    # На чистой машине задачи нет: cmd глотает отсутствие, PowerShell из-за этого не падает.
     cmd /c "schtasks /end /tn CehoProxy >nul 2>&1" | Out-Null
     cmd /c "taskkill /F /IM ceho-engine.exe >nul 2>&1" | Out-Null
     cmd /c "taskkill /F /IM sing-box.exe >nul 2>&1" | Out-Null
@@ -124,7 +124,7 @@ function Stop-CehoLeftovers {
 }
 
 # Прошлую версию надо остановить целиком: и задачу планировщика, и сам процесс.
-# Работающий exe Windows заменить не даёт, а два экземпляра рядом — источник путаницы.
+# Работающий exe Windows заменить не даёт, а два экземпляра рядом - источник путаницы.
 [void](Stop-CehoLeftovers)
 
 New-Item -ItemType Directory -Force -Path $root | Out-Null
@@ -140,7 +140,7 @@ for ($i = 1; $i -le 5 -and -not $copied; $i++) {
     }
 }
 if (-not $copied) {
-    Write-Host "Не удалось заменить $exe — файл занят. Перезагрузите компьютер и повторите."
+    Write-Host "Не удалось заменить $exe: файл занят. Перезагрузите компьютер и повторите."
     return
 }
 
@@ -208,7 +208,7 @@ if (Test-Path $targetCronet) {
 
 # irm | iex подменяет клавиатуру трубой со скриптом. Мастер настройки тогда
 # сразу получает пустой ввод. В этом случае ставим программу молча и просим
-# открыть новое окно. iex (irm …) клавиатуру не трогает — мастер идёт здесь же.
+# открыть новое окно. iex (irm ...) клавиатуру не трогает: мастер идёт здесь же.
 $piped = [Console]::IsInputRedirected
 $installArgs = @('install')
 if (-not (Test-Path $engine) -and -not (Test-Path $engineLegacy)) { $installArgs += '--with-engine' }
@@ -242,7 +242,7 @@ if ($hadConfig) {
         $alive = Get-Process -Name 'cehoproxy' -ErrorAction SilentlyContinue
     }
     if ($alive) {
-        Write-Host "Защита и панель подняты. Если страница не открылась — подождите пару секунд."
+        Write-Host "Защита и панель подняты. Если страница не открылась - подождите пару секунд."
         Write-Host "  & '$exe'"
     } else {
         Write-Host "Панель сама не поднялась. В ЭТОМ окне:"
@@ -252,7 +252,7 @@ if ($hadConfig) {
     Write-Host "  & '$exe'"
 } elseif ($piped) {
     Write-Host ""
-    Write-Host "Программа стоит. Это окно сейчас занято командой установки —"
+    Write-Host "Программа стоит. Это окно сейчас занято командой установки,"
     Write-Host "откройте НОВОЕ окно PowerShell от администратора и введите:"
     Write-Host "  chp"
 } elseif ($installCode -ne 0 -and $null -ne $installCode) {
