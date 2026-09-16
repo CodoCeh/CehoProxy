@@ -15,7 +15,7 @@ public static class Installer
 
     public static void CopyCronetDependencies(string sourceDir, string root)
     {
-        if (!Os.IsWindows || !Directory.Exists(sourceDir)) return;
+        if (!Directory.Exists(sourceDir)) return;
         foreach (var dll in Directory.EnumerateFiles(sourceDir, "libcronet.*", SearchOption.TopDirectoryOnly))
         {
             var dest = Path.Combine(root, Path.GetFileName(dll));
