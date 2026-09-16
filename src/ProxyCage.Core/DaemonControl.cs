@@ -37,6 +37,17 @@ public static class DaemonControl
 
     public static bool IsRunning(string root) => RunningPid(root) is not null;
 
+    public static bool IsStarting(string root, TimeSpan? gracePeriod = null)
+    {
+        try
+        {
+            if (!File.Exists(PidPath(root))) return false;
+            var started = File.GetLastWriteTimeUtc(PidPath(root));
+            return DateTime.UtcNow - started < (gracePeriod ?? TimeSpan.FromMinutes(1));
+        }
+        catch { return false; }
+    }
+
     /// <summary>Поднять демон, если его ещё нет. Нужно после обновления: install.ps1
     /// гасит процесс до вызова «install --no-setup», и без этого панель не возвращается.</summary>
     public static bool TryStart(string exe, string root)

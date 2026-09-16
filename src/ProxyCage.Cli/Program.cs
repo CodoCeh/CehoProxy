@@ -1314,6 +1314,7 @@ switch (cmd)
         var tunnel = NodeProbe.TunnelIsUp(cfg.TunAddress);
         var running = daemon && tunnel;
         Console.WriteLine(running ? Cli.S(cfg, "state_on")
+            : daemon && DaemonControl.IsStarting(Ceho.Root) ? Cli.S(cfg, "state_starting")
             : daemon ? Cli.S(cfg, "state_broken")
             : Cli.S(cfg, "state_off"));
 
@@ -1908,6 +1909,8 @@ if (cmd is "daemon" or "web")
         return 1;
     }
 
+    DaemonControl.MarkRunning(Ceho.Root);
+
     if (withTunnel)
     {
         var tunnelBlockers = startupBlockers
@@ -1923,8 +1926,6 @@ if (cmd is "daemon" or "web")
                 : $"{Strings.T(cfg.Language, "start_failed")}: {err}");
         }
     }
-
-    DaemonControl.MarkRunning(Ceho.Root);
 
     Auth.RestrictConfigAccess(Ceho.ConfigPath);
 

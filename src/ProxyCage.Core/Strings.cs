@@ -42,6 +42,9 @@ public static class Strings
         ["state_broken"] = new(
             "Защита не работает: служба запущена, но туннель не поднялся",
             "Protection is not working: the service runs, but the tunnel did not come up"),
+        ["state_starting"] = new(
+            "Защита запускается — туннель ещё поднимается",
+            "Protection is starting — the tunnel is still coming up"),
         ["state_direct"] = new(
             "трафик программ идёт напрямую", "app traffic goes directly"),
         ["state_checking"] = new("проверяю выход", "checking the exit"),
