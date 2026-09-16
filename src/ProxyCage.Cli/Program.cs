@@ -1718,7 +1718,6 @@ if (cmd is "daemon" or "web")
     {
         if (proc is null) return Strings.T(cfg.Language, "already_off");
         var clean = proc.Stop(8000);
-        proc.WaitForExit();
         proc.Dispose();
         proc = null;
         exitCountry = exitIp = null;
