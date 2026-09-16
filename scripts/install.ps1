@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Source = "",
     [string]$Repo = "CodoCeh/CehoProxy"
 )
@@ -140,7 +140,7 @@ for ($i = 1; $i -le 5 -and -not $copied; $i++) {
     }
 }
 if (-not $copied) {
-    Write-Host "Не удалось заменить $exe: файл занят. Перезагрузите компьютер и повторите."
+    Write-Host "Не удалось заменить $exe - файл занят. Перезагрузите компьютер и повторите."
     return
 }
 
