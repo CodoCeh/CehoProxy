@@ -284,6 +284,14 @@ public static class Doctor
         return new Preflight.Check(Preflight.Level.Ok, S("doc_rules_ok"), rules, null);
     }
 
+    private sealed class PoolReport(IStageReport? parent) : IStageReport
+    {
+        public void Stage(string text, int percent) =>
+            parent?.Stage(text, 50 + Math.Clamp(percent, 0, 100) * 24 / 100);
+
+        public void Note(string text) => parent?.Note(text);
+    }
+
     private static async Task<IReadOnlyList<Preflight.Check>> PoolChecksAsync(
         CehoConfig cfg, Func<IStageReport, Task<IReadOnlyList<ProxyNode>>> pool, IStageReport? p, string l)
     {
@@ -293,7 +301,7 @@ public static class Doctor
         IReadOnlyList<ProxyNode> nodes;
         try
         {
-            nodes = await pool(p ?? new DelegateReport(_ => { }));
+            nodes = await pool(new PoolReport(p));
         }
         catch (Exception ex)
         {
