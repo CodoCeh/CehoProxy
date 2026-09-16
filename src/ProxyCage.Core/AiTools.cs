@@ -11,6 +11,9 @@ public static class AiTools
 
     public sealed record Found(string Name, string Path, ToolKind Kind, string? Interpreter);
 
+    public static string SuggestedCommand(Found tool) =>
+        Path.GetFileNameWithoutExtension(tool.Path);
+
     private sealed record Candidate(string Name, string[] Paths, string[] Commands);
 
     private static IEnumerable<Candidate> Catalog()
@@ -147,7 +150,7 @@ public static class AiTools
         return InterpreterOf(path) is null ? ToolKind.Native : ToolKind.Script;
     }
 
-    private static string? InterpreterOf(string path)
+    public static string? InterpreterOf(string path)
     {
         if (!File.Exists(path)) return null;
         try

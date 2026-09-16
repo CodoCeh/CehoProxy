@@ -237,7 +237,7 @@ public static class Assistant
             Console.WriteLine($"    {i + 1}. {found[i].Name,-12} {found[i].Path}");
             if (found[i].Kind == AiTools.ToolKind.Script && found[i].Interpreter is not null)
                 Console.WriteLine("       " + Cli.S(cfg, "ai_script_warn",
-                    Path.GetFileName(found[i].Interpreter!)));
+                    Path.GetFileName(found[i].Interpreter!), AiTools.SuggestedCommand(found[i])));
         }
 
         var hint = (found.Count > 0 ? Cli.S(cfg, "ask_or_path") + ", " : "") + Cli.S(cfg, "ask_skip");
@@ -247,9 +247,24 @@ public static class Assistant
         var added = false;
         foreach (var part in answer.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            var path = int.TryParse(part, out var n) && n >= 1 && n <= found.Count
-                ? found[n - 1].Path
-                : part;
+            if (int.TryParse(part, out var n) && n >= 1 && n <= found.Count &&
+                found[n - 1].Kind == AiTools.ToolKind.Script)
+            {
+                var command = AiTools.SuggestedCommand(found[n - 1]);
+                var error = Cli.Wrap(command, out var note);
+                if (error is not null)
+                    Console.WriteLine("  " + Cli.S(cfg, "wrap_failed", error));
+                else
+                {
+                    Console.WriteLine("  " + Cli.S(cfg, "wrap_done", command));
+                    if (note is not null) Console.WriteLine("  " + note);
+                    added = true;
+                }
+                continue;
+            }
+
+            var path = int.TryParse(part, out n) && n >= 1 && n <= found.Count
+                ? found[n - 1].Path : part;
             if (AddApp(cfg, path)) added = true;
         }
         if (added) Console.WriteLine("  " + Cli.S(cfg, "hint_after_add"));

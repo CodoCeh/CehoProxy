@@ -1645,15 +1645,21 @@ public sealed class WebServer
             sb.Append("<td class=path>").Append(E(tool.Path));
             if (tool.Kind == AiTools.ToolKind.Script && tool.Interpreter is not null)
                 sb.Append("<br><span class=tag>")
-                  .Append(E(S("ai_script_warn", new object[] { Path.GetFileName(tool.Interpreter) })))
+                  .Append(E(S("ai_script_warn", new object[]
+                  {
+                      Path.GetFileName(tool.Interpreter), AiTools.SuggestedCommand(tool),
+                  })))
                   .Append("</span>");
             sb.Append("</td><td class=actions>");
 
             if (covered)
                 sb.Append("<span class=tag>").Append(E(S("ai_added", []))).Append("</span>");
             else if (tool.Kind == AiTools.ToolKind.Script)
-                sb.Append("<code>chp run ").Append(E(Path.GetFileNameWithoutExtension(tool.Path)))
-                  .Append("</code>");
+            {
+                var command = AiTools.SuggestedCommand(tool);
+                sb.Append("<code>chp wrap ").Append(E(command)).Append("</code><br><span class=tag>")
+                  .Append(E(S("run_once", []))).Append(": chp run ").Append(E(command)).Append("</span>");
+            }
             else
                 sb.Append("<form method=post action=/apps/detected><input type=hidden name=tab value=apps>")
                   .Append("<input type=hidden name=path value=\"").Append(E(tool.Path)).Append("\">")

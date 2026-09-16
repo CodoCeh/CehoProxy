@@ -383,6 +383,9 @@ public static class Strings
         ["det_bundle"] = new(
             "Под изоляцию попадёт весь пакет программы целиком, включая вспомогательные процессы внутри него.",
             "The whole application bundle will be isolated, including helper processes inside it."),
+        ["det_cli_script"] = new(
+            "Это CLI-инструмент, который запускает общий интерпретатор. Не добавляйте его как программу: настройте короткую команду через туннель — chp wrap {0}",
+            "This CLI tool runs through a shared interpreter. Do not add it as an application; route its short command through the tunnel instead: chp wrap {0}"),
         ["det_folder"] = new(
             "Под изоляцию попадут все процессы, запущенные из этой папки и вложенных в неё.",
             "Every process started from this folder and its subfolders will be isolated."),
@@ -741,8 +744,8 @@ public static class Strings
             "Its CLI and helper processes are included in the tunnel — no need to add them separately. "
             + "If rules are stale: chp apply."),
         ["ai_script_warn"] = new(
-            "Этот CLI-инструмент запускается через {0}, поэтому правило по папке может не сработать. Настройте его короткую команду через туннель: chp wrap имя-команды.",
-            "This CLI tool is started through {0}, so a folder rule may not match. Route its short command through the tunnel: chp wrap command-name."),
+            "Этот CLI-инструмент запускается через {0}, поэтому его нельзя надёжно выбрать по пути. Настройте короткую команду через туннель: chp wrap {1}",
+            "This CLI tool is started through {0}, so it cannot be selected reliably by path. Route its short command through the tunnel: chp wrap {1}"),
         ["ai_kind_bundle"] = new("пакет программы", "application bundle"),
         ["ai_kind_native"] = new("исполняемый файл", "executable"),
         ["ai_kind_script"] = new("скрипт", "script"),

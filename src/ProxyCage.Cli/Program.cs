@@ -889,7 +889,8 @@ switch (cmd)
             var mark = AppCoverage.IsToolCovered(cfg, t) ? "[x]" : "[ ]";
             Console.WriteLine($"  {mark} {t.Name,-12} {t.Path}");
             if (t.Kind == AiTools.ToolKind.Script && t.Interpreter is not null)
-                Console.WriteLine("      " + Cli.S(cfg, "ai_script_warn", Path.GetFileName(t.Interpreter)));
+                Console.WriteLine("      " + Cli.S(cfg, "ai_script_warn",
+                    Path.GetFileName(t.Interpreter), AiTools.SuggestedCommand(t)));
         }
         Console.WriteLine();
         Console.WriteLine("  chp add-app ПУТЬ");

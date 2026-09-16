@@ -84,6 +84,12 @@ public static class AppDetector
                 Strings.T(lang, "det_bundle") + resolvedNote);
         }
 
+        if (AiTools.InterpreterOf(full) is not null)
+        {
+            var command = Path.GetFileNameWithoutExtension(entered);
+            throw new InvalidOperationException(Strings.T(lang, "det_cli_script", command));
+        }
+
         var folder = Directory.Exists(full) ? full : Path.GetDirectoryName(full) ?? full;
         folder = folder.TrimEnd('\\', '/');
         if (folder.Length == 0) folder = "/";
