@@ -7,6 +7,15 @@ namespace ProxyCage.Core.Tests;
 public class InstallScriptTests
 {
     [Fact]
+    public void Iex_entrypoint_starts_with_a_parameter_block_without_a_bom()
+    {
+        var bytes = File.ReadAllBytes(RepoFile("scripts/install.ps1"));
+
+        Assert.False(bytes.Take(3).SequenceEqual(new byte[] { 0xEF, 0xBB, 0xBF }));
+        Assert.StartsWith("param(", File.ReadAllText(RepoFile("scripts/install.ps1")));
+    }
+
+    [Fact]
     public void Fresh_install_does_not_call_schtasks_in_a_way_that_stops_the_script()
     {
         var script = File.ReadAllText(RepoFile("scripts/install.ps1"));
