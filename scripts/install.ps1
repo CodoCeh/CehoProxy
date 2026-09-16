@@ -14,17 +14,38 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 } catch { }
 
-$admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
-         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $admin) {
-    Write-Host "Нужны права администратора: откройте PowerShell от имени администратора и повторите."
-    return
-}
-
 $root = Join-Path $env:ProgramData 'CehoProxy'
 $exe  = Join-Path $root 'cehoproxy.exe'
 $engine = Join-Path $root 'ceho-engine.exe'
 $engineLegacy = Join-Path $root 'sing-box.exe'
+$admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $admin) {
+    if ((Test-Path $exe) -and ((schtasks /query /tn CehoProxy 2>$null) -match 'CehoProxy')) {
+        Write-Host "CehoProxy уже установлен для всех пользователей. Повышение прав не требуется."
+        return
+    }
+
+    $self = $PSCommandPath
+    if (-not $self -or -not (Test-Path $self)) {
+        $self = Join-Path $env:TEMP 'cehoproxy-install.ps1'
+        try {
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$Repo/main/scripts/install.ps1" `
+                -OutFile $self -UseBasicParsing -TimeoutSec 60
+        } catch {
+            Write-Host "Не удалось подготовить установщик для запроса прав: $($_.Exception.Message)"
+            return
+        }
+    }
+
+    $args = "-NoProfile -ExecutionPolicy Bypass -File `"$self`" -Source `"$Source`" -Repo `"$Repo`""
+    try {
+        Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $args -Wait
+    } catch {
+        Write-Host "Установка отменена или Windows не дала административные права."
+    }
+    return
+}
 
 if (Test-Path $exe) {
     $old = & $exe version 2>$null | Select-Object -First 1

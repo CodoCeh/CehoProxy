@@ -29,6 +29,17 @@ public class InstallScriptTests
         Assert.Contains("[Console]::IsInputRedirected", script);
     }
 
+    [Fact]
+    public void Standard_user_relaunches_only_a_missing_system_install_through_uac()
+    {
+        var script = File.ReadAllText(RepoFile("scripts/install.ps1"));
+
+        Assert.Contains("Test-Path $exe", script);
+        Assert.Contains("schtasks /query /tn CehoProxy", script);
+        Assert.Contains("-Verb RunAs", script);
+        Assert.Contains("CehoProxy уже установлен для всех пользователей", script);
+    }
+
     private static string RepoFile(string relative)
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)

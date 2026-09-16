@@ -75,17 +75,19 @@ public static class Autostart
         catch { }
     }
 
-    private static string? EnableWindows(string exePath, string workingDir)
-    {
-        var ps = $$"""
+    public static string WindowsTaskScript(string exePath, string workingDir) => $$"""
             $ErrorActionPreference='Stop'
             Unregister-ScheduledTask -TaskName '{{TaskName}}' -Confirm:$false -ErrorAction SilentlyContinue
             $a=New-ScheduledTaskAction -Execute '{{exePath}}' -Argument 'daemon' -WorkingDirectory '{{workingDir}}'
-            $t=New-ScheduledTaskTrigger -AtLogOn
-            $p=New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Highest
+            $t=New-ScheduledTaskTrigger -AtStartup
+            $p=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
             $s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
             Register-ScheduledTask -TaskName '{{TaskName}}' -Action $a -Trigger $t -Principal $p -Settings $s -Force | Out-Null
             """;
+
+    private static string? EnableWindows(string exePath, string workingDir)
+    {
+        var ps = WindowsTaskScript(exePath, workingDir);
         var (code, output) = Os.Run("powershell",
             $"-NoProfile -ExecutionPolicy Bypass -Command \"{ps.Replace("\"", "\\\"").ReplaceLineEndings("; ")}\"");
         return code == 0 ? null : $"не удалось включить автозапуск: {output}";
