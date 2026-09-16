@@ -1932,50 +1932,67 @@ if (cmd is "daemon" or "web")
     Auth.RestrictConfigAccess(Ceho.ConfigPath);
 
     using var cts = new CancellationTokenSource();
+    // Состояние процесса проверяем отдельно от сетевого probe: тот может ждать таймаут,
+    // а упавший движок нужно поднимать сразу.
     _ = Task.Run(async () =>
     {
         while (!cts.IsCancellationRequested)
         {
-            if (proc is not null && !proc.IsRunning)
+            try
             {
-                using (EngineMutex.Acquire(Ceho.Root))
+                if (proc is not null && !proc.IsRunning)
                 {
-                    // Пока сторож ждал очереди, движок мог поднять кто-то другой.
-                    if (proc is not null && !proc.IsRunning)
+                    using (EngineMutex.Acquire(Ceho.Root))
                     {
-                        var reason = proc.Explain(cfg.Language);
-                        Log.Error($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
-                        lastError = reason;
-                        StopTunnelLocked();
-                        var again = await StartTunnelLocked(null);
-                        Log.Info(again is null
-                            ? Strings.T(cfg.Language, "state_on")
-                            : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
-                    }
-                }
-            }
-
-            if (proc is not null)
-            {
-                var port = CehoConfig.Load(Ceho.ConfigPath).MixedPort;
-                (exitCountry, exitIp) = await Ceho.ProbeExitAsync(port);
-                probed = true;
-
-                if (exitIp is null)
-                {
-                    var refreshed = await Ceho.RefreshIfDeadAsync(port);
-                    if (refreshed is not null)
-                    {
-                        Log.Warn(refreshed);
-                        lastError = refreshed;
-                        if (refreshed.Contains("обнов") || refreshed.Contains("updated"))
+                        // Пока сторож ждал очереди, движок мог поднять кто-то другой.
+                        if (proc is not null && !proc.IsRunning)
                         {
-                            StopTunnel();
-                            await StartTunnel(null);
+                            var reason = proc.Explain(cfg.Language);
+                            Log.Error($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
+                            lastError = reason;
+                            StopTunnelLocked();
+                            var again = await StartTunnelLocked(null);
+                            Log.Info(again is null
+                                ? Strings.T(cfg.Language, "state_on")
+                                : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
                         }
                     }
                 }
             }
+            catch (Exception ex) { Log.Error("сторож движка не смог выполнить проверку", ex); }
+            try { await Task.Delay(TimeSpan.FromSeconds(1), cts.Token); } catch { return; }
+        }
+    });
+
+    _ = Task.Run(async () =>
+    {
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                if (proc is not null)
+                {
+                    var port = CehoConfig.Load(Ceho.ConfigPath).MixedPort;
+                    (exitCountry, exitIp) = await Ceho.ProbeExitAsync(port);
+                    probed = true;
+
+                    if (exitIp is null)
+                    {
+                        var refreshed = await Ceho.RefreshIfDeadAsync(port);
+                        if (refreshed is not null)
+                        {
+                            Log.Warn(refreshed);
+                            lastError = refreshed;
+                            if (refreshed.Contains("обнов") || refreshed.Contains("updated"))
+                            {
+                                StopTunnel();
+                                await StartTunnel(null);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { Log.Error("проверка выхода не завершилась", ex); }
             try { await Task.Delay(TimeSpan.FromSeconds(30), cts.Token); } catch { return; }
         }
     });
