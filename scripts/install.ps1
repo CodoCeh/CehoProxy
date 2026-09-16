@@ -1,4 +1,4 @@
-$Source = ""
+﻿$Source = ""
 $Repo = "CodoCeh/CehoProxy"
 for ($i = 0; $i -lt $args.Count; $i++) {
     if ($args[$i] -eq '-Source' -and $i + 1 -lt $args.Count) { $Source = $args[++$i]; continue }

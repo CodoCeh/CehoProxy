@@ -85,15 +85,18 @@ public static class Auth
 
     public static void RestrictConfigAccess(string path)
     {
-        if (Os.IsWindows) return;
+        if (OperatingSystem.IsWindows()) return;
         try
         {
             var dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Os.Run("chmod", $"755 {dir}", 5000);
-            if (File.Exists(path)) Os.Run("chmod", $"600 {path}", 5000);
+            if (!string.IsNullOrEmpty(dir)) File.SetUnixFileMode(dir,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+            if (File.Exists(path)) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             if (!string.IsNullOrEmpty(dir))
                 foreach (var cache in Directory.GetFiles(dir, "sub-*.txt"))
-                    Os.Run("chmod", $"600 {cache}", 5000);
+                    File.SetUnixFileMode(cache, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
         catch { }
     }
@@ -105,7 +108,8 @@ public static class Auth
             Directory.CreateDirectory(root);
             var file = Path.Combine(root, "panel.port");
             File.WriteAllText(file, $"{panelPort} {proxyPort}");
-            if (!Os.IsWindows) Os.Run("chmod", $"644 {file}", 5000);
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
         }
         catch { }
     }

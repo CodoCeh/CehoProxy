@@ -85,10 +85,15 @@ public static class Updater
 
     public static async Task<string> InstallAsync(Release release, string targetPath, Action<string>? log = null)
     {
+        using var http = DirectHttp.CreateClient(TimeSpan.FromMinutes(10));
+        return await InstallAsync(release, targetPath, http, log);
+    }
+
+    internal static async Task<string> InstallAsync(Release release, string targetPath, HttpClient http, Action<string>? log = null)
+    {
         var temp = targetPath + ".new";
         var backup = targetPath + ".old";
 
-        using (var http = DirectHttp.CreateClient(TimeSpan.FromMinutes(10)))
         {
             log?.Invoke($"скачиваю {release.Version} ({release.Size / 1024 / 1024} МБ)");
 
@@ -97,10 +102,11 @@ public static class Updater
             await stream.CopyToAsync(file);
         }
 
-        if (new FileInfo(temp).Length < 1024 * 1024)
+        var downloadedSize = new FileInfo(temp).Length;
+        if (downloadedSize < 1024 * 1024 || (release.Size > 0 && downloadedSize != release.Size))
         {
             File.Delete(temp);
-            throw new InvalidOperationException("Скачанный файл слишком мал — похоже, это не программа.");
+            throw new InvalidOperationException("Размер скачанного файла не соответствует релизу. Повторите обновление.");
         }
 
         if (!Os.IsWindows) Os.Run("chmod", $"755 {temp}", 5000);

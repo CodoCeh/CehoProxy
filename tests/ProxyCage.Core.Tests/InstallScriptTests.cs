@@ -7,11 +7,11 @@ namespace ProxyCage.Core.Tests;
 public class InstallScriptTests
 {
     [Fact]
-    public void Iex_entrypoint_has_no_bom_or_script_only_parameter_block()
+    public void Windows_powershell_can_decode_the_localized_script_file()
     {
         var bytes = File.ReadAllBytes(RepoFile("scripts/install.ps1"));
 
-        Assert.False(bytes.Take(3).SequenceEqual(new byte[] { 0xEF, 0xBB, 0xBF }));
+        Assert.True(bytes.Take(3).SequenceEqual(new byte[] { 0xEF, 0xBB, 0xBF }));
         Assert.StartsWith("$Source =", File.ReadAllText(RepoFile("scripts/install.ps1")));
         Assert.Contains("$args[$i] -eq '-Source'", File.ReadAllText(RepoFile("scripts/install.ps1")));
     }
