@@ -1819,7 +1819,9 @@ if (cmd is "daemon" or "web")
         var nodes = await Ceho.LoadAllNodesAsync(
             CehoConfig.Load(Ceho.ConfigPath), preferCache: false, report);
         report.Stage(Strings.T(cfg.Language, "speed_measuring"), 90);
-        return await NodeProbe.ByCountryAsync(nodes);
+        return await NodeProbe.ByCountryAsync(nodes, progress: (done, total) =>
+            report.Stage($"{Strings.T(cfg.Language, "speed_measuring")} {done}/{total}",
+                90 + (total == 0 ? 4 : done * 4 / total)));
     };
 
     web.OnUninstall = () =>

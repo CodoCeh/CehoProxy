@@ -110,10 +110,16 @@ public static class NodeProbe
     }
 
     public static async Task<IReadOnlyList<CountryRow>> ByCountryAsync(
-        IReadOnlyList<ProxyNode> nodes, int timeoutMs = 2500)
+        IReadOnlyList<ProxyNode> nodes, int timeoutMs = 2500, Action<int, int>? progress = null)
     {
         var real = nodes.Where(n => !n.IsMeta).ToList();
-        var measured = await Task.WhenAll(real.Select(n => MeasureAsync(n, timeoutMs)));
+        var done = 0;
+        var measured = await Task.WhenAll(real.Select(async n =>
+        {
+            var result = await MeasureAsync(n, timeoutMs);
+            progress?.Invoke(Interlocked.Increment(ref done), real.Count);
+            return result;
+        }));
         return GroupByCountry(measured);
     }
 
