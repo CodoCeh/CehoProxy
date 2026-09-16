@@ -45,7 +45,7 @@ public static class WebUi
     .mark span{color:var(--brand-ink)}
     .where{color:var(--muted);font-size:13px;margin-left:auto;font-variant-numeric:tabular-nums}
     nav.tabs{display:flex;gap:2px;flex-wrap:wrap;margin:0 0 20px;padding-top:14px}
-    nav.tabs a{padding:7px 13px;border-radius:9px;color:var(--subtext);text-decoration:none;
+    nav.tabs a{display:inline-flex;align-items:center;min-height:44px;padding:9px 13px;border-radius:9px;color:var(--subtext);text-decoration:none;
       font-size:14px;transition:background .18s ease,color .18s ease}
     nav.tabs a:hover{background:var(--panel2);color:var(--text)}
     nav.tabs a.on{background:var(--brand-ink);color:#f4fbf7;font-weight:600}
@@ -282,6 +282,16 @@ public static class WebUi
     ul.did{list-style:none;margin:10px 0 0;padding:0;color:var(--subtext);font-size:14px}
     ul.did li{padding:5px 0 5px 20px;position:relative}
     ul.did li::before{content:"✓";position:absolute;left:0;color:var(--ok-ink);font-weight:700}
+
+    .ping-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+      padding:16px;margin:16px 0}
+    .ping-card h3{margin:0 0 6px}
+    .ping-card>.hint{margin:0 0 12px}
+    .ping-pairs{display:flex;gap:16px;flex-wrap:wrap}
+    .ping-result{flex:1;min-width:240px;padding:9px 12px;background:var(--panel);
+      border:1px solid var(--line);border-radius:10px}
+    .ping-result.ok{border-color:var(--ok-ink)}
+    .ping-result.bad{border-color:var(--danger-ink)}
 
     pre.logbox{margin:6px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius);
       background:var(--panel);color:var(--subtext);font-family:ui-monospace,Consolas,"SF Mono",monospace;

@@ -1311,15 +1311,15 @@ public sealed class WebServer
 
     private static void RenderPingCard(StringBuilder sb, ConnPingReport ping, Func<string, object[], string> S)
     {
-        sb.Append("<div class=\"ping-card\" style=\"background: var(--bg-card, #f8f9fa); border: 1px solid var(--border, #e2e8f0); border-radius: 8px; padding: 16px; margin: 16px 0;\">");
-        sb.Append("<h3 style=\"margin-top:0; margin-bottom:6px;\">").Append(E(S("ping_card_title", []))).Append("</h3>");
-        sb.Append("<p class=hint style=\"margin-top:0; margin-bottom:12px;\">").Append(E(S("ping_target_label", []))).Append(": <code>").Append(E(ping.Direct.Target)).Append("</code></p>");
+        sb.Append("<div class=ping-card>");
+        sb.Append("<h3>").Append(E(S("ping_card_title", []))).Append("</h3>");
+        sb.Append("<p class=hint>").Append(E(S("ping_target_label", []))).Append(": <code>").Append(E(ping.Direct.Target)).Append("</code></p>");
 
-        sb.Append("<div style=\"display:flex; gap:16px; flex-wrap:wrap;\">");
+        sb.Append("<div class=ping-pairs>");
 
         // 1 этап: напрямую
         var dirOk = ping.Direct.Ok;
-        sb.Append("<div style=\"flex:1; min-width:240px; border-left: 4px solid ").Append(dirOk ? "#10b981" : "#ef4444").Append("; padding: 8px 12px; background: rgba(0,0,0,0.02); border-radius: 4px;\">");
+        sb.Append("<div class=\"ping-result ").Append(dirOk ? "ok" : "bad").Append("\">");
         sb.Append("<div style=\"font-weight:600; margin-bottom:4px;\">").Append(E(S("ping_direct_title", []))).Append("</div>");
         if (dirOk)
         {
@@ -1337,7 +1337,7 @@ public sealed class WebServer
 
         // 2 этап: через ноду
         var proxyOk = ping.Proxy.Ok;
-        sb.Append("<div style=\"flex:1; min-width:240px; border-left: 4px solid ").Append(proxyOk ? "#10b981" : "#ef4444").Append("; padding: 8px 12px; background: rgba(0,0,0,0.02); border-radius: 4px;\">");
+        sb.Append("<div class=\"ping-result ").Append(proxyOk ? "ok" : "bad").Append("\">");
         sb.Append("<div style=\"font-weight:600; margin-bottom:4px;\">").Append(E(S("ping_proxy_title", []))).Append("</div>");
         if (proxyOk)
         {
@@ -1483,8 +1483,9 @@ public sealed class WebServer
             OsKind.Mac => "apps_placeholder_mac",
             _ => "apps_placeholder_linux",
         }, []);
-        sb.Append("<form class=\"row app-add\" method=post action=/apps/add><input type=hidden name=tab value=apps>");
-        sb.Append("<input type=text name=path placeholder=\"").Append(E(placeholder)).Append("\">");
+        sb.Append("<form class=\"row app-add\" method=post action=/apps/add><input type=hidden name=tab value=apps>")
+          .Append("<label class=sr-only for=manual-app-path>").Append(E(S("apps_manual_title", []))).Append("</label>");
+        sb.Append("<input id=manual-app-path type=text name=path placeholder=\"").Append(E(placeholder)).Append("\">");
         sb.Append("<a class=\"ghost pick\" href=\"/apps/pick\">").Append(E(S("btn_pick_app", []))).Append("</a>");
         sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("apps_hint", []))).Append(' ')
