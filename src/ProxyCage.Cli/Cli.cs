@@ -352,6 +352,12 @@ public static class Cli
     public static string? Wrap(string name, out string? note)
     {
         note = null;
+        if (!CommandName.IsSafe(name))
+            return "укажите короткое имя команды без пути, например: codex";
+        if (name.Equals("chp", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("cehoproxy", StringComparison.OrdinalIgnoreCase))
+            return "служебную команду CehoProxy нельзя переводить на туннель";
+
         var real = Os.FindOnPath(Os.IsWindows ? name + ".exe" : name) ?? Os.FindOnPath(name);
         if (real is null) return $"команда «{name}» в PATH не найдена";
 
@@ -406,6 +412,8 @@ public static class Cli
 
     public static string? Unwrap(string name)
     {
+        if (!CommandName.IsSafe(name))
+            return "укажите короткое имя команды без пути, например: codex";
         var wrapper = WrapPath(name);
         if (!File.Exists(wrapper)) return $"«{name}» не переведена на туннель";
         try { File.Delete(wrapper); return null; }
