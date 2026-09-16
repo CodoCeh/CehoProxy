@@ -54,5 +54,5 @@ public sealed class ProxyNode
 
     public bool IsMeta { get; set; }
 
-    public string Key => $"{Protocol}|{Server}|{Port}";
+    public string Key => $"{Protocol}|{Server}|{Port}|{Credential}";
 }

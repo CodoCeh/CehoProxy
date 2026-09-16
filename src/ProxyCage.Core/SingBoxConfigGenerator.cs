@@ -223,14 +223,23 @@ public static class SingBoxConfigGenerator
         foreach (var node in engineNodes)
             outbounds.Add(OutboundBuilder.Build(node));
 
+        var engineTags = new HashSet<string>(engineNodes.Select(n => n.Tag), StringComparer.Ordinal);
         var poolTags = new JsonArray();
-        foreach (var node in pool) poolTags.Add(node.Tag);
+        foreach (var node in pool)
+        {
+            if (engineTags.Contains(node.Tag))
+                poolTags.Add(node.Tag);
+        }
         outbounds.Add(UrlTest(ProxyTag, poolTags, checkUrl));
 
         foreach (var item in pinned.Where(x => x.Nodes.Count > 0))
         {
             var tags = new JsonArray();
-            foreach (var node in item.Nodes) tags.Add(node.Tag);
+            foreach (var node in item.Nodes)
+            {
+                if (engineTags.Contains(node.Tag))
+                    tags.Add(node.Tag);
+            }
             outbounds.Add(UrlTest(AppOutboundTag(item.Index), tags, checkUrl));
         }
 
