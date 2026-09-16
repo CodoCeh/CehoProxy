@@ -3,6 +3,39 @@ namespace ProxyCage.Core.Tests;
 public sealed class UpdaterIntegrityTests
 {
     [Fact]
+    public void Failed_final_move_restores_installed_binary()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ceho-rollback-" + Guid.NewGuid());
+        Directory.CreateDirectory(root);
+        try
+        {
+            var target = Path.Combine(root, "client");
+            File.WriteAllText(target, "original");
+            Assert.Throws<FileNotFoundException>(() => Updater.ReplaceDownloadedFile(target + ".missing", target, target + ".old"));
+            Assert.Equal("original", File.ReadAllText(target));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Valid_update_in_a_path_with_spaces_is_executable()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var root = Path.Combine(Path.GetTempPath(), "ceho update " + Guid.NewGuid());
+        Directory.CreateDirectory(root);
+        try
+        {
+            var target = Path.Combine(root, "client");
+            await File.WriteAllTextAsync(target, "original");
+            using var client = new HttpClient(new ContentHandler());
+            await Updater.InstallAsync(new("9.0.0", "https://example.test/client", 2 * 1024 * 1024, null), target, client);
+            Assert.True(File.GetUnixFileMode(target).HasFlag(UnixFileMode.UserExecute));
+            Assert.Equal("original", await File.ReadAllTextAsync(target + ".old"));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task Truncated_release_preserves_installed_binary()
     {
         var root = Path.Combine(Path.GetTempPath(), "ceho-update-" + Guid.NewGuid());

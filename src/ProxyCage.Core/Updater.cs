@@ -109,13 +109,28 @@ public static class Updater
             throw new InvalidOperationException("Размер скачанного файла не соответствует релизу. Повторите обновление.");
         }
 
-        if (!Os.IsWindows) Os.Run("chmod", $"755 {temp}", 5000);
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(temp,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
 
-        try { if (File.Exists(backup)) File.Delete(backup); } catch { }
-        if (File.Exists(targetPath)) File.Move(targetPath, backup, overwrite: true);
-        File.Move(temp, targetPath, overwrite: true);
+        ReplaceDownloadedFile(temp, targetPath, backup);
 
         log?.Invoke($"установлено: {release.Version}");
         return release.Version;
+    }
+
+    internal static void ReplaceDownloadedFile(string temp, string targetPath, string backup)
+    {
+        try { if (File.Exists(backup)) File.Delete(backup); } catch { }
+        if (File.Exists(targetPath)) File.Move(targetPath, backup, overwrite: true);
+        try { File.Move(temp, targetPath, overwrite: true); }
+        catch
+        {
+            if (!File.Exists(targetPath) && File.Exists(backup))
+                File.Move(backup, targetPath);
+            throw;
+        }
+
     }
 }
