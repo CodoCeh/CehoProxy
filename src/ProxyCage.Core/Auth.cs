@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace ProxyCage.Core;
 
@@ -85,20 +87,53 @@ public static class Auth
 
     public static void RestrictConfigAccess(string path)
     {
-        if (OperatingSystem.IsWindows()) return;
         try
         {
             var dir = Path.GetDirectoryName(path);
+            if (OperatingSystem.IsWindows())
+            {
+                RestrictWindowsAccess(path, dir);
+                return;
+            }
             if (!string.IsNullOrEmpty(dir)) File.SetUnixFileMode(dir,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                 UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                 UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
             if (File.Exists(path)) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            if (!string.IsNullOrEmpty(dir) && File.Exists(Path.Combine(dir, "singbox.json")))
+                File.SetUnixFileMode(Path.Combine(dir, "singbox.json"), UnixFileMode.UserRead | UnixFileMode.UserWrite);
             if (!string.IsNullOrEmpty(dir))
                 foreach (var cache in Directory.GetFiles(dir, "sub-*.txt"))
                     File.SetUnixFileMode(cache, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
         catch { }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void RestrictWindowsAccess(string path, string? dir)
+    {
+        if (string.IsNullOrEmpty(dir)) return;
+        var admins = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+        var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+        var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        var directoryAcl = new DirectorySecurity();
+        directoryAcl.SetAccessRuleProtection(true, false);
+        foreach (var sid in new[] { admins, system })
+            directoryAcl.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
+                inheritance, PropagationFlags.None, AccessControlType.Allow));
+        directoryAcl.AddAccessRule(new FileSystemAccessRule(users, FileSystemRights.ReadAndExecute,
+            inheritance, PropagationFlags.None, AccessControlType.Allow));
+        new DirectoryInfo(dir).SetAccessControl(directoryAcl);
+        var secrets = Directory.GetFiles(dir, "sub-*.txt").Concat(new[] { path, Path.Combine(dir, "singbox.json") });
+        foreach (var secret in secrets.Where(File.Exists))
+        {
+            var acl = new FileSecurity();
+            acl.SetAccessRuleProtection(true, false);
+            foreach (var sid in new[] { admins, system })
+                acl.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
+            new FileInfo(secret).SetAccessControl(acl);
+        }
     }
 
     public static void WritePanelPointer(string root, int panelPort, int proxyPort)

@@ -1675,6 +1675,7 @@ if (cmd is "daemon" or "web")
         report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
 
         Os.AdoptOwnEngine(Ceho.Root);
+        Auth.RestrictConfigAccess(Ceho.ConfigPath);
         var p = new SingBoxProcess();
         p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
         Log.Info($"движок запущен, pid {p.ProcessId}");

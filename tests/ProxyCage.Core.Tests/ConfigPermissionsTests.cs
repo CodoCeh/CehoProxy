@@ -12,13 +12,14 @@ public sealed class ConfigPermissionsTests
         {
             var config = Path.Combine(root, "config.json");
             var cache = Path.Combine(root, "sub-test.txt");
-            foreach (var path in new[] { config, cache })
+            var runtime = Path.Combine(root, "singbox.json");
+            foreach (var path in new[] { config, cache, runtime })
             {
                 File.WriteAllText(path, "test");
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherRead);
             }
             Auth.RestrictConfigAccess(config);
-            foreach (var path in new[] { config, cache })
+            foreach (var path in new[] { config, cache, runtime })
                 Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
         }
         finally { Directory.Delete(root, true); }

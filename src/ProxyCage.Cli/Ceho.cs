@@ -372,6 +372,7 @@ public static class Ceho
         var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg);
         Directory.CreateDirectory(Root);
         await File.WriteAllTextAsync(RuntimeConfigPath, json);
+        Auth.RestrictConfigAccess(ConfigPath);
         return Strings.T(cfg.Language, "rules_rebuilt");
     }
 
@@ -411,6 +412,7 @@ public static class Ceho
             var nodes = await LoadAllNodesAsync(cfg);
             await File.WriteAllTextAsync(RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, cfg));
+            Auth.RestrictConfigAccess(ConfigPath);
         }
         catch (Exception ex)
         {

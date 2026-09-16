@@ -151,6 +151,7 @@ public sealed class CehoConfig
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
+        Auth.RestrictConfigAccess(path);
     }
 
     /// <summary>Сохраняет сведения о проверке подписки, не помечая правила движка устаревшими.</summary>
