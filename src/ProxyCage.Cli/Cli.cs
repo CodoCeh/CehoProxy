@@ -191,7 +191,7 @@ public static class Cli
         catch { return true; }
 
         var root = Path.GetDirectoryName(configPath) ?? ".";
-        return Auth.ReadPanelPointer(root) is not null || !Directory.Exists(root) && DirectoryHidden(root);
+        return !Os.IsElevated() && (Auth.ReadPanelPointer(root) is not null || !Directory.Exists(root) && DirectoryHidden(root));
     }
 
     private static bool DirectoryHidden(string root)

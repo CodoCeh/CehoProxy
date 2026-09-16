@@ -108,6 +108,13 @@ public sealed class WebServer
 
     private async Task HandleAsync(HttpListenerContext ctx)
     {
+        if (!IsSameOriginRequest(ctx.Request))
+        {
+            ctx.Response.StatusCode = 403;
+            ctx.Response.Close();
+            return;
+        }
+        ctx.Response.Headers["X-Frame-Options"] = "DENY";
         var path = ctx.Request.Url?.AbsolutePath ?? "/";
         var cfg = CehoConfig.Load(_configPath);
 
@@ -177,6 +184,19 @@ public sealed class WebServer
         if (current == "exit" && st.Running)
             await RefreshLiveLatencyAsync(cfg);
         await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel));
+    }
+
+    private static bool IsSameOriginRequest(HttpListenerRequest request)
+    {
+        var site = request.Headers["Sec-Fetch-Site"];
+        if (site is "cross-site" or "same-site") return false;
+        var source = request.Headers["Origin"] ?? request.Headers["Referer"];
+        if (source is null) return true; // CLI clients do not send browser metadata.
+        return Uri.TryCreate(source, UriKind.Absolute, out var origin)
+            && request.Url is { } target
+            && origin.Scheme == target.Scheme
+            && origin.Host == target.Host
+            && origin.Port == target.Port;
     }
 
     private static bool Authorized(HttpListenerContext ctx, CehoConfig cfg)
