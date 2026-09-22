@@ -122,9 +122,12 @@ public class PlatformTests
         // чужие туннели и локальную сеть, а нам для своих программ не нужны.
         Assert.Null(tun["strict_route"]);
 
-        // Имя всегда задаём: на Windows по нему находим свой адаптер, даже если
-        // pnputil /enum-devices нет (Server 2019). При залипании стартуем как ceho-tun-2.
-        Assert.Equal(TunCleanup.InterfaceName, (string?)tun["interface_name"]);
+        // Имя задаём на Windows и Linux: по нему находим свой адаптер. На macOS имя
+        // utun выдаёт система, своё «ceho-tun» sing-box не принимает.
+        if (Os.IsMac)
+            Assert.Null(tun["interface_name"]);
+        else
+            Assert.Equal(TunCleanup.InterfaceName, (string?)tun["interface_name"]);
 
         if (Os.IsLinux)
         {

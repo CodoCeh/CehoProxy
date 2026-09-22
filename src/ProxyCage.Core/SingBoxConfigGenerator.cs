@@ -520,10 +520,16 @@ public static class SingBoxConfigGenerator
             ["auto_route"] = true,
             // На Windows system-стек стабильнее для длинных TCP (HTTP/2 Cursor); gvisor — macOS/Linux.
             ["stack"] = Os.IsWindows ? "system" : "gvisor",
-            ["interface_name"] = string.IsNullOrWhiteSpace(tunInterfaceName)
-                ? TunCleanup.InterfaceName
-                : tunInterfaceName,
         };
+
+        // macOS (sing-box 1.14) принимает только имя utun*. Своё «ceho-tun» движок
+        // отвергает: bad tun name. Имя назначает система, адаптер узнаём по адресу.
+        if (!Os.IsMac)
+        {
+            tun["interface_name"] = string.IsNullOrWhiteSpace(tunInterfaceName)
+                ? TunCleanup.InterfaceName
+                : tunInterfaceName;
+        }
 
         if (Os.IsLinux)
         {

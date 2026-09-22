@@ -693,9 +693,14 @@ public sealed class WebServer
                 {
                     var job = Jobs.Start(JobDoctor, S("job_doctor"), async p =>
                     {
+                        var fresh = CehoConfig.Load(_configPath);
+                        var moved = DaemonControl.IsRunning(Root)
+                            ? null
+                            : Preflight.SaveProxyPortIfBusy(fresh, _configPath);
                         var r = await Doctor.CheckAsync(CehoConfig.Load(_configPath), Root, Tools(), p);
                         Remember(r);
-                        return Doctor.Headline(r, CehoConfig.Load(_configPath).Language);
+                        var headline = Doctor.Headline(r, CehoConfig.Load(_configPath).Language);
+                        return moved is null ? headline : $"{moved} {headline}";
                     });
                     return (null, false, job.Id);
                 }

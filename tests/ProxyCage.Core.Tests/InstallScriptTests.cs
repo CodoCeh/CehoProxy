@@ -59,6 +59,8 @@ public class InstallScriptTests
         Assert.Contains("${REPO}…", script);
         Assert.Contains("${ASSET}", script);
         Assert.DoesNotContain("релизов $REPO…", script);
+        Assert.Contains("SUDO_USER", script);
+        Assert.Contains("$USER_HOME/bin/chp", script);
     }
 
     private static string RepoFile(string relative)

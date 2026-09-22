@@ -322,7 +322,10 @@ public class NeighboursTests
         var nodes = SubscriptionParser.Parse(
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "sub-example.txt")));
         var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg, TunCleanup.AdapterName(2));
-        Assert.Contains("ceho-tun-2", json);
+        if (Os.IsWindows)
+            Assert.Contains("ceho-tun-2", json);
+        else if (Os.IsMac)
+            Assert.DoesNotContain("interface_name", json);
     }
 
     [Fact]

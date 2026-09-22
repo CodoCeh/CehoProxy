@@ -144,6 +144,9 @@ public static class Strings
         ["pf_proxy_port_fix"] = new(
             "Выберите свободный порт: chp set-proxy-port {0}",
             "Pick a free port: chp set-proxy-port {0}"),
+        ["proxy_port_moved"] = new(
+            "Порт прокси {0} занят, взял свободный {1}",
+            "Proxy port {0} is taken, switched to free port {1}"),
         ["pf_no_subs"] = new("Не добавлено ни одной подписки", "No subscriptions added"),
         ["pf_no_subs_detail"] = new(
             "Программа поставляется без подписок: ссылку выдаёт ваш VPN-сервис.",
@@ -963,6 +966,12 @@ public static class Strings
         ["stop_sent"] = new("Сигнал остановки послан.", "Stop signal sent."),
         ["stopped"] = new("Остановлено.", "Stopped."),
         ["already_on"] = new("Защита уже включена.", "Protection is already on."),
+        ["daemon_background"] = new(
+            "Запущено в фоне. Панель: {0}",
+            "Running in the background. Panel: {0}"),
+        ["daemon_background_failed"] = new(
+            "Не удалось запустить в фоне. Подробности: chp log",
+            "Could not start in the background. Details: chp log"),
         ["already_off"] = new(
             "Защита уже выключена.",
             "Protection is already off."),

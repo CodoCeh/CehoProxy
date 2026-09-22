@@ -193,15 +193,24 @@ public static class Doctor
             }
 
             case Repair.PanelPort:
+            {
+                var fresh = CehoConfig.Load(configPath);
+                var old = fresh.WebPort;
+                var free = Preflight.NextFreePort(old);
+                fresh.WebPort = free;
+                fresh.Save(configPath);
+                cfg.WebPort = free;
+                return S("doc_did_panel_port", old, free);
+            }
+
             case Repair.ProxyPort:
             {
                 var fresh = CehoConfig.Load(configPath);
-                var old = repair == Repair.PanelPort ? fresh.WebPort : fresh.MixedPort;
-                var free = Preflight.NextFreePort(old);
-                if (repair == Repair.PanelPort) fresh.WebPort = free; else fresh.MixedPort = free;
+                if (!Preflight.TryMoveProxyPortIfBusy(fresh, out var old, out var free))
+                    return null;
                 fresh.Save(configPath);
-                if (repair == Repair.PanelPort) cfg.WebPort = free; else cfg.MixedPort = free;
-                return S(repair == Repair.PanelPort ? "doc_did_panel_port" : "doc_did_proxy_port", old, free);
+                cfg.MixedPort = free;
+                return S("doc_did_proxy_port", old, free);
             }
 
             case Repair.Rules:

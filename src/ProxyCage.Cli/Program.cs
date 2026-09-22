@@ -231,6 +231,61 @@ if (cmd == "run")
     return Cli.RunThroughTunnel(proxyPort, rest);
 }
 
+if (cmd == "open")
+{
+    // Конфиг закрыт от обычного пользователя, но открыть панель в браузере
+    // можно и без него: порт лежит в panel.port, секреты для этого не нужны.
+    var port = CehoConfig.ReadWebPort(Ceho.ConfigPath, Ceho.Root);
+    var url = $"http://127.0.0.1:{port}";
+    if (!DaemonControl.IsRunning(Ceho.Root))
+        Console.Error.WriteLine(Cli.S(cfg0, "panel_not_running", Os.IsWindows ? "" : "sudo "));
+    Os.OpenInBrowser(url);
+    Console.WriteLine(url);
+    return 0;
+}
+
+if (cmd == "daemon" && DaemonControl.WantsBackground(Console.IsInputRedirected,
+        Environment.GetEnvironmentVariable(DaemonControl.ForegroundEnv)))
+{
+    if (!Os.IsElevated())
+    {
+        if (Os.IsWindows)
+        {
+            Console.Error.WriteLine(Strings.T(cfg0.Language, "pf_rights_need_win"));
+            Console.Error.WriteLine(Strings.T(cfg0.Language, "pf_rights_fix_win"));
+            return 1;
+        }
+
+        // Полный путь: sudo часто не видит /usr/local/bin, куда установщик кладёт chp.
+        var psi = new System.Diagnostics.ProcessStartInfo("sudo") { UseShellExecute = false };
+        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add(Ceho.OwnExecutablePath);
+        psi.ArgumentList.Add("daemon");
+        using var elevated = System.Diagnostics.Process.Start(psi);
+        if (elevated is null) return 1;
+        elevated.WaitForExit();
+        return elevated.ExitCode;
+    }
+
+    var panelPort = CehoConfig.ReadWebPort(Ceho.ConfigPath, Ceho.Root);
+    var panelUrl = $"http://127.0.0.1:{panelPort}";
+    if (DaemonControl.IsRunning(Ceho.Root))
+    {
+        Console.WriteLine(Cli.S(cfg0, "already_on"));
+        Console.WriteLine(Cli.S(cfg0, "panel_at", panelUrl));
+        return 0;
+    }
+
+    if (!DaemonControl.StartInBackground(Ceho.OwnExecutablePath, Ceho.Root))
+    {
+        Console.Error.WriteLine(Cli.S(cfg0, "daemon_background_failed"));
+        return 1;
+    }
+
+    Console.WriteLine(Cli.S(cfg0, "daemon_background", panelUrl));
+    return 0;
+}
+
 if (Cli.ConfigUnreadable(Ceho.ConfigPath) ||
     (Cli.ChangesSettings(cmd) && Cli.ConfigReadOnly(Ceho.ConfigPath)))
 {
@@ -866,6 +921,8 @@ switch (cmd)
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
         var err = Cli.MakeShortcut(Ceho.OwnExecutablePath, out var made);
+        try { Installer.LinkUserAlias(made ?? Ceho.OwnExecutablePath); }
+        catch (Exception ex) { err ??= ex.Message; }
         Console.WriteLine(err is null
             ? Cli.S(cfg, "alias_made", made ?? "chp")
             : Cli.S(cfg, "alias_failed", err));
@@ -1349,6 +1406,16 @@ switch (cmd)
         var wantFix = args.Length >= 2 && args[1] is "fix" or "--fix" or "heal" or "--heal";
         var quiet = args.Contains("--yes") || !Assistant.Interactive;
 
+        if (!wantFix && !DaemonControl.IsRunning(Ceho.Root))
+        {
+            var moved = Preflight.SaveProxyPortIfBusy(cfg, Ceho.ConfigPath);
+            if (moved is not null)
+            {
+                Console.WriteLine(moved);
+                cfg = CehoConfig.Load(Ceho.ConfigPath);
+            }
+        }
+
         Doctor.Result report;
         using (var spinner = new ConsoleSpinner(Cli.S(cfg, wantFix ? "job_heal" : "job_doctor")))
         {
@@ -1365,7 +1432,7 @@ switch (cmd)
 
         Cli.PrintDoctorDeeds(cfg, report);
 
-        // Осмотр сам ничего не меняет: чинить — только по слову хозяина или по «doctor fix».
+        // Занятый порт прокси осмотр уже перенёс сам. Остальное чинится только по «doctor fix».
         if (!wantFix && report.Fixable)
         {
             Console.WriteLine();
@@ -1552,20 +1619,13 @@ switch (cmd)
         return 0;
     }
 
-    case "open":
-    {
-        var cfg = CehoConfig.Load(Ceho.ConfigPath);
-        var url = $"http://127.0.0.1:{cfg.WebPort}";
-        if (!DaemonControl.IsRunning(Ceho.Root))
-            Console.Error.WriteLine(Cli.S(cfg, "panel_not_running", Os.IsWindows ? "" : "sudo "));
-        Os.OpenInBrowser(url);
-        Console.WriteLine(url);
-        return 0;
-    }
 }
 
 if (cmd is "daemon" or "web")
 {
+    if (cmd == "daemon" && Environment.GetEnvironmentVariable(DaemonControl.ForegroundEnv) == "1")
+        Os.DetachFromControllingTerminal();
+
     var cfg = CehoConfig.Load(Ceho.ConfigPath);
     var withTunnel = cmd == "daemon";
 
@@ -1617,6 +1677,15 @@ if (cmd is "daemon" or "web")
             report?.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);
             // Список программ мог измениться, пока качались подписки.
             c = CehoConfig.Load(Ceho.ConfigPath);
+            // Свой зависший движок отпускает порт до проверки: иначе уйдём с 2080,
+            // хотя его держали мы. Чужой слушатель (xray и т.п.) остаётся — берём свободный.
+            var leftover = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+            if (leftover > 0) await Task.Delay(500);
+            if (Preflight.TryMoveProxyPortIfBusy(c, out var busyPort, out var freePort))
+            {
+                c.Save(Ceho.ConfigPath);
+                Log.Info(Strings.T(c.Language, "proxy_port_moved", busyPort, freePort));
+            }
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
 

@@ -367,13 +367,15 @@ public static class Ceho
     public static async Task<string> ApplyAsync(IStageReport? report = null)
     {
         var cfg = CehoConfig.Load(ConfigPath);
+        var moved = DaemonControl.IsRunning(Root) ? null : Preflight.SaveProxyPortIfBusy(cfg, ConfigPath);
         var nodes = await LoadAllNodesAsync(cfg, preferCache: false, report);
         report?.Stage(Strings.T(cfg.Language, "stage_writing_rules"), 97);
         var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg);
         Directory.CreateDirectory(Root);
         await File.WriteAllTextAsync(RuntimeConfigPath, json);
         Auth.RestrictConfigAccess(ConfigPath);
-        return Strings.T(cfg.Language, "rules_rebuilt");
+        var rebuilt = Strings.T(cfg.Language, "rules_rebuilt");
+        return moved is null ? rebuilt : $"{moved} {rebuilt}";
     }
 
     public static Task<(string? Country, string? Ip)> ProbeExitAsync(int mixedPort) => Task.Run(() =>

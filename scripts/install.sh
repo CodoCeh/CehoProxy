@@ -56,7 +56,20 @@ install -m 755 "$SRC" "$BIN"
 mkdir -p "$ROOT"
 chmod 755 "$ROOT"
 
-ln -sf "$BIN" /usr/local/bin/chp
+ln -sfn "$BIN" /usr/local/bin/chp
+
+# Неинтерактивный zsh берёт только ~/bin из ~/.zshenv и не видит /usr/local/bin.
+# Туда же кладём chp, тогда и sudo его находит: sudo сохраняет этот PATH.
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  USER_HOME="$(dscl . -read "/Users/${SUDO_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  if [ -z "$USER_HOME" ]; then
+    USER_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
+  fi
+  if [ -n "$USER_HOME" ] && [ -d "$USER_HOME/bin" ]; then
+    ln -sfn /usr/local/bin/chp "$USER_HOME/bin/chp"
+    chown -h "$SUDO_USER" "$USER_HOME/bin/chp" 2>/dev/null || true
+  fi
+fi
 
 # Регистрация в системе, затирание файлов прошлой сборки и возврат автозапуска.
 # Настройки и сохранённые подписки эта команда не трогает.

@@ -254,6 +254,7 @@ public static class Installer
             var link = "/usr/local/bin/chp";
             if (File.Exists(link)) File.Delete(link);
             File.CreateSymbolicLink(link, BinaryPath(root));
+            LinkUserAlias(link);
             log(Strings.T(lang, "inst_alias_ok"));
         }
         catch (Exception ex)
@@ -261,6 +262,58 @@ public static class Installer
             log(Strings.T(lang, "inst_alias_failed", ex.Message));
             log(Strings.T(lang, "inst_alias_fallback", BinaryPath(root)));
         }
+    }
+
+    /// <summary>
+    /// Короткая команда в ~/bin. Неинтерактивный шелл часто видит только его,
+    /// а sudo наследует этот PATH и тогда находит chp без полного пути.
+    /// </summary>
+    public static void LinkUserAlias(string target)
+    {
+        var home = InvokingUserHome();
+        if (home is null) return;
+        var bin = Path.Combine(home, "bin");
+        if (!Directory.Exists(bin)) return;
+        LinkShortCommand(bin, target);
+        var user = Environment.GetEnvironmentVariable("SUDO_USER");
+        if (!string.IsNullOrWhiteSpace(user) && user != "root")
+            Os.Run("chown", $"-h {user} {Path.Combine(bin, "chp")}");
+    }
+
+    public static void LinkShortCommand(string directory, string target)
+    {
+        Directory.CreateDirectory(directory);
+        var link = Path.Combine(directory, "chp");
+        if (File.Exists(link) || Directory.Exists(link)) File.Delete(link);
+        File.CreateSymbolicLink(link, target);
+    }
+
+    private static string? InvokingUserHome()
+    {
+        var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
+        if (!string.IsNullOrWhiteSpace(sudoUser) && sudoUser != "root")
+            return HomeOf(sudoUser);
+        if (Os.IsElevated()) return null;
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return string.IsNullOrEmpty(home) ? null : home;
+    }
+
+    private static string? HomeOf(string user)
+    {
+        if (Os.IsMac)
+        {
+            var (code, output) = Os.Run("dscl", $". -read /Users/{user} NFSHomeDirectory");
+            if (code == 0)
+            {
+                var parts = output.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length >= 2) return parts[^1];
+            }
+        }
+
+        var (c, text) = Os.Run("getent", $"passwd {user}");
+        if (c != 0) return null;
+        var fields = text.Split(':');
+        return fields.Length >= 6 && fields[5].Length > 0 ? fields[5].Trim() : null;
     }
 
     private static void RefreshProcessPath(string root)

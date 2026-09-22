@@ -6,6 +6,16 @@ namespace ProxyCage.Core;
 
 public static class DaemonControl
 {
+    public const string ForegroundEnv = "CEHOPROXY_FOREGROUND";
+
+    /// <summary>
+    /// Команду набрали в терминале — уходим в фон и возвращаем приглашение.
+    /// Служба (launchd, systemd, планировщик) терминала не имеет и остаётся
+    /// на переднем плане: иначе система решит, что процесс уже завершился.
+    /// </summary>
+    public static bool WantsBackground(bool inputRedirected, string? foregroundMarker) =>
+        foregroundMarker != "1" && !inputRedirected;
+
     private const string WindowsEventName = @"Global\CehoProxyStop";
     private const int SIGTERM = 15;
 
@@ -57,13 +67,35 @@ public static class DaemonControl
 
         try
         {
+            return StartInBackground(exe, root);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Запускает демон отдельным процессом и не держит терминал.
+    /// Потомок сам отцепляется от сессии, поэтому закрытие окна его не гасит.
+    /// </summary>
+    public static bool StartInBackground(string exe, string root)
+    {
+        if (IsRunning(root)) return true;
+        if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe)) return false;
+
+        try
+        {
             Directory.CreateDirectory(root);
-            Process.Start(new ProcessStartInfo(exe, "daemon")
+            var psi = new ProcessStartInfo(exe, "daemon")
             {
-                UseShellExecute = Os.IsWindows,
+                UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = root,
-            });
+                RedirectStandardInput = true,
+            };
+            psi.Environment[ForegroundEnv] = "1";
+            if (Process.Start(psi) is null) return false;
             return WaitUntilRunning(root, 8000);
         }
         catch

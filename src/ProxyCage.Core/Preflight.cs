@@ -122,13 +122,57 @@ public static class Preflight
         return from + 1;
     }
 
+    /// <summary>
+    /// Порт прокси занят чужим процессом — берём следующий свободный и запоминаем его.
+    /// Порт панели пропускаем. Свой уже запущенный демон сюда не попадает: его порт
+    /// не трогаем, пока защита включена.
+    /// </summary>
+    public static bool TryMoveProxyPortIfBusy(CehoConfig cfg, out int from, out int to)
+    {
+        from = cfg.MixedPort;
+        to = from;
+        if (TcpPortTaken(from) != true) return false;
+
+        to = NextFreePort(from);
+        if (to == cfg.WebPort) to = NextFreePort(to);
+        if (to == from || TcpPortTaken(to) == true) return false;
+
+        cfg.MixedPort = to;
+        return true;
+    }
+
+    public static string? SaveProxyPortIfBusy(CehoConfig cfg, string configPath)
+    {
+        if (!TryMoveProxyPortIfBusy(cfg, out var from, out var to)) return null;
+        cfg.Save(configPath);
+        return Strings.T(cfg.Language, "proxy_port_moved", from, to);
+    }
+
+    /// <summary>true — порт слушают, false — свободен, null — проверить не удалось.</summary>
+    public static bool? TcpPortTaken(int port)
+    {
+        if (port is < 1 or > 65535) return false;
+        try
+        {
+            return IPGlobalProperties.GetIPGlobalProperties()
+                .GetActiveTcpListeners()
+                .Any(e => e.Port == port);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static Check CheckPort(int port, string lang, string root, bool panel)
     {
         try
         {
-            var busy = IPGlobalProperties.GetIPGlobalProperties()
-                .GetActiveTcpListeners()
-                .Any(e => e.Port == port);
+            var taken = TcpPortTaken(port);
+            if (taken is null)
+                return new Check(Level.Warning, Strings.T(lang, "pf_port_unknown", port), null, null);
+
+            var busy = taken.Value;
 
             if (busy && DaemonControl.IsRunning(root))
                 return new Check(Level.Ok, Strings.T(lang, "pf_port_ours", port), null, null);

@@ -118,6 +118,22 @@ public sealed class CehoConfig
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    /// <summary>
+    /// Порт для «chp open». config.json часто читает только root, а браузер
+    /// открывает человек за компьютером: если секрет недоступен, берём panel.port.
+    /// </summary>
+    public static int ReadWebPort(string configPath, string root)
+    {
+        try
+        {
+            if (File.Exists(configPath))
+                return Load(configPath).WebPort;
+        }
+        catch { }
+
+        return Auth.ReadPanelPointer(root) ?? new CehoConfig().WebPort;
+    }
+
     public static CehoConfig Load(string path)
     {
         var cfg = File.Exists(path)

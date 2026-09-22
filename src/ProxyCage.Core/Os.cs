@@ -343,6 +343,38 @@ public static class Os
         }
     }
 
+    /// <summary>
+    /// Новая сессия и /dev/null вместо терминала. Иначе фоновый демон
+    /// получит SIGHUP, когда закроют окно, из которого его запустили.
+    /// </summary>
+    public static void DetachFromControllingTerminal()
+    {
+        if (IsWindows) return;
+        try { _ = SetSid(); } catch { }
+        try
+        {
+            var fd = OpenDevNull("/dev/null", 2);
+            if (fd < 0) return;
+            _ = Dup2(fd, 0);
+            _ = Dup2(fd, 1);
+            _ = Dup2(fd, 2);
+            if (fd > 2) _ = CloseFd(fd);
+        }
+        catch { }
+    }
+
+    [DllImport("libc", EntryPoint = "setsid")]
+    private static extern int SetSid();
+
+    [DllImport("libc", EntryPoint = "open", CharSet = CharSet.Ansi)]
+    private static extern int OpenDevNull(string path, int flags);
+
+    [DllImport("libc", EntryPoint = "dup2")]
+    private static extern int Dup2(int oldFd, int newFd);
+
+    [DllImport("libc", EntryPoint = "close")]
+    private static extern int CloseFd(int fd);
+
     public static bool IsElevated()
     {
         try
