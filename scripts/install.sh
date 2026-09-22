@@ -27,8 +27,10 @@ if [ -z "$SRC" ]; then
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT
 
-  echo "Скачиваю $ASSET из релизов $REPO…"
-  URL="https://github.com/$REPO/releases/latest/download/$ASSET"
+  # ${REPO}/${ASSET}: на macOS /bin/sh с set -u иначе $REPO… (Unicode) считается
+  # именем переменной → «REPO?: unbound variable».
+  echo "Скачиваю ${ASSET} из релизов ${REPO}…"
+  URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
   if ! curl -fsSL "$URL" -o "$TMP/cehoproxy"; then
     echo
     echo "Скачать не удалось: $URL"
@@ -62,7 +64,7 @@ ln -sf "$BIN" /usr/local/bin/chp
 "$BIN" install --no-setup --with-engine
 
 echo
-echo "Страница продукта: https://github.com/$REPO"
+echo "Страница продукта: https://github.com/${REPO}"
 echo "Программа: $BIN"
 echo "Короткая команда: chp"
 echo "Настройки и подписки: $ROOT (сохранены)"

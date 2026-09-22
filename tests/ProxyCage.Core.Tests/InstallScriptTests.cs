@@ -50,6 +50,17 @@ public class InstallScriptTests
         Assert.Contains("CehoProxy уже установлен для всех пользователей", script);
     }
 
+    [Fact]
+    public void Unix_install_sh_braces_variables_before_unicode_ellipsis()
+    {
+        var script = File.ReadAllText(RepoFile("scripts/install.sh"));
+
+        // macOS /bin/sh + set -u: `$REPO…` is an unbound name; `${REPO}…` is fine.
+        Assert.Contains("${REPO}…", script);
+        Assert.Contains("${ASSET}", script);
+        Assert.DoesNotContain("релизов $REPO…", script);
+    }
+
     private static string RepoFile(string relative)
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
