@@ -440,6 +440,48 @@ public sealed class WebServer
                     return (S("removed"), false, cfg.Apps.Count > 0 ? ApplyJob(cfg, restartIfRunning: true).Id : null);
                 }
 
+                case "/sites/mode":
+                {
+                    var next = string.Equals(f.GetValueOrDefault("mode", ""), CehoConfig.SiteModeOnly,
+                        StringComparison.OrdinalIgnoreCase)
+                        ? CehoConfig.SiteModeOnly
+                        : CehoConfig.SiteModeExcept;
+                    if (string.Equals(cfg.SiteMode, next, StringComparison.OrdinalIgnoreCase))
+                        return (S("site_mode_set", S(next == CehoConfig.SiteModeOnly ? "sites_mode_only" : "sites_mode_except")), false, null);
+
+                    cfg.SiteMode = next;
+                    Save(cfg);
+                    var modeJob = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        : null;
+                    return (S("site_mode_set", S(next == CehoConfig.SiteModeOnly ? "sites_mode_only" : "sites_mode_except")), false, modeJob);
+                }
+
+                case "/sites/add":
+                {
+                    var host = DirectSites.Normalize(f.GetValueOrDefault("site", ""));
+                    if (host is null) return (S("site_bad"), true, null);
+                    if (cfg.DirectSites.Contains(host, StringComparer.OrdinalIgnoreCase))
+                        return (S("err_already_added"), true, null);
+                    cfg.DirectSites.Add(host);
+                    Save(cfg);
+                    var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        : null;
+                    return (S("site_added", host), false, job);
+                }
+
+                case "/sites/remove":
+                {
+                    var host = f.GetValueOrDefault("site", "");
+                    cfg.DirectSites.RemoveAll(s => s.Equals(host, StringComparison.OrdinalIgnoreCase));
+                    Save(cfg);
+                    var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        : null;
+                    return (S("removed"), false, job);
+                }
+
                 case "/apps/rename":
                 {
                     var folder = f.GetValueOrDefault("folder", "");
@@ -1046,7 +1088,7 @@ public sealed class WebServer
 
         var tabs = new (string Id, string Key)[]
         {
-            ("state", "nav_state"), ("apps", "nav_apps"), ("subs", "nav_subs"),
+            ("state", "nav_state"), ("apps", "nav_apps"), ("sites", "nav_sites"), ("subs", "nav_subs"),
             ("exit", "nav_exit"), ("browser", "nav_browser"),
             ("doctor", "nav_doctor"),
             ("log", "nav_log"), ("access", "nav_access"), ("help", "nav_help"),
@@ -1066,6 +1108,7 @@ public sealed class WebServer
         switch (tab)
         {
             case "apps": RenderApps(sb, cfg, S, tunnelFolder); break;
+            case "sites": RenderSites(sb, cfg, S); break;
             case "subs": RenderSubs(sb, cfg, S); break;
             case "exit": RenderExit(sb, cfg, S); break;
             case "browser": RenderBrowser(sb, cfg, S); break;
@@ -1401,6 +1444,55 @@ public sealed class WebServer
             sb.Append("</div></li>");
         }
         sb.Append("</ul>");
+    }
+
+    private static void AppendSiteMode(
+        StringBuilder sb, Func<string, object[], string> S, string mode, string labelKey, bool selected)
+    {
+        var label = E(S(labelKey, []));
+        if (selected)
+        {
+            sb.Append("<span class=mode-on>").Append(label).Append("</span>");
+            return;
+        }
+
+        sb.Append("<form method=post action=/sites/mode><input type=hidden name=tab value=sites>")
+          .Append("<input type=hidden name=mode value=\"").Append(mode).Append("\">")
+          .Append("<button class=ghost>").Append(label).Append("</button></form>");
+    }
+
+    private static void RenderSites(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
+    {
+        var only = cfg.SitesOnly;
+        sb.Append("<section><h2>").Append(E(S("sites_title", []))).Append("</h2>");
+        sb.Append("<div class=modes>");
+        AppendSiteMode(sb, S, CehoConfig.SiteModeExcept, "sites_mode_except", !only);
+        AppendSiteMode(sb, S, CehoConfig.SiteModeOnly, "sites_mode_only", only);
+        sb.Append("</div>");
+        sb.Append("<p class=lede>").Append(E(S(only ? "sites_lede_only" : "sites_lede_except", []))).Append("</p>");
+        sb.Append("<form class=\"row app-add\" method=post action=/sites/add><input type=hidden name=tab value=sites>")
+          .Append("<label class=sr-only for=direct-site>").Append(E(S("nav_sites", []))).Append("</label>")
+          .Append("<input id=direct-site type=text name=site placeholder=\"")
+          .Append(E(S("sites_placeholder", []))).Append("\" autofocus>")
+          .Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
+
+        if (cfg.DirectSites.Count == 0)
+            sb.Append("<p class=empty>").Append(E(S(only ? "sites_empty_only" : "sites_empty", []))).Append("</p>");
+        else
+        {
+            sb.Append("<div class=scroll><table class=t-apps><tr><th>")
+              .Append(E(S("nav_sites", []))).Append("</th><th></th></tr>");
+            foreach (var site in cfg.DirectSites)
+            {
+                sb.Append("<tr><td class=path>").Append(E(site)).Append("</td><td class=actions>")
+                  .Append("<form method=post action=/sites/remove><input type=hidden name=tab value=sites>")
+                  .Append("<input type=hidden name=site value=\"").Append(E(site))
+                  .Append("\"><button class=danger>").Append(E(S("btn_remove", []))).Append("</button></form>")
+                  .Append("</td></tr>");
+            }
+            sb.Append("</table></div>");
+        }
+        sb.Append("</section>");
     }
 
     private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,

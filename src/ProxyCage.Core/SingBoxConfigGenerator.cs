@@ -181,6 +181,21 @@ public static class SingBoxConfigGenerator
         ["timestamp"] = false,
     };
 
+    public static JsonArray DirectSiteSuffixes(CehoConfig cfg)
+    {
+        var suffixes = new JsonArray();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in cfg.DirectSites ?? new List<string>())
+        {
+            var host = DirectSites.Normalize(raw) ?? raw.Trim();
+            if (host.Length == 0) continue;
+            var ascii = DirectSites.ToAscii(host);
+            if (ascii.Length == 0 || !seen.Add(ascii)) continue;
+            suffixes.Add(ascii);
+        }
+        return suffixes;
+    }
+
     public static string AppOutboundTag(int appIndex) => $"proxy-app-{appIndex}";
 
     public static string AppDnsTag(int appIndex) => $"dns-proxy-app-{appIndex}";
@@ -250,6 +265,68 @@ public static class SingBoxConfigGenerator
         var hijack = new JsonArray();
         var routeRules = new JsonArray { new JsonObject { ["action"] = "sniff" } };
         var ownProcesses = OwnProcessRegexes();
+        var siteSuffixes = DirectSiteSuffixes(cfg);
+        var sitesOnly = cfg.SitesOnly;
+
+        void RouteApp(JsonArray regex, string outbound, string dnsServer)
+        {
+            if (sitesOnly)
+            {
+                if (siteSuffixes.Count > 0)
+                {
+                    routeRules.Add(new JsonObject
+                    {
+                        ["process_path_regex"] = regex.DeepClone(),
+                        ["domain_suffix"] = siteSuffixes.DeepClone(),
+                        ["network"] = "udp",
+                        ["port"] = new JsonArray { 443, 853 },
+                        ["action"] = "reject",
+                    });
+                    dnsRules.Add(new JsonObject
+                    {
+                        ["process_path_regex"] = regex.DeepClone(),
+                        ["domain_suffix"] = siteSuffixes.DeepClone(),
+                        ["server"] = dnsServer,
+                    });
+                    routeRules.Add(new JsonObject
+                    {
+                        ["process_path_regex"] = regex.DeepClone(),
+                        ["domain_suffix"] = siteSuffixes.DeepClone(),
+                        ["outbound"] = outbound,
+                    });
+                }
+
+                dnsRules.Add(new JsonObject
+                {
+                    ["process_path_regex"] = regex.DeepClone(),
+                    ["server"] = "dns-direct",
+                });
+                routeRules.Add(new JsonObject
+                {
+                    ["process_path_regex"] = regex.DeepClone(),
+                    ["outbound"] = DirectTag,
+                });
+                return;
+            }
+
+            routeRules.Add(new JsonObject
+            {
+                ["process_path_regex"] = regex.DeepClone(),
+                ["network"] = "udp",
+                ["port"] = new JsonArray { 443, 853 },
+                ["action"] = "reject",
+            });
+            dnsRules.Add(new JsonObject
+            {
+                ["process_path_regex"] = regex.DeepClone(),
+                ["server"] = dnsServer,
+            });
+            routeRules.Add(new JsonObject
+            {
+                ["process_path_regex"] = regex.DeepClone(),
+                ["outbound"] = outbound,
+            });
+        }
 
         // Служебный трафик (подписки, движок) не должен попадать в туннель приложений.
         routeRules.Add(new JsonObject
@@ -291,24 +368,8 @@ public static class SingBoxConfigGenerator
                 ["server"] = "1.1.1.1",
                 ["detour"] = AppOutboundTag(item.Index),
             });
-            dnsRules.Add(new JsonObject
-            {
-                ["process_path_regex"] = regex.DeepClone(),
-                ["server"] = dnsTag,
-            });
             hijack.Add(regex.DeepClone());
-            routeRules.Add(new JsonObject
-            {
-                ["process_path_regex"] = regex.DeepClone(),
-                ["network"] = "udp",
-                ["port"] = new JsonArray { 443, 853 },
-                ["action"] = "reject",
-            });
-            routeRules.Add(new JsonObject
-            {
-                ["process_path_regex"] = regex.DeepClone(),
-                ["outbound"] = AppOutboundTag(item.Index),
-            });
+            RouteApp(regex, AppOutboundTag(item.Index), dnsTag);
         }
 
         if (unpinned.Count > 0)
@@ -318,16 +379,8 @@ public static class SingBoxConfigGenerator
             {
                 foreach (var rx in AppDetector.ToRegexes(a)) regexes.Add(rx);
             }
-            dnsRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["server"] = "dns-proxy" });
             hijack.Add(regexes.DeepClone());
-            routeRules.Add(new JsonObject
-            {
-                ["process_path_regex"] = regexes.DeepClone(),
-                ["network"] = "udp",
-                ["port"] = new JsonArray { 443, 853 },
-                ["action"] = "reject",
-            });
-            routeRules.Add(new JsonObject { ["process_path_regex"] = regexes.DeepClone(), ["outbound"] = ProxyTag });
+            RouteApp(regexes, ProxyTag, "dns-proxy");
         }
 
         // Перехватываем только запросы имён от выбранных программ. Запросы остальной
@@ -352,25 +405,76 @@ public static class SingBoxConfigGenerator
             ["ip_cidr"] = new JsonArray { cfg.TunAddress },
             ["action"] = "hijack-dns",
         });
-        routeRules.Insert(tunHijackIndex + 1, new JsonObject
+        if (!sitesOnly)
         {
-            ["inbound"] = new JsonArray { "mixed-in" },
-            ["network"] = "udp",
-            ["port"] = new JsonArray { 443, 853 },
-            ["action"] = "reject",
-        });
-        routeRules.Insert(tunHijackIndex + 2, new JsonObject
+            routeRules.Insert(tunHijackIndex + 1, new JsonObject
+            {
+                ["inbound"] = new JsonArray { "mixed-in" },
+                ["network"] = "udp",
+                ["port"] = new JsonArray { 443, 853 },
+                ["action"] = "reject",
+            });
+            routeRules.Insert(tunHijackIndex + 2, new JsonObject
+            {
+                ["inbound"] = new JsonArray { "tun-in" },
+                ["network"] = "udp",
+                ["port"] = new JsonArray { 443, 853 },
+                ["action"] = "reject",
+            });
+            routeRules.Insert(tunHijackIndex + 3, new JsonObject
+            {
+                ["inbound"] = new JsonArray { "mixed-in" },
+                ["outbound"] = ProxyTag,
+            });
+
+            // До правил программ и локального прокси: иначе сайт из списка всё равно уйдёт в туннель.
+            if (siteSuffixes.Count > 0)
+            {
+                dnsRules.Insert(0, new JsonObject
+                {
+                    ["domain_suffix"] = siteSuffixes.DeepClone(),
+                    ["server"] = "dns-direct",
+                });
+                routeRules.Insert(tunHijackIndex + 1, new JsonObject
+                {
+                    ["domain_suffix"] = siteSuffixes,
+                    ["outbound"] = DirectTag,
+                });
+            }
+        }
+        else
         {
-            ["inbound"] = new JsonArray { "tun-in" },
-            ["network"] = "udp",
-            ["port"] = new JsonArray { 443, 853 },
-            ["action"] = "reject",
-        });
-        routeRules.Insert(tunHijackIndex + 3, new JsonObject
-        {
-            ["inbound"] = new JsonArray { "mixed-in" },
-            ["outbound"] = ProxyTag,
-        });
+            var at = tunHijackIndex + 1;
+            if (siteSuffixes.Count > 0)
+            {
+                routeRules.Insert(at, new JsonObject
+                {
+                    ["inbound"] = new JsonArray { "mixed-in" },
+                    ["domain_suffix"] = siteSuffixes.DeepClone(),
+                    ["network"] = "udp",
+                    ["port"] = new JsonArray { 443, 853 },
+                    ["action"] = "reject",
+                });
+                routeRules.Insert(at + 1, new JsonObject
+                {
+                    ["inbound"] = new JsonArray { "mixed-in" },
+                    ["domain_suffix"] = siteSuffixes.DeepClone(),
+                    ["outbound"] = ProxyTag,
+                });
+                dnsRules.Add(new JsonObject
+                {
+                    ["domain_suffix"] = siteSuffixes.DeepClone(),
+                    ["server"] = "dns-proxy",
+                });
+                at += 2;
+            }
+
+            routeRules.Insert(at, new JsonObject
+            {
+                ["inbound"] = new JsonArray { "mixed-in" },
+                ["outbound"] = DirectTag,
+            });
+        }
 
         var inbounds = new JsonArray { BuildTun(cfg, tunInterfaceName), BuildMixedInbound(cfg.MixedPort, "mixed-in") };
 

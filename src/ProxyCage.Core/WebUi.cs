@@ -248,6 +248,11 @@ public static class WebUi
 
     tr.dim td{opacity:.55}
     .tag.bad{color:var(--danger-ink)}
+    .modes{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 12px}
+    .modes form{margin:0}
+    .modes span.mode-on{display:inline-flex;align-items:center;min-height:40px;padding:10px 18px;
+      border:1px solid var(--brand-ink);border-radius:10px;background:var(--brand-ink);
+      color:#f4fbf7;font-weight:600}
     button.pill{min-height:28px;padding:3px 12px;font-size:12.5px;font-weight:600;border-radius:99px}
     button.pill.no{background:transparent;color:var(--muted);border-color:var(--line);font-weight:500}
     button.pill.no:hover{background:var(--panel2)}

@@ -82,6 +82,19 @@ public sealed class CehoConfig
 
     public List<string> ExcludedCountries { get; set; } = new() { "RU" };
 
+    /// <summary>Адреса из вкладки «Сайты», без пути. Куда они идут, решает <see cref="SiteMode"/>.</summary>
+    public List<string> DirectSites { get; set; } = new();
+
+    public const string SiteModeExcept = "except";
+
+    public const string SiteModeOnly = "only";
+
+    /// <summary>except — всё через туннель, кроме списка. only — через туннель только список.</summary>
+    public string SiteMode { get; set; } = SiteModeExcept;
+
+    [JsonIgnore]
+    public bool SitesOnly => string.Equals(SiteMode, SiteModeOnly, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Ноды, выключенные вручную: страна разрешена, а именно эта нода в пул не идёт.
     /// Хранятся ключами вида «Vless|server|443», чтобы выбор жил после обновления подписки.
@@ -142,6 +155,9 @@ public sealed class CehoConfig
 
         foreach (var app in cfg.Apps)
             app.AllowedNodes ??= new();
+        cfg.DirectSites ??= new();
+        if (!cfg.SitesOnly)
+            cfg.SiteMode = SiteModeExcept;
 
         cfg.MigrateLegacyNaive(path);
 

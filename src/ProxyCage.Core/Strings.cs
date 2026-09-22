@@ -528,12 +528,36 @@ public static class Strings
             "is a TCP handshake, which would lie."),
         ["nav_state"] = new("Состояние", "Status"),
         ["nav_apps"] = new("Программы", "Apps"),
+        ["nav_sites"] = new("Сайты", "Sites"),
         ["nav_subs"] = new("Подписки", "Subscriptions"),
         ["nav_exit"] = new("Страны", "Countries"),
         ["nav_browser"] = new("Браузер", "Browser"),
         ["nav_access"] = new("Доступ", "Access"),
         ["nav_doctor"] = new("Проверка", "Check-up"),
         ["nav_help"] = new("Помощь", "Help"),
+        ["sites_title"] = new("Список сайтов", "Site list"),
+        ["sites_mode_except"] = new("Все, кроме списка", "All except the list"),
+        ["sites_mode_only"] = new("Только список", "Only the list"),
+        ["sites_lede_except"] = new(
+            "Через туннель идёт весь трафик выбранных программ. Сайт из списка и его поддомены выходят напрямую.",
+            "Chosen apps send all their traffic through the tunnel. A listed site and its subdomains go direct."),
+        ["sites_lede_only"] = new(
+            "Через туннель идут только сайты из списка. Остальное у выбранных программ и у браузера на локальном прокси выходит напрямую.",
+            "Only listed sites go through the tunnel. Everything else from chosen apps and from a browser on the local proxy goes direct."),
+        ["sites_empty"] = new(
+            "Пока пусто. Вставьте ссылку, например https://ya.ru",
+            "Nothing yet. Paste a link, for example https://ya.ru"),
+        ["sites_empty_only"] = new(
+            "Список пуст: через туннель сейчас не идёт ни один сайт.",
+            "The list is empty, so nothing goes through the tunnel."),
+        ["site_mode_set"] = new("Режим: {0}.", "Mode: {0}."),
+        ["sites_placeholder"] = new("https://ya.ru", "https://example.com"),
+        ["site_added"] = new(
+            "Добавлено: {0}. Поддомены тоже идут напрямую.",
+            "Added: {0}. Subdomains go direct too."),
+        ["site_bad"] = new(
+            "Это не похоже на адрес сайта. Вставьте ссылку, например https://ya.ru",
+            "That does not look like a site address. Paste a link, for example https://ya.ru"),
         ["apps_title"] = new("Программы в изоляции", "Isolated apps"),
         ["apps_lede"] = new(
             "Указанные программы выходят в интернет только через туннель. Если ни одна нода " +
