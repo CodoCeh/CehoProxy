@@ -539,11 +539,25 @@ public static class Strings
         ["sites_mode_except"] = new("Все, кроме списка", "All except the list"),
         ["sites_mode_only"] = new("Только список", "Only the list"),
         ["sites_lede_except"] = new(
-            "Через туннель идёт весь трафик выбранных программ. Сайт из списка и его поддомены выходят напрямую.",
-            "Chosen apps send all their traffic through the tunnel. A listed site and its subdomains go direct."),
+            "Через туннель идёт весь трафик выбранных программ. Сайт из списка и его поддомены выходят напрямую. " +
+            "Если у сайта выбрана страна, он идёт через ноды этой страны.",
+            "Chosen apps send all their traffic through the tunnel. A listed site and its subdomains go direct. " +
+            "A site with a country uses nodes from that country."),
         ["sites_lede_only"] = new(
-            "Через туннель идут только сайты из списка. Остальное у выбранных программ и у браузера на локальном прокси выходит напрямую.",
-            "Only listed sites go through the tunnel. Everything else from chosen apps and from a browser on the local proxy goes direct."),
+            "Через туннель идут только сайты из списка. Остальное у выбранных программ и у браузера на локальном прокси выходит напрямую. " +
+            "Страна у сайта оставляет только ноды этой страны.",
+            "Only listed sites go through the tunnel. Everything else from chosen apps and from a browser on the local proxy goes direct. " +
+            "A country on a site keeps only nodes from that country."),
+        ["sites_exit"] = new("Выход", "Exit"),
+        ["sites_exit_direct"] = new("Напрямую", "Direct"),
+        ["sites_exit_pool"] = new("Общий выход", "Shared exit"),
+        ["sites_exit_saved"] = new("Для {0} выход: {1}.", "For {0} the exit is {1}."),
+        ["sites_countries_loading"] = new(
+            "Читаю подписки, чтобы показать страны нод.",
+            "Reading subscriptions to list node countries."),
+        ["sites_countries_none"] = new(
+            "В названиях нод нет страны: ни флага, ни кода. Пока так, выбрать страну нельзя.",
+            "Node names have no country, neither a flag nor a code, so there is nothing to choose."),
         ["sites_empty"] = new(
             "Пока пусто. Вставьте ссылку, например https://ya.ru",
             "Nothing yet. Paste a link, for example https://ya.ru"),
@@ -552,6 +566,16 @@ public static class Strings
             "The list is empty, so nothing goes through the tunnel."),
         ["site_mode_set"] = new("Режим: {0}.", "Mode: {0}."),
         ["sites_placeholder"] = new("https://ya.ru", "https://example.com"),
+        ["sites_preset_btn_except"] = new("Добавить российские сервисы", "Add Russian services"),
+        ["sites_preset_btn_only"] = new("Добавить популярные сайты", "Add popular sites"),
+        ["sites_preset_hint_except"] = new(
+            "Яндекс, ВКонтакте, Госуслуги, банки и магазины. Уже добавленные не повторяются.",
+            "Yandex, VK, Gosuslugi, banks and shops. Sites already in the list are skipped."),
+        ["sites_preset_hint_only"] = new(
+            "YouTube, Google, Instagram, ChatGPT и другие. Уже добавленные не повторяются.",
+            "YouTube, Google, Instagram, ChatGPT and others. Sites already in the list are skipped."),
+        ["sites_preset_added"] = new("Добавлено сайтов: {0}.", "Added {0} sites."),
+        ["sites_preset_none"] = new("Эти сайты уже в списке.", "Those sites are already in the list."),
         ["site_added"] = new(
             "Добавлено: {0}. Поддомены тоже идут напрямую.",
             "Added: {0}. Subdomains go direct too."),

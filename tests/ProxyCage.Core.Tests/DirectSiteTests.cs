@@ -13,6 +13,20 @@ public class DirectSiteTests
     public void Link_becomes_a_site_without_path(string raw, string host) =>
         Assert.Equal(host, DirectSites.Normalize(raw));
 
+    [Fact]
+    public void Preset_adds_only_sites_that_are_not_already_listed()
+    {
+        foreach (var host in DirectSites.TunnelSites.Concat(DirectSites.RussianSites))
+            Assert.Equal(host, DirectSites.Normalize(host));
+        Assert.Empty(DirectSites.TunnelSites.Intersect(DirectSites.RussianSites, StringComparer.OrdinalIgnoreCase));
+
+        var fresh = DirectSites.NewHosts(["YouTube.com"], DirectSites.Preset(throughTunnel: true));
+        Assert.DoesNotContain("youtube.com", fresh);
+        Assert.Contains("google.com", fresh);
+        Assert.Equal(DirectSites.TunnelSites.Length - 1, fresh.Count);
+        Assert.Contains("yandex.ru", DirectSites.Preset(throughTunnel: false));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("not a site")]
@@ -148,6 +162,81 @@ public class DirectSiteTests
         Assert.Contains(rules, r =>
             (string?)r?["outbound"] == "direct" && InboundIs(r, "mixed-in") && r["domain_suffix"] is null);
     }
+
+    [Fact]
+    public void Chosen_country_sends_that_site_through_its_nodes_and_leaves_the_other_direct()
+    {
+        var nodes = Nodes();
+        var cfg = App();
+        cfg.DirectSites.Add("ya.ru");
+        cfg.DirectSites.Add("example.com");
+        cfg.SiteCountries["ya.ru"] = "nl";
+
+        var root = JsonNode.Parse(SingBoxConfigGenerator.GenerateForConfig(nodes, cfg))!;
+        var tag = SingBoxConfigGenerator.SiteOutboundTag("NL");
+        var picked = root["outbounds"]!.AsArray().First(o => (string?)o!["tag"] == tag)!["outbounds"]!
+            .AsArray().Select(x => (string)x!).ToList();
+        var dutch = nodes.Where(n => n.CountryCode == "NL" && !n.IsMeta).Select(n => n.Tag).ToList();
+        Assert.Equal(dutch, picked);
+
+        var rules = root["route"]!["rules"]!.AsArray();
+        var countryAt = IndexOf(rules, r => (string?)r?["outbound"] == tag && r["domain_suffix"] is JsonArray);
+        var direct = rules.First(r =>
+            (string?)r?["outbound"] == "direct" && r["domain_suffix"] is JsonArray && r["process_path_regex"] is null);
+        var directHosts = direct["domain_suffix"]!.AsArray().Select(x => (string)x!).ToList();
+        Assert.True(countryAt >= 0);
+        Assert.Equal("ya.ru", (string?)rules[countryAt]!["domain_suffix"]![0]);
+        Assert.Contains("example.com", directHosts);
+        Assert.DoesNotContain("ya.ru", directHosts);
+    }
+
+    [Fact]
+    public void Chosen_country_can_be_one_the_shared_pool_does_not_use()
+    {
+        var nodes = Nodes();
+        var cfg = App();
+        cfg.DirectSites.Add("ya.ru");
+        cfg.SiteCountries["ya.ru"] = "RU";
+
+        var root = JsonNode.Parse(SingBoxConfigGenerator.GenerateForConfig(nodes, cfg))!;
+        var russian = nodes.Where(n => n.CountryCode == "RU" && !n.IsMeta).Select(n => n.Tag).ToList();
+        var sitePool = root["outbounds"]!.AsArray()
+            .First(o => (string?)o!["tag"] == SingBoxConfigGenerator.SiteOutboundTag("RU"))!["outbounds"]!
+            .AsArray().Select(x => (string)x!).ToList();
+        var shared = root["outbounds"]!.AsArray().First(o => (string?)o!["tag"] == "proxy")!["outbounds"]!
+            .AsArray().Select(x => (string)x!).ToList();
+
+        Assert.Equal(russian, sitePool);
+        Assert.DoesNotContain(russian, tag => shared.Contains(tag));
+    }
+
+    [Fact]
+    public void Site_country_overrides_the_app_pin_only_for_that_site()
+    {
+        var nodes = Nodes();
+        var cfg = App();
+        cfg.Apps[0].AllowedNodes.Add(nodes.First(n => n.CountryCode == "NL").Key);
+        cfg.DirectSites.Add("ya.ru");
+        cfg.SiteCountries["ya.ru"] = "RU";
+
+        var rules = JsonNode.Parse(SingBoxConfigGenerator.GenerateForConfig(nodes, cfg))!["route"]!["rules"]!.AsArray();
+        Assert.Contains(rules, r =>
+            (string?)r?["outbound"] == SingBoxConfigGenerator.SiteOutboundTag("RU")
+            && r["domain_suffix"] is JsonArray
+            && r["process_path_regex"] is JsonArray);
+        Assert.Contains(rules, r =>
+            (string?)r?["outbound"] == SingBoxConfigGenerator.AppOutboundTag(0)
+            && r["domain_suffix"] is null
+            && r["process_path_regex"] is JsonArray);
+    }
+
+    private static IReadOnlyList<ProxyNode> Nodes() =>
+        SubscriptionParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "sub-example.txt")));
+
+    private static CehoConfig App() => new()
+    {
+        Apps = { new AppEntry { Name = "app", Folder = "/tmp/ceho-site-app" } },
+    };
 
     private static bool InboundIs(JsonNode? rule, string tag) =>
         rule?["inbound"] is JsonArray inbound && inbound.Any(x => (string?)x == tag);

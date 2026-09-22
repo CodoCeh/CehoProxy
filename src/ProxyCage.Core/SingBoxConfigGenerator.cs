@@ -196,6 +196,58 @@ public static class SingBoxConfigGenerator
         return suffixes;
     }
 
+    public sealed class SiteCountryGroup
+    {
+        public string Code { get; init; } = "";
+        public List<ProxyNode> Nodes { get; init; } = new();
+        public JsonArray Suffixes { get; init; } = new();
+    }
+
+    public static string SiteOutboundTag(string country) => "proxy-site-" + country.ToLowerInvariant();
+
+    public static string SiteDnsTag(string country) => "dns-proxy-site-" + country.ToLowerInvariant();
+
+    public static string? SiteCountry(CehoConfig cfg, string host)
+    {
+        if (cfg.SiteCountries is null) return null;
+        foreach (var pair in cfg.SiteCountries)
+        {
+            var key = DirectSites.Normalize(pair.Key) ?? pair.Key.Trim();
+            if (!key.Equals(host, StringComparison.OrdinalIgnoreCase)) continue;
+            return DirectSites.NormalizeCountry(pair.Value);
+        }
+        return null;
+    }
+
+    public static List<SiteCountryGroup> SiteCountryGroups(IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg)
+    {
+        var byCountry = new Dictionary<string, SiteCountryGroup>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in cfg.DirectSites ?? new List<string>())
+        {
+            var host = DirectSites.Normalize(raw) ?? raw.Trim();
+            if (host.Length == 0) continue;
+            var code = SiteCountry(cfg, host);
+            if (code is null) continue;
+            var nodes = allNodes.Where(n =>
+                !n.IsMeta
+                && !IsBlockedByHand(n, cfg)
+                && string.Equals(n.CountryCode, code, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (nodes.Count == 0) continue;
+            if (!byCountry.TryGetValue(code, out var group))
+            {
+                group = new SiteCountryGroup { Code = code, Nodes = nodes };
+                byCountry[code] = group;
+            }
+
+            var ascii = DirectSites.ToAscii(host);
+            if (ascii.Length == 0) continue;
+            if (!group.Suffixes.Any(x => string.Equals((string?)x, ascii, StringComparison.OrdinalIgnoreCase)))
+                group.Suffixes.Add(ascii);
+        }
+
+        return byCountry.Values.Where(g => g.Suffixes.Count > 0).ToList();
+    }
+
     public static string AppOutboundTag(int appIndex) => $"proxy-app-{appIndex}";
 
     public static string AppDnsTag(int appIndex) => $"dns-proxy-app-{appIndex}";
@@ -223,9 +275,10 @@ public static class SingBoxConfigGenerator
             .ToList();
         var unpinned = apps.Where(a => !HasNodeFilter(a)).ToList();
 
+        var countryGroups = SiteCountryGroups(allNodes, cfg);
         var engineNodes = new List<ProxyNode>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var node in pool.Concat(pinned.SelectMany(x => x.Nodes)))
+        foreach (var node in pool.Concat(pinned.SelectMany(x => x.Nodes)).Concat(countryGroups.SelectMany(g => g.Nodes)))
         {
             if (seen.Add(node.Key)) engineNodes.Add(node);
         }
@@ -258,18 +311,76 @@ public static class SingBoxConfigGenerator
             outbounds.Add(UrlTest(AppOutboundTag(item.Index), tags, checkUrl));
         }
 
+        foreach (var group in countryGroups)
+        {
+            var tags = new JsonArray();
+            foreach (var node in group.Nodes)
+            {
+                if (engineTags.Contains(node.Tag))
+                    tags.Add(node.Tag);
+            }
+            if (tags.Count == 0) continue;
+            outbounds.Add(UrlTest(SiteOutboundTag(group.Code), tags, checkUrl));
+        }
+
         outbounds.Add(BuildDirectOutbound(cfg.TunAddress));
 
         var dnsServers = DnsServersWithDirect(cfg.TunAddress, engineOnly: false);
+        foreach (var group in countryGroups)
+        {
+            dnsServers.Insert(1, new JsonObject
+            {
+                ["type"] = "https",
+                ["tag"] = SiteDnsTag(group.Code),
+                ["server"] = "1.1.1.1",
+                ["detour"] = SiteOutboundTag(group.Code),
+            });
+        }
         var dnsRules = new JsonArray();
         var hijack = new JsonArray();
         var routeRules = new JsonArray { new JsonObject { ["action"] = "sniff" } };
         var ownProcesses = OwnProcessRegexes();
-        var siteSuffixes = DirectSiteSuffixes(cfg);
+        var groupedSuffixes = new HashSet<string>(
+            countryGroups.SelectMany(g => g.Suffixes.Select(x => (string)x!)),
+            StringComparer.OrdinalIgnoreCase);
+        var siteSuffixes = new JsonArray();
+        foreach (var item in DirectSiteSuffixes(cfg))
+        {
+            var suffix = (string)item!;
+            if (!groupedSuffixes.Contains(suffix)) siteSuffixes.Add(suffix);
+        }
         var sitesOnly = cfg.SitesOnly;
+
+        void RouteCountry(JsonArray regex)
+        {
+            foreach (var group in countryGroups)
+            {
+                routeRules.Add(new JsonObject
+                {
+                    ["process_path_regex"] = regex.DeepClone(),
+                    ["domain_suffix"] = group.Suffixes.DeepClone(),
+                    ["network"] = "udp",
+                    ["port"] = new JsonArray { 443, 853 },
+                    ["action"] = "reject",
+                });
+                dnsRules.Add(new JsonObject
+                {
+                    ["process_path_regex"] = regex.DeepClone(),
+                    ["domain_suffix"] = group.Suffixes.DeepClone(),
+                    ["server"] = SiteDnsTag(group.Code),
+                });
+                routeRules.Add(new JsonObject
+                {
+                    ["process_path_regex"] = regex.DeepClone(),
+                    ["domain_suffix"] = group.Suffixes.DeepClone(),
+                    ["outbound"] = SiteOutboundTag(group.Code),
+                });
+            }
+        }
 
         void RouteApp(JsonArray regex, string outbound, string dnsServer)
         {
+            RouteCountry(regex);
             if (sitesOnly)
             {
                 if (siteSuffixes.Count > 0)
@@ -405,6 +516,32 @@ public static class SingBoxConfigGenerator
             ["ip_cidr"] = new JsonArray { cfg.TunAddress },
             ["action"] = "hijack-dns",
         });
+        void InsertCountryMixed(int at)
+        {
+            foreach (var group in countryGroups.AsEnumerable().Reverse())
+            {
+                routeRules.Insert(at, new JsonObject
+                {
+                    ["inbound"] = new JsonArray { "mixed-in" },
+                    ["domain_suffix"] = group.Suffixes.DeepClone(),
+                    ["outbound"] = SiteOutboundTag(group.Code),
+                });
+                routeRules.Insert(at, new JsonObject
+                {
+                    ["inbound"] = new JsonArray { "mixed-in" },
+                    ["domain_suffix"] = group.Suffixes.DeepClone(),
+                    ["network"] = "udp",
+                    ["port"] = new JsonArray { 443, 853 },
+                    ["action"] = "reject",
+                });
+                dnsRules.Add(new JsonObject
+                {
+                    ["domain_suffix"] = group.Suffixes.DeepClone(),
+                    ["server"] = SiteDnsTag(group.Code),
+                });
+            }
+        }
+
         if (!sitesOnly)
         {
             routeRules.Insert(tunHijackIndex + 1, new JsonObject
@@ -441,6 +578,8 @@ public static class SingBoxConfigGenerator
                     ["outbound"] = DirectTag,
                 });
             }
+
+            InsertCountryMixed(tunHijackIndex + 1);
         }
         else
         {
@@ -474,6 +613,7 @@ public static class SingBoxConfigGenerator
                 ["inbound"] = new JsonArray { "mixed-in" },
                 ["outbound"] = DirectTag,
             });
+            InsertCountryMixed(tunHijackIndex + 1);
         }
 
         var inbounds = new JsonArray { BuildTun(cfg, tunInterfaceName), BuildMixedInbound(cfg.MixedPort, "mixed-in") };

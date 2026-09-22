@@ -464,6 +464,8 @@ public sealed class WebServer
                     if (cfg.DirectSites.Contains(host, StringComparer.OrdinalIgnoreCase))
                         return (S("err_already_added"), true, null);
                     cfg.DirectSites.Add(host);
+                    var country = DirectSites.NormalizeCountry(f.GetValueOrDefault("country", ""));
+                    if (country is not null) cfg.SiteCountries[host] = country;
                     Save(cfg);
                     var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
                         ? ApplyJob(cfg, restartIfRunning: true).Id
@@ -471,10 +473,54 @@ public sealed class WebServer
                     return (S("site_added", host), false, job);
                 }
 
+                case "/sites/preset":
+                {
+                    var fresh = DirectSites.NewHosts(cfg.DirectSites, DirectSites.Preset(cfg.SitesOnly));
+                    if (fresh.Count == 0) return (S("sites_preset_none"), false, null);
+                    cfg.DirectSites.AddRange(fresh);
+                    Save(cfg);
+                    var presetJob = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        : null;
+                    return (S("sites_preset_added", fresh.Count), false, presetJob);
+                }
+
+                case "/sites/country":
+                {
+                    var host = cfg.DirectSites.FirstOrDefault(s =>
+                        s.Equals(f.GetValueOrDefault("site", ""), StringComparison.OrdinalIgnoreCase));
+                    if (host is null) return (S("site_bad"), true, null);
+                    var country = DirectSites.NormalizeCountry(f.GetValueOrDefault("country", ""));
+                    var current = SingBoxConfigGenerator.SiteCountry(cfg, host);
+                    if (string.Equals(current, country, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var same = country is null
+                            ? S(cfg.SitesOnly ? "sites_exit_pool" : "sites_exit_direct", [])
+                            : CountryResolver.DisplayName(country, cfg.Language) ?? country;
+                        return (S("sites_exit_saved", host, same), false, null);
+                    }
+
+                    if (country is null)
+                        cfg.SiteCountries.Remove(host);
+                    else
+                        cfg.SiteCountries[host] = country;
+                    Save(cfg);
+                    var countryJob = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        : null;
+                    var label = country is null
+                        ? S(cfg.SitesOnly ? "sites_exit_pool" : "sites_exit_direct", [])
+                        : CountryResolver.DisplayName(country, cfg.Language) ?? country;
+                    return (S("sites_exit_saved", host, label), false, countryJob);
+                }
+
                 case "/sites/remove":
                 {
                     var host = f.GetValueOrDefault("site", "");
                     cfg.DirectSites.RemoveAll(s => s.Equals(host, StringComparison.OrdinalIgnoreCase));
+                    foreach (var key in cfg.SiteCountries.Keys
+                                 .Where(k => k.Equals(host, StringComparison.OrdinalIgnoreCase)).ToList())
+                        cfg.SiteCountries.Remove(key);
                     Save(cfg);
                     var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
                         ? ApplyJob(cfg, restartIfRunning: true).Id
@@ -1461,9 +1507,10 @@ public sealed class WebServer
           .Append("<button class=ghost>").Append(label).Append("</button></form>");
     }
 
-    private static void RenderSites(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
+    private void RenderSites(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
         var only = cfg.SitesOnly;
+        var (countries, countriesLoaded) = SiteCountryChoices(cfg);
         sb.Append("<section><h2>").Append(E(S("sites_title", []))).Append("</h2>");
         sb.Append("<div class=modes>");
         AppendSiteMode(sb, S, CehoConfig.SiteModeExcept, "sites_mode_except", !only);
@@ -1473,18 +1520,33 @@ public sealed class WebServer
         sb.Append("<form class=\"row app-add\" method=post action=/sites/add><input type=hidden name=tab value=sites>")
           .Append("<label class=sr-only for=direct-site>").Append(E(S("nav_sites", []))).Append("</label>")
           .Append("<input id=direct-site type=text name=site placeholder=\"")
-          .Append(E(S("sites_placeholder", []))).Append("\" autofocus>")
-          .Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
+          .Append(E(S("sites_placeholder", []))).Append("\" autofocus>");
+        AppendCountrySelect(sb, cfg, S, countries, null);
+        sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
+        sb.Append("<form method=post action=/sites/preset><input type=hidden name=tab value=sites><button>")
+          .Append(E(S(only ? "sites_preset_btn_only" : "sites_preset_btn_except", [])))
+          .Append("</button></form><p class=hint>")
+          .Append(E(S(only ? "sites_preset_hint_only" : "sites_preset_hint_except", [])))
+          .Append("</p>");
+        if (countries.Count == 0)
+            sb.Append("<p class=hint>").Append(E(S(countriesLoaded ? "sites_countries_none" : "sites_countries_loading", []))).Append("</p>");
 
         if (cfg.DirectSites.Count == 0)
             sb.Append("<p class=empty>").Append(E(S(only ? "sites_empty_only" : "sites_empty", []))).Append("</p>");
         else
         {
             sb.Append("<div class=scroll><table class=t-apps><tr><th>")
-              .Append(E(S("nav_sites", []))).Append("</th><th></th></tr>");
+              .Append(E(S("nav_sites", []))).Append("</th><th>")
+              .Append(E(S("sites_exit", []))).Append("</th><th></th></tr>");
             foreach (var site in cfg.DirectSites)
             {
-                sb.Append("<tr><td class=path>").Append(E(site)).Append("</td><td class=actions>")
+                var chosen = SingBoxConfigGenerator.SiteCountry(cfg, site);
+                sb.Append("<tr><td class=path>").Append(E(site)).Append("</td><td>")
+                  .Append("<form class=row method=post action=/sites/country><input type=hidden name=tab value=sites>")
+                  .Append("<input type=hidden name=site value=\"").Append(E(site)).Append("\">");
+                AppendCountrySelect(sb, cfg, S, countries, chosen);
+                sb.Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form>")
+                  .Append("</td><td class=actions>")
                   .Append("<form method=post action=/sites/remove><input type=hidden name=tab value=sites>")
                   .Append("<input type=hidden name=site value=\"").Append(E(site))
                   .Append("\"><button class=danger>").Append(E(S("btn_remove", []))).Append("</button></form>")
@@ -1493,6 +1555,52 @@ public sealed class WebServer
             sb.Append("</table></div>");
         }
         sb.Append("</section>");
+    }
+
+    private (List<(string Code, string Label)> Choices, bool Loaded) SiteCountryChoices(CehoConfig cfg)
+    {
+        var pool = _pool;
+        var loading = Jobs.Active(JobPool);
+        if (pool is null && loading is null && cfg.Subscriptions.Any(s => s.Enabled))
+            StartPoolJob(cfg);
+
+        var choices = new List<(string Code, string Label)>();
+        if (pool is null) return (choices, false);
+        foreach (var group in pool.Where(n => !n.IsMeta)
+                     .GroupBy(n => n.CountryCode ?? "")
+                     .Where(g => DirectSites.NormalizeCountry(g.Key) is not null)
+                     .OrderBy(g => CountryResolver.DisplayName(g.Key, cfg.Language) ?? g.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var code = DirectSites.NormalizeCountry(group.Key)!;
+            var name = CountryResolver.DisplayName(code, cfg.Language) ?? code;
+            choices.Add((code, CountryResolver.Flag(code) + " " + name));
+        }
+        return (choices, true);
+    }
+
+    private static void AppendCountrySelect(
+        StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,
+        IReadOnlyList<(string Code, string Label)> countries, string? selected)
+    {
+        if (countries.Count == 0 && selected is null) return;
+        sb.Append("<label class=sr-only>").Append(E(S("sites_exit", []))).Append("</label>");
+        sb.Append("<select name=country><option value=\"\">")
+          .Append(E(S(cfg.SitesOnly ? "sites_exit_pool" : "sites_exit_direct", []))).Append("</option>");
+        var seen = false;
+        foreach (var (code, label) in countries)
+        {
+            if (string.Equals(code, selected, StringComparison.OrdinalIgnoreCase)) seen = true;
+            sb.Append("<option value=\"").Append(E(code)).Append('"')
+              .Append(string.Equals(code, selected, StringComparison.OrdinalIgnoreCase) ? " selected" : "")
+              .Append('>').Append(E(label)).Append("</option>");
+        }
+        if (selected is not null && !seen)
+        {
+            var name = CountryResolver.DisplayName(selected, cfg.Language) ?? selected;
+            sb.Append("<option value=\"").Append(E(selected)).Append("\" selected>")
+              .Append(E(CountryResolver.Flag(selected) + " " + name)).Append("</option>");
+        }
+        sb.Append("</select>");
     }
 
     private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,
