@@ -874,27 +874,33 @@ switch (cmd)
             if (!args.Contains("--yes") && !Cli.AskYes(Cli.S(cfg, "upd_apply"), true))
             { Console.WriteLine(Cli.S(cfg, "cancelled")); return 0; }
 
-            Console.WriteLine("  " + Cli.S(cfg, "upd_stopping_tun"));
-            var shut = TunnelShutdown.PrepareForUpdate(cfg, Ceho.Root, Ceho.RuntimeConfigPath, Console.WriteLine);
+            var (downloaded, shut) = await Updater.DownloadThenPrepareForUpdateAsync(
+                async () =>
+                {
+                    var staged = await Updater.DownloadAsync(release, Ceho.OwnExecutablePath, Console.WriteLine);
+                    if (Installer.MissingCronetDll(Ceho.Root))
+                    {
+                        try
+                        {
+                            Console.WriteLine(Strings.T(cfg.Language, "engine_cronet_missing", Ceho.Root));
+                            await Installer.DownloadEngineAsync(Ceho.Root, Console.WriteLine, cfg.Language);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(Strings.T(cfg.Language, "inst_engine_failed", ex.Message));
+                        }
+                    }
+                    return staged;
+                },
+                () =>
+                {
+                    Console.WriteLine("  " + Cli.S(cfg, "upd_stopping_tun"));
+                    return TunnelShutdown.PrepareForUpdate(cfg, Ceho.Root, Ceho.RuntimeConfigPath, Console.WriteLine);
+                });
             if (!shut.Ok)
             {
                 Console.Error.WriteLine(Cli.S(cfg, shut.ErrorKey ?? "upd_need_reboot"));
                 return 1;
-            }
-
-            var downloaded = await Updater.DownloadAsync(release, Ceho.OwnExecutablePath, Console.WriteLine);
-
-            if (Installer.MissingCronetDll(Ceho.Root))
-            {
-                try
-                {
-                    Console.WriteLine(Strings.T(cfg.Language, "engine_cronet_missing", Ceho.Root));
-                    await Installer.DownloadEngineAsync(Ceho.Root, Console.WriteLine, cfg.Language);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(Strings.T(cfg.Language, "inst_engine_failed", ex.Message));
-                }
             }
 
             try
@@ -1856,31 +1862,36 @@ if (cmd is "daemon" or "web")
         if (release is null) return Strings.T(c.Language, "upd_none");
         if (!install) return Strings.T(c.Language, "upd_found", release.Version);
 
-        report.Stage(Strings.T(c.Language, "upd_stopping_tun"), 25);
-        StopTunnel();
-        var shut = TunnelShutdown.Release(c, Ceho.Root, Ceho.RuntimeConfigPath, m => report.Note(m));
-        if (!shut.Ok) return Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot");
-
         report.Stage(Strings.T(c.Language, "stage_download",
             release.Version, release.Size / 1024 / 1024), 40);
-        var downloaded = await Updater.DownloadAsync(
-            release, Ceho.OwnExecutablePath, m => report.Note(m));
+        var (downloaded, shut) = await Updater.DownloadThenPrepareForUpdateAsync(
+            async () =>
+            {
+                var staged = await Updater.DownloadAsync(
+                    release, Ceho.OwnExecutablePath, m => report.Note(m));
+                if (Installer.MissingCronetDll(Ceho.Root))
+                {
+                    try
+                    {
+                        report.Note(Strings.T(c.Language, "engine_cronet_missing", Ceho.Root));
+                        await Installer.DownloadEngineAsync(Ceho.Root, m => report.Note(m), c.Language);
+                    }
+                    catch (Exception ex)
+                    {
+                        report.Note(Strings.T(c.Language, "inst_engine_failed", ex.Message));
+                    }
+                }
+                return staged;
+            },
+            () =>
+            {
+                report.Stage(Strings.T(c.Language, "upd_stopping_tun"), 80);
+                StopTunnel();
+                return TunnelShutdown.Release(c, Ceho.Root, Ceho.RuntimeConfigPath, m => report.Note(m));
+            });
+        if (!shut.Ok) return Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot");
 
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
-
-        if (Installer.MissingCronetDll(Ceho.Root))
-        {
-            try
-            {
-                report.Note(Strings.T(c.Language, "engine_cronet_missing", Ceho.Root));
-                await Installer.DownloadEngineAsync(Ceho.Root, m => report.Note(m), c.Language);
-            }
-            catch (Exception ex)
-            {
-                report.Note(Strings.T(c.Language, "inst_engine_failed", ex.Message));
-            }
-        }
-
         try
         {
             report.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);

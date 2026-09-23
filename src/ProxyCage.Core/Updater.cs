@@ -95,6 +95,31 @@ public static class Updater
         return await DownloadAsync(release, targetPath, http, log);
     }
 
+    internal static async Task<(string Downloaded, TunnelShutdown.Result Shutdown)> DownloadThenPrepareForUpdateAsync(
+        Func<Task<string>> download,
+        Func<TunnelShutdown.Result> prepareForUpdate)
+    {
+        var downloaded = await download();
+        TunnelShutdown.Result shutdown;
+        try
+        {
+            shutdown = prepareForUpdate();
+        }
+        catch
+        {
+            TryDeleteStagedDownload(downloaded);
+            throw;
+        }
+
+        if (!shutdown.Ok) TryDeleteStagedDownload(downloaded);
+        return (downloaded, shutdown);
+    }
+
+    private static void TryDeleteStagedDownload(string path)
+    {
+        try { File.Delete(path); } catch { }
+    }
+
     internal static async Task<string> InstallAsync(Release release, string targetPath, HttpClient http, Action<string>? log = null)
     {
         var temp = await DownloadAsync(release, targetPath, http, log);

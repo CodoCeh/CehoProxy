@@ -255,10 +255,19 @@ public static class DaemonControl
             {{startUnix}}
             rm -f "{{sh}}"
             """);
-        Process.Start(new ProcessStartInfo("/bin/sh", sh)
+        Process.Start(CreateUnixHelperStartInfo(sh, root));
+    }
+
+    internal static ProcessStartInfo CreateUnixHelperStartInfo(string helperPath, string workingDirectory)
+    {
+        var startInfo = new ProcessStartInfo("/bin/sh")
         {
-            UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root,
-        });
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = workingDirectory,
+        };
+        startInfo.ArgumentList.Add(helperPath);
+        return startInfo;
     }
 
     public static bool RequestStop(string root)

@@ -21,6 +21,7 @@ public sealed class DoctorTools
     public Func<IStageReport, Task<IReadOnlyList<ProxyNode>>>? Pool { get; init; }
     public Func<IStageReport, Task<string>>? Rebuild { get; init; }
     public Func<Task<(string? Country, string? Ip)>>? Exit { get; init; }
+    public Func<bool>? AutostartEnabled { get; init; }
 }
 
 /// <summary>
@@ -66,7 +67,7 @@ public static class Doctor
         }
 
         p?.Stage(S("doc_stage_traces"), 75);
-        checks.AddRange(Traces(cfg, root, l));
+        checks.AddRange(Traces(cfg, root, l, tools?.AutostartEnabled?.Invoke() ?? Autostart.IsEnabled()));
         checks.AddRange(Neighbours(cfg, l));
         checks.AddRange(StuckWintun(cfg, root, l));
         checks.AddRange(UnmanagedAiTools(cfg, l));
@@ -342,7 +343,7 @@ public static class Doctor
         return checks;
     }
 
-    private static IEnumerable<Preflight.Check> Traces(CehoConfig cfg, string root, string l)
+    private static IEnumerable<Preflight.Check> Traces(CehoConfig cfg, string root, string l, bool autostartEnabled)
     {
         string S(string key, params object[] a) => Strings.T(l, key, a);
 
@@ -356,7 +357,7 @@ public static class Doctor
             yield return new Preflight.Check(Preflight.Level.Warning,
                 S("doc_stale_pid"), DaemonControl.PidPath(root), S("doc_leftovers_fix"), Repair.Leftovers);
 
-        if (Autostart.IsEnabled())
+        if (autostartEnabled)
         {
             if (daemon)
                 yield return new Preflight.Check(Preflight.Level.Ok, S("doc_service_ok"), null, null);

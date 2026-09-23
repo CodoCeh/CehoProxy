@@ -37,6 +37,7 @@ public class DoctorTests : IDisposable
     {
         Pool = pool ?? (_ => Task.FromResult(Nodes())),
         Rebuild = rebuild,
+        AutostartEnabled = () => false,
     };
 
     [Fact]
