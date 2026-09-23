@@ -273,9 +273,18 @@ public static class DaemonControl
     [SupportedOSPlatform("windows")]
     private static bool RequestStopWindows()
     {
-        if (!EventWaitHandle.TryOpenExisting(WindowsEventName, out var ev)) return false;
-        using (ev) ev.Set();
-        return true;
+        return TrySignalWindowsStopEvent(() =>
+        {
+            if (!EventWaitHandle.TryOpenExisting(WindowsEventName, out var ev)) return false;
+            using (ev) ev.Set();
+            return true;
+        });
+    }
+
+    internal static bool TrySignalWindowsStopEvent(Func<bool> signal)
+    {
+        try { return signal(); }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     public static void WaitForStop()

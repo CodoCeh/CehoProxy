@@ -1828,7 +1828,18 @@ if (cmd is "daemon" or "web")
     web.OnStart = StartTunnel;
     web.OnStop = () => Task.FromResult(StopTunnel());
     web.OnRestart = RestartTunnel;
-    web.OnApply = Ceho.ApplyAsync;
+    web.OnApply = report => TunnelRuleApply.RunAsync(
+        report,
+        () => EngineMutex.Acquire(Ceho.Root),
+        () => proc is not null,
+        async p =>
+        {
+            p.Stage(Strings.T(cfg.Language, "stage_stopping"), 5);
+            StopTunnelLocked();
+            return await StartTunnelLocked(p);
+        },
+        Ceho.ApplyAsync,
+        Strings.T(cfg.Language, "rules_applied"));
     web.WrappedNames = Cli.Wrapped;
     web.OnCheckSubs = async report =>
     {

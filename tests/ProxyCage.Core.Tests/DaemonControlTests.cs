@@ -8,6 +8,13 @@ public sealed class DaemonControlTests : IDisposable
 
     public DaemonControlTests() => Directory.CreateDirectory(_root);
 
+    [Fact]
+    public void StopEventPermissionDeniedReturnsFalseInsteadOfCrashingCaller()
+    {
+        Assert.False(DaemonControl.TrySignalWindowsStopEvent(
+            () => throw new UnauthorizedAccessException("access denied")));
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, true); } catch { }
