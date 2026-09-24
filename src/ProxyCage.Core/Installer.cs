@@ -478,6 +478,7 @@ public static class Installer
                      "ceho-engine.old", "ceho-engine.new", "sing-box.exe.old", "sing-box.exe.new",
                      "sing-box.old", "sing-box.new",
                      "libcronet.dll.old", "libcronet.dll.new", "libcronet.dll.dl",
+                     "libcronet.so", "libcronet.so.old", "libcronet.so.new", "libcronet.so.dl",
                      "config.before-*.json", "dbip-country-lite.mmdb",
                      "dbip-country-lite.mmdb.tmp", "dbip-country-lite.mmdb.gz.tmp",
                      "dbip-country-lite.mmdb.bundled.tmp", "sing-box-*.zip", "sing-box-*.tar.gz",

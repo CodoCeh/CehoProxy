@@ -19,6 +19,7 @@ public class FullUninstallCleanupTests
                          "ceho-engine.old", "ceho-engine.new",
                          "cehoproxy.before-1.2.69", "config.before-1.2.69.json",
                          "ceho-engine.exe.old", "sing-box.exe.new", "libcronet.dll.dl",
+                         "libcronet.so", "libcronet.so.old", "libcronet.so.new", "libcronet.so.dl",
                          "dbip-country-lite.mmdb", "dbip-country-lite.mmdb.tmp",
                          "dbip-country-lite.mmdb.gz.tmp", "dbip-country-lite.mmdb.bundled.tmp",
                          "sing-box-1.14.0-windows-amd64.zip", "sing-box-1.14.0-linux-amd64.tar.gz",
