@@ -151,7 +151,7 @@ public sealed class SingBoxNodeExitIpProbe : INodeExitIpProbe
             {
                 ["servers"] = new JsonArray
                 {
-                    new JsonObject { ["type"] = "udp", ["tag"] = "dns-direct", ["server"] = "1.1.1.1", ["detour"] = "direct" },
+                    new JsonObject { ["type"] = "udp", ["tag"] = "dns-direct", ["server"] = "1.1.1.1" },
                 },
                 ["final"] = "dns-direct",
                 ["strategy"] = "prefer_ipv4",

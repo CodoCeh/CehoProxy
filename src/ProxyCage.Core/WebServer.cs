@@ -363,6 +363,15 @@ public sealed class WebServer
             return doneMessage is null ? applied : $"{doneMessage} {applied}";
         }, rerunIfBusy: true);
 
+    private Job StopJob(CehoConfig cfg) =>
+        Jobs.Start(JobPower, Strings.T(cfg.Language, "job_stop"), async p =>
+        {
+            p.Stage(Strings.T(cfg.Language, "stage_stopping"), 40);
+            var err = OnStop is null ? "no control" : await OnStop();
+            if (err is not null) throw new InvalidOperationException(err);
+            return Strings.T(cfg.Language, "state_off");
+        });
+
     private async Task<(string? Message, bool IsError, string? JobId)> ApplyPostAsync(
         string path, Dictionary<string, string> f, CehoConfig cfg)
     {
@@ -437,7 +446,10 @@ public sealed class WebServer
                     var folder = f.GetValueOrDefault("folder", "");
                     cfg.Apps.RemoveAll(a => a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
                     Save(cfg);
-                    return (S("removed"), false, cfg.Apps.Count > 0 ? ApplyJob(cfg, restartIfRunning: true).Id : null);
+                    var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        : _state().Running && OnStop is not null ? StopJob(cfg).Id : null;
+                    return (S("removed"), false, job);
                 }
 
                 case "/sites/mode":
@@ -954,13 +966,7 @@ public sealed class WebServer
 
                 case "/control/stop":
                 {
-                    var job = Jobs.Start(JobPower, S("job_stop"), async p =>
-                    {
-                        p.Stage(S("stage_stopping"), 40);
-                        var err = OnStop is null ? "no control" : await OnStop();
-                        if (err is not null) throw new InvalidOperationException(err);
-                        return S("state_off");
-                    });
+                    var job = StopJob(cfg);
                     return (null, false, job.Id);
                 }
 
