@@ -65,7 +65,7 @@ public sealed class NodeCountryService
 
     public async Task<IReadOnlyList<NodeProbe.CountryRow>> RefreshAsync(
         IReadOnlyList<ProxyNode> nodes,
-        int probeTimeoutMs = 6000,
+        int probeTimeoutMs = 15000,
         Action<int, int>? progress = null,
         CancellationToken cancellationToken = default,
         bool forceProbe = false)

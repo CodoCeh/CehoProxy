@@ -165,7 +165,12 @@ public sealed class SingBoxNodeExitIpProbe : INodeExitIpProbe
                 outbound,
                 new JsonObject { ["type"] = "direct", ["tag"] = "direct" },
             },
-            ["route"] = new JsonObject { ["final"] = node.Tag, ["auto_detect_interface"] = true },
+            ["route"] = new JsonObject
+            {
+                ["final"] = node.Tag,
+                ["auto_detect_interface"] = true,
+                ["default_domain_resolver"] = new JsonObject { ["server"] = "dns-direct" },
+            },
         };
         return config.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
     }

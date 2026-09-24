@@ -23,6 +23,7 @@ public sealed class NodeCountryServiceTests
         Assert.Equal(2, config["outbounds"]!.AsArray().Count);
         Assert.Equal("vless", (string?)config["outbounds"]![0]!["type"]);
         Assert.Null(config["dns"]!["servers"]![0]!["detour"]);
+        Assert.Equal("dns-direct", (string?)config["route"]!["default_domain_resolver"]!["server"]);
     }
 
     [Fact]
