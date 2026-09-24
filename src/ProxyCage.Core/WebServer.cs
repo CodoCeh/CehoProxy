@@ -847,6 +847,15 @@ public sealed class WebServer
                         Save(fresh);
 
                         _countries = rows;
+                        var byKey = items.GroupBy(m => m.Node.Key, StringComparer.Ordinal)
+                            .ToDictionary(g => g.Key, g => g.First().Node, StringComparer.Ordinal);
+                        if (_pool is { } pool)
+                            foreach (var node in pool)
+                                if (byKey.TryGetValue(node.Key, out var measured))
+                                {
+                                    node.CountryCode = measured.CountryCode;
+                                    node.CountryName = measured.CountryName;
+                                }
                         return S("measure_done", rows.Count);
                     });
                     return (null, false, job.Id);
