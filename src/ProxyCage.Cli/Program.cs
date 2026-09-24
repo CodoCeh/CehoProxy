@@ -1918,8 +1918,16 @@ if (cmd is "daemon" or "web")
 
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
         report.Stage(Strings.T(c.Language, "upd_relaunch"), 95);
-        DaemonControl.SpawnUpdateRelaunchHelper(
-            Ceho.OwnExecutablePath, downloaded, Ceho.Root);
+        try
+        {
+            DaemonControl.SpawnUpdateRelaunchHelper(
+                Ceho.OwnExecutablePath, downloaded, Ceho.Root);
+        }
+        catch
+        {
+            try { await StartTunnel(null); } catch { }
+            throw;
+        }
         _ = Task.Run(async () =>
         {
             await Task.Delay(2500);

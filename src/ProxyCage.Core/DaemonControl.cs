@@ -269,6 +269,8 @@ public static class DaemonControl
         var startUnix = autostart
             ? (Os.IsLinux ? "systemctl start cehoproxy" : "launchctl kickstart -k system/ru.codoceh.cehoproxy")
             : $"nohup \"{exe}\" daemon >/dev/null 2>&1 &";
+        var launchdLabel = $"ru.codoceh.cehoproxy.update.{pid}";
+        var cleanupLaunchd = Os.IsMac && autostart ? $"launchctl remove {launchdLabel}" : ":";
         File.WriteAllText(sh, $$"""
             #!/bin/sh
             while kill -0 {{pid}} 2>/dev/null; do sleep 1; done
@@ -277,13 +279,64 @@ public static class DaemonControl
             if [ -f "{{exe}}" ]; then mv "{{exe}}" "{{backup}}"; fi
             if ! mv "{{downloaded}}" "{{exe}}"; then
               [ -f "{{exe}}" ] || mv "{{backup}}" "{{exe}}"
-              exit 1
+              {{startUnix}}
+              rm -f "{{sh}}"
+              {{cleanupLaunchd}}
+              exit 0
             fi
             chmod 755 "{{exe}}"
             {{startUnix}}
             rm -f "{{sh}}"
+            {{cleanupLaunchd}}
             """);
-        Process.Start(CreateUnixHelperStartInfo(sh, root));
+        if (Os.IsLinux && autostart)
+        {
+            // systemd завершает дочерние процессы службы вместе с daemon.
+            // Отдельный transient unit переживёт выход старой версии.
+            using var helper = Process.Start(CreateSystemdUpdateStartInfo(sh, root, pid))
+                ?? throw new InvalidOperationException("не удалось запустить помощник обновления");
+            if (!helper.WaitForExit(10000) || helper.ExitCode != 0)
+                throw new InvalidOperationException("systemd не запустил помощник обновления");
+        }
+        else if (Os.IsMac && autostart)
+        {
+            using var helper = Process.Start(CreateLaunchdUpdateStartInfo(sh, root, launchdLabel))
+                ?? throw new InvalidOperationException("не удалось запустить помощник обновления");
+            if (!helper.WaitForExit(10000) || helper.ExitCode != 0)
+                throw new InvalidOperationException("launchd не запустил помощник обновления");
+        }
+        else
+        {
+            Process.Start(CreateUnixHelperStartInfo(sh, root));
+        }
+    }
+
+    internal static ProcessStartInfo CreateSystemdUpdateStartInfo(string helperPath, string workingDirectory, int pid)
+    {
+        var startInfo = new ProcessStartInfo("systemd-run")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = workingDirectory,
+        };
+        startInfo.ArgumentList.Add($"--unit=cehoproxy-update-{pid}");
+        startInfo.ArgumentList.Add("--collect");
+        startInfo.ArgumentList.Add("/bin/sh");
+        startInfo.ArgumentList.Add(helperPath);
+        return startInfo;
+    }
+
+    internal static ProcessStartInfo CreateLaunchdUpdateStartInfo(string helperPath, string workingDirectory, string label)
+    {
+        var startInfo = new ProcessStartInfo("launchctl")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = workingDirectory,
+        };
+        foreach (var arg in new[] { "submit", "-l", label, "-p", "/bin/sh", "--", "/bin/sh", helperPath })
+            startInfo.ArgumentList.Add(arg);
+        return startInfo;
     }
 
     internal static ProcessStartInfo CreateUnixHelperStartInfo(string helperPath, string workingDirectory)
