@@ -11,13 +11,26 @@ public sealed class DbIpLiteCountryDatabase : INodeCountryLookup, IDisposable
     private const string DownloadRoot = "https://download.db-ip.com/free";
     private readonly string _root;
     private readonly string _path;
+    private readonly Func<HttpClient> _httpClientFactory;
+    private readonly string _downloadRoot;
+    private readonly TimeSpan _downloadTimeout;
     private readonly object _readerLock = new();
     private Reader? _reader;
 
     public DbIpLiteCountryDatabase(string root)
+        : this(root, () => DirectHttp.CreateClient(TimeSpan.FromSeconds(15)), DownloadRoot,
+            TimeSpan.FromSeconds(15))
+    {
+    }
+
+    internal DbIpLiteCountryDatabase(
+        string root, Func<HttpClient> httpClientFactory, string downloadRoot, TimeSpan downloadTimeout)
     {
         _root = root;
         _path = Path.Combine(root, "dbip-country-lite.mmdb");
+        _httpClientFactory = httpClientFactory;
+        _downloadRoot = downloadRoot.TrimEnd('/');
+        _downloadTimeout = downloadTimeout;
         TryOpenExisting();
     }
 
@@ -39,22 +52,24 @@ public sealed class DbIpLiteCountryDatabase : INodeCountryLookup, IDisposable
         var month = DateTimeOffset.UtcNow.ToString("yyyy-MM");
         if (IsAvailable && Version == month) return true;
         Directory.CreateDirectory(_root);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_downloadTimeout);
         for (var offset = 0; offset <= 2; offset++)
         {
             var release = DateTimeOffset.UtcNow.AddMonths(-offset).ToString("yyyy-MM");
-            var url = $"{DownloadRoot}/dbip-country-lite-{release}.mmdb.gz";
+            var url = $"{_downloadRoot}/dbip-country-lite-{release}.mmdb.gz";
             var compressed = _path + ".gz.tmp";
             var unpacked = _path + ".tmp";
             try
             {
-                using var http = DirectHttp.CreateClient(TimeSpan.FromSeconds(15));
-                await using (var source = await http.GetStreamAsync(url, cancellationToken))
+                using var http = _httpClientFactory();
+                await using (var source = await http.GetStreamAsync(url, deadline.Token))
                 await using (var destination = File.Create(compressed))
-                    await source.CopyToAsync(destination, cancellationToken);
+                    await source.CopyToAsync(destination, deadline.Token);
                 await using (var source = File.OpenRead(compressed))
                 await using (var gzip = new GZipStream(source, CompressionMode.Decompress))
                 await using (var destination = File.Create(unpacked))
-                    await gzip.CopyToAsync(destination, cancellationToken);
+                    await gzip.CopyToAsync(destination, deadline.Token);
                 using (var verify = new Reader(unpacked, FileAccessMode.Memory))
                     _ = verify.Find<CountryRecord>(IPAddress.Loopback);
 
@@ -69,6 +84,7 @@ public sealed class DbIpLiteCountryDatabase : INodeCountryLookup, IDisposable
                 return true;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) { return IsAvailable; }
             catch { }
             finally
             {
