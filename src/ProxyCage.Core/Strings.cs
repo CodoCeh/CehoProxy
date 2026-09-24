@@ -1125,6 +1125,9 @@ public static class Strings
             "Неизвестная команда: {0}. Запустите chp без аргументов, чтобы увидеть список.",
             "Unknown command: {0}. Run chp with no arguments to see the list."),
         ["country_unknown"] = new("страна не определена", "country unknown"),
+        ["country_db_check"] = new("Проверяю базу стран…", "Checking country database…"),
+        ["country_probe"] = new("Определяю страны выходных IP…", "Resolving countries from exit IPs…"),
+        ["geoip_attribution"] = new("Геоданные: DB-IP.com", "IP geolocation by DB-IP.com"),
         ["ask_skip"] = new("Enter — пропустить", "Enter to skip"),
         ["ask_or_path"] = new(
             "номера через запятую или путь к программе",

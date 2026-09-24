@@ -7,6 +7,10 @@ namespace ProxyCage.Cli;
 
 public static class Ceho
 {
+    private static readonly SemaphoreSlim CountryDatabaseGate = new(1, 1);
+    private static DbIpLiteCountryDatabase? _countryDatabase;
+    private static NodeCountryService? _nodeCountryService;
+
     public static bool Quiet { get; set; }
 
     public static string Root =>
@@ -35,6 +39,31 @@ public static class Ceho
 
     private static int SubscriptionTimeout(int timeoutSeconds) =>
         Math.Max(MinSubscriptionTimeoutSeconds, timeoutSeconds);
+
+    private static async Task<NodeCountryService?> GetNodeCountryServiceAsync(
+        IStageReport? report, string lang, CancellationToken cancellationToken = default)
+    {
+        await CountryDatabaseGate.WaitAsync(cancellationToken);
+        try
+        {
+            _countryDatabase ??= new DbIpLiteCountryDatabase(Path.Combine(Root, "geoip"));
+            report?.Stage(Strings.T(lang, "country_db_check"), 94);
+            await _countryDatabase.EnsureCurrentAsync(cancellationToken);
+            if (!_countryDatabase.IsAvailable) return null;
+
+            if (_nodeCountryService is null
+                || !string.Equals(_nodeCountryService.DatabaseVersion, _countryDatabase.Version, StringComparison.Ordinal))
+            {
+                _nodeCountryService = new NodeCountryService(
+                    new SingBoxNodeExitIpProbe(SingBoxPath, Root),
+                    _countryDatabase,
+                    Path.Combine(Root, "node-country-cache.json"),
+                    _countryDatabase.Version);
+            }
+            return _nodeCountryService;
+        }
+        finally { CountryDatabaseGate.Release(); }
+    }
 
     private static HttpClient MakeClient(
         string? proxy = null,
@@ -361,7 +390,46 @@ public static class Ceho
         if (pool.Count == 0)
             throw new PoolEmptyException(Strings.T(cfg.Language, "pool_empty"));
 
+        // Subscription labels are hints only. Countries used in policy must be verified
+        // against the egress IP observed through each individual outbound.
+        var countryService = await GetNodeCountryServiceAsync(report, cfg.Language);
+        if (countryService is null)
+        {
+            foreach (var node in pool)
+            {
+                node.CountryCode = null;
+                node.CountryName = null;
+            }
+            Log.Warn("геобаза стран недоступна; страны нод оставлены неопределёнными");
+        }
+        else
+        {
+            report?.Stage(Strings.T(cfg.Language, "country_probe"), 95);
+            await countryService.RefreshAsync(pool, progress: (current, total) =>
+                report?.Stage($"{Strings.T(cfg.Language, "country_probe")} {current}/{total}",
+                    total == 0 ? 96 : 95 + current / total));
+        }
+
         return pool;
+    }
+
+    public static async Task<IReadOnlyList<NodeProbe.CountryRow>> RefreshNodeCountriesAsync(
+        IReadOnlyList<ProxyNode> nodes, IStageReport? report = null, string lang = "ru")
+    {
+        var service = await GetNodeCountryServiceAsync(report, lang);
+        if (service is null)
+        {
+            foreach (var node in nodes)
+            {
+                node.CountryCode = null;
+                node.CountryName = null;
+            }
+            return NodeCountryService.Group(nodes);
+        }
+
+        return await service.RefreshAsync(nodes, progress: (current, total) =>
+            report?.Stage($"{Strings.T(lang, "country_probe")} {current}/{total}",
+                total == 0 ? 96 : 95 + current / total), forceProbe: true);
     }
 
     public static async Task<string> ApplyAsync(IStageReport? report = null)
@@ -378,16 +446,25 @@ public static class Ceho
         return moved is null ? rebuilt : $"{moved} {rebuilt}";
     }
 
-    public static Task<(string? Country, string? Ip)> ProbeExitAsync(int mixedPort) => Task.Run(() =>
+    public static Task<(string? Country, string? Ip)> ProbeExitAsync(int mixedPort) => Task.Run(async () =>
     {
         var curl = Os.ResolveCurl();
-        if (curl is null) return (null, null);
+        if (curl is null) return ((string?)null, (string?)null);
 
         var (code, output) = Os.Run(curl,
-            $"-s --max-time 15 -x socks5h://127.0.0.1:{mixedPort} http://ip-api.com/json", 20000);
-        if (code != 0) return (null, null);
+            $"-s --max-time 15 -x socks5h://127.0.0.1:{mixedPort} https://api.ipify.org", 20000);
+        if (code != 0) return ((string?)null, (string?)null);
+        var ipText = output.Trim();
+        if (!IPAddress.TryParse(ipText, out var address)) return ((string?)null, (string?)null);
 
-        return (Extract(output, "countryCode"), Extract(output, "query"));
+        await CountryDatabaseGate.WaitAsync();
+        try
+        {
+            _countryDatabase ??= new DbIpLiteCountryDatabase(Path.Combine(Root, "geoip"));
+            await _countryDatabase.EnsureCurrentAsync();
+            return (_countryDatabase.LookupCountry(address), (string?)ipText);
+        }
+        finally { CountryDatabaseGate.Release(); }
     });
 
     private static async Task<bool> CheckSubscriptionLiveAsync(int mixedPort, string checkUrl, int timeoutSeconds = 15)
@@ -591,15 +668,6 @@ public static class Ceho
         var ip = tunAddress.Split('/')[0];
         var lastDot = ip.LastIndexOf('.');
         return lastDot > 0 ? ip[..(lastDot + 1)] : ip;
-    }
-
-    private static string? Extract(string json, string key)
-    {
-        var i = json.IndexOf($"\"{key}\":\"", StringComparison.Ordinal);
-        if (i < 0) return null;
-        i += key.Length + 4;
-        var j = json.IndexOf('"', i);
-        return j < 0 ? null : json[i..j];
     }
 
     public static Task<bool> CheckSubscriptionLiveAsync(int mixedPort, string checkUrl) => Task.Run(() =>

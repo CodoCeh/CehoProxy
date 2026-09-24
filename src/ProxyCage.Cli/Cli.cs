@@ -457,6 +457,8 @@ public static class Cli
             Console.WriteLine($"  {i + 1,2}. [{(CountryEnabled(cfg, code) ? "x" : " ")}] " +
                               $"{FlagCell(code)} {code,-3} {name,-22} " +
                               S(cfg, "col_nodes").ToLowerInvariant() + $": {count}");
+        Console.WriteLine("  " + S(cfg, "geoip_attribution") +
+                          " (https://db-ip.com; CC BY 4.0 https://creativecommons.org/licenses/by/4.0/)");
     }
 
     /// <summary>

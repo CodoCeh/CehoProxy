@@ -819,8 +819,6 @@ public sealed class WebServer
                 case "/countries/refresh":
                 {
                     if (OnCountries is null) return (S("measure_blocked"), true, null);
-                    if (NodeProbe.MeasureBlocked(cfg.TunAddress, _state().Running))
-                        return (S("measure_blocked"), true, null);
 
                     var job = Jobs.Start(JobMeasure, S("job_measure"), async p =>
                     {
@@ -1172,6 +1170,9 @@ public sealed class WebServer
           .Append("\" target=_blank rel=noopener>").Append(E(S("telegram"))).Append("</a>")
           .Append("<a href=\"").Append(E(Brand.RepoUrl(cfg.UpdateRepo)))
           .Append("\" target=_blank rel=noopener>").Append(E(S("product_page"))).Append("</a>")
+          .Append("<a href=\"https://db-ip.com\" target=_blank rel=noopener>")
+          .Append(E(S("geoip_attribution"))).Append("</a>")
+          .Append("<a href=\"https://creativecommons.org/licenses/by/4.0/\" target=_blank rel=noopener>CC BY 4.0</a>")
           .Append("<span>").Append(E(S("footer_local"))).Append("</span></span></footer>");
         sb.Append("</div>");
 
