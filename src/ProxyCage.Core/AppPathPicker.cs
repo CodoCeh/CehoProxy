@@ -169,11 +169,17 @@ try {{
             return false;
 
         var (runCode, _) = Os.Run("schtasks.exe", $"/Run /TN {TaskName}", 15_000);
+        if (runCode != 0) CleanupTask();
         return runCode == 0;
     }
 
     private static void CleanupTask() =>
         Os.Run("schtasks.exe", $"/Delete /TN {TaskName} /F", 10_000);
+
+    public static void CleanupForUninstall()
+    {
+        if (Os.IsWindows) CleanupTask();
+    }
 
     private static string? WaitForResult(string resultPath, int timeoutMs)
     {

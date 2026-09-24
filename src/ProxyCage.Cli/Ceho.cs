@@ -8,6 +8,9 @@ namespace ProxyCage.Cli;
 public static class Ceho
 {
     private static readonly SemaphoreSlim CountryDatabaseGate = new(1, 1);
+    private static readonly SemaphoreSlim CountryRefreshGate = new(1, 1);
+    private static readonly SemaphoreSlim CountryExitProbeGate = new(1, 1);
+    private static readonly CancellationTokenSource CountryRefreshCancellation = new();
     private static DbIpLiteCountryDatabase? _countryDatabase;
     private static NodeCountryService? _nodeCountryService;
 
@@ -18,6 +21,29 @@ public static class Ceho
 
     public static string ConfigPath => Path.Combine(Root, "config.json");
     public static string RuntimeConfigPath => Path.Combine(Root, "singbox.json");
+
+    public static async Task DisposeCountryDatabaseAsync()
+    {
+        CountryRefreshCancellation.Cancel();
+        await CountryRefreshGate.WaitAsync();
+        try
+        {
+            await CountryExitProbeGate.WaitAsync();
+            try
+            {
+                await CountryDatabaseGate.WaitAsync();
+                try
+                {
+                    _nodeCountryService = null;
+                    _countryDatabase?.Dispose();
+                    _countryDatabase = null;
+                }
+                finally { CountryDatabaseGate.Release(); }
+            }
+            finally { CountryExitProbeGate.Release(); }
+        }
+        finally { CountryRefreshGate.Release(); }
+    }
 
     public static string SingBoxPath =>
         Os.ResolveSingBox(Root) ?? Path.Combine(Root, Os.EngineFileName);
@@ -405,9 +431,15 @@ public static class Ceho
         else
         {
             report?.Stage(Strings.T(cfg.Language, "country_probe"), 95);
-            await countryService.RefreshAsync(pool, progress: (current, total) =>
-                report?.Stage($"{Strings.T(cfg.Language, "country_probe")} {current}/{total}",
-                    total == 0 ? 96 : 95 + current / total));
+            await CountryRefreshGate.WaitAsync(CountryRefreshCancellation.Token);
+            try
+            {
+                await countryService.RefreshAsync(pool, progress: (current, total) =>
+                    report?.Stage($"{Strings.T(cfg.Language, "country_probe")} {current}/{total}",
+                        total == 0 ? 96 : 95 + current / total),
+                    cancellationToken: CountryRefreshCancellation.Token);
+            }
+            finally { CountryRefreshGate.Release(); }
         }
 
         return pool;
@@ -427,9 +459,15 @@ public static class Ceho
             return NodeCountryService.Group(nodes);
         }
 
-        return await service.RefreshAsync(nodes, progress: (current, total) =>
-            report?.Stage($"{Strings.T(lang, "country_probe")} {current}/{total}",
-                total == 0 ? 96 : 95 + current / total), forceProbe: true);
+        await CountryRefreshGate.WaitAsync(CountryRefreshCancellation.Token);
+        try
+        {
+            return await service.RefreshAsync(nodes, progress: (current, total) =>
+                    report?.Stage($"{Strings.T(lang, "country_probe")} {current}/{total}",
+                        total == 0 ? 96 : 95 + current / total),
+                cancellationToken: CountryRefreshCancellation.Token, forceProbe: true);
+        }
+        finally { CountryRefreshGate.Release(); }
     }
 
     public static async Task<string> ApplyAsync(IStageReport? report = null)
@@ -448,23 +486,31 @@ public static class Ceho
 
     public static Task<(string? Country, string? Ip)> ProbeExitAsync(int mixedPort) => Task.Run(async () =>
     {
-        var curl = Os.ResolveCurl();
-        if (curl is null) return ((string?)null, (string?)null);
-
-        var (code, output) = Os.Run(curl,
-            $"-s --max-time 15 -x socks5h://127.0.0.1:{mixedPort} https://api.ipify.org", 20000);
-        if (code != 0) return ((string?)null, (string?)null);
-        var ipText = output.Trim();
-        if (!IPAddress.TryParse(ipText, out var address)) return ((string?)null, (string?)null);
-
-        await CountryDatabaseGate.WaitAsync();
+        try { await CountryExitProbeGate.WaitAsync(CountryRefreshCancellation.Token); }
+        catch (OperationCanceledException) { return ((string?)null, (string?)null); }
         try
         {
-            _countryDatabase ??= new DbIpLiteCountryDatabase(Path.Combine(Root, "geoip"));
-            await _countryDatabase.EnsureCurrentAsync();
-            return (_countryDatabase.LookupCountry(address), (string?)ipText);
+            var curl = Os.ResolveCurl();
+            if (curl is null) return ((string?)null, (string?)null);
+
+            var (code, output) = Os.Run(curl,
+                $"-s --max-time 15 -x socks5h://127.0.0.1:{mixedPort} https://api.ipify.org", 20000);
+            if (code != 0 || CountryRefreshCancellation.IsCancellationRequested)
+                return ((string?)null, (string?)null);
+            var ipText = output.Trim();
+            if (!IPAddress.TryParse(ipText, out var address)) return ((string?)null, (string?)null);
+
+            await CountryDatabaseGate.WaitAsync(CountryRefreshCancellation.Token);
+            try
+            {
+                _countryDatabase ??= new DbIpLiteCountryDatabase(Path.Combine(Root, "geoip"));
+                await _countryDatabase.EnsureCurrentAsync(CountryRefreshCancellation.Token);
+                return (_countryDatabase.LookupCountry(address), (string?)ipText);
+            }
+            finally { CountryDatabaseGate.Release(); }
         }
-        finally { CountryDatabaseGate.Release(); }
+        catch (OperationCanceledException) { return ((string?)null, (string?)null); }
+        finally { CountryExitProbeGate.Release(); }
     });
 
     private static async Task<bool> CheckSubscriptionLiveAsync(int mixedPort, string checkUrl, int timeoutSeconds = 15)

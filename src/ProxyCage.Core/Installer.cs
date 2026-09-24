@@ -275,9 +275,26 @@ public static class Installer
         var bin = Path.Combine(home, "bin");
         if (!Directory.Exists(bin)) return;
         LinkShortCommand(bin, target);
+        RecordUserAlias(target, Path.Combine(bin, "chp"));
         var user = Environment.GetEnvironmentVariable("SUDO_USER");
         if (!string.IsNullOrWhiteSpace(user) && user != "root")
             Os.Run("chown", $"-h {user} {Path.Combine(bin, "chp")}");
+    }
+
+    internal static void RecordUserAlias(string systemLink, string userAlias)
+    {
+        try
+        {
+            var targetLink = new FileInfo(systemLink).LinkTarget;
+            if (targetLink is not null)
+            {
+                var binary = ResolveLinkTargetPath(systemLink, targetLink);
+                var root = Path.GetDirectoryName(binary);
+                if (!string.IsNullOrEmpty(root))
+                    File.WriteAllText(Path.Combine(root, "user-alias.path"), Path.GetFullPath(userAlias));
+            }
+        }
+        catch { }
     }
 
     public static void LinkShortCommand(string directory, string target)
@@ -348,6 +365,7 @@ public static class Installer
     {
         if (Os.IsWindows)
         {
+            AppPathPicker.CleanupForUninstall();
             try
             {
                 foreach (var leftover in Directory.GetFiles(root, "unins*.*"))
@@ -375,8 +393,18 @@ public static class Installer
         }
         else
         {
+            try
+            {
+                var recordedAlias = Path.Combine(root, "user-alias.path");
+                if (File.Exists(recordedAlias))
+                    RemoveUserAlias(File.ReadAllText(recordedAlias).Trim(), "/usr/local/bin/chp", root);
+            }
+            catch { }
+            var home = InvokingUserHome();
+            if (home is not null)
+                RemoveUserAlias(Path.Combine(home, "bin", "chp"), "/usr/local/bin/chp", root);
             foreach (var link in new[] { "/usr/local/bin/chp", "/usr/local/bin/cehoproxy" })
-                try { if (File.Exists(link)) File.Delete(link); } catch { }
+                RemoveOwnedAlias(link, root);
         }
 
         foreach (var name in new[] { "chp.cmd", "chp" })
@@ -386,6 +414,91 @@ public static class Installer
                 if (File.Exists(f)) File.Delete(f);
             }
             catch { }
+    }
+
+    internal static void RemoveOwnedAlias(string link, string root)
+    {
+        try
+        {
+            var info = new FileInfo(link);
+            var target = info.LinkTarget;
+            if (target is null) return;
+            var resolved = Path.GetFullPath(Path.IsPathRooted(target)
+                ? target
+                : Path.Combine(Path.GetDirectoryName(link)!, target));
+            var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+            var binary = Path.GetFullPath(BinaryPath(root));
+            if (resolved.Equals(binary, StringComparison.Ordinal) ||
+                resolved.Equals(Path.Combine(fullRoot, "chp"), StringComparison.Ordinal))
+                File.Delete(link);
+        }
+        catch { }
+    }
+
+    internal static void RemoveUserAlias(string link, string systemLink, string root)
+    {
+        try
+        {
+            var target = new FileInfo(link).LinkTarget;
+            if (target is null || !IsAliasForRoot(systemLink, root)) return;
+            if (ResolveLinkTargetPath(link, target).Equals(Path.GetFullPath(systemLink), StringComparison.Ordinal))
+                File.Delete(link);
+        }
+        catch { }
+    }
+
+    private static string ResolveLinkTargetPath(string link, string target) =>
+        Path.GetFullPath(Path.IsPathRooted(target) ? target : Path.Combine(Path.GetDirectoryName(link)!, target));
+
+    private static bool IsAliasForRoot(string link, string root)
+    {
+        try
+        {
+            var target = new FileInfo(link).LinkTarget;
+            if (target is null) return false;
+            var resolved = ResolveLinkTargetPath(link, target);
+            return resolved.Equals(Path.GetFullPath(BinaryPath(root)), StringComparison.Ordinal) ||
+                   resolved.Equals(Path.GetFullPath(Path.Combine(root, "chp")), StringComparison.Ordinal);
+        }
+        catch { return false; }
+    }
+
+    internal static void RemoveRuntimeFiles(string root)
+    {
+        if (!Directory.Exists(root)) return;
+
+        foreach (var pattern in new[]
+                 {
+                     "singbox.json", "hwid.txt", "node-country-cache.json",
+                     "node-country-cache.json.tmp", "tun-devices.txt",
+                     "cehoproxy.log", "cehoproxy.log.*", "sing-box.log",
+                     "sing-box.log.*", "crash-*.log", "cehoproxy.exe.old",
+                     "cehoproxy.exe.new", "cehoproxy.old", "cehoproxy.new",
+                     "cehoproxy.before-*", "ceho-engine.exe.old", "ceho-engine.exe.new",
+                     "ceho-engine.old", "ceho-engine.new", "sing-box.exe.old", "sing-box.exe.new",
+                     "sing-box.old", "sing-box.new",
+                     "libcronet.dll.old", "libcronet.dll.new", "libcronet.dll.dl",
+                     "config.before-*.json", "dbip-country-lite.mmdb",
+                     "dbip-country-lite.mmdb.tmp", "dbip-country-lite.mmdb.gz.tmp",
+                     "dbip-country-lite.mmdb.bundled.tmp", "sing-box-*.zip", "sing-box-*.tar.gz",
+                     "relaunch.ps1", "relaunch.sh",
+                     "update-relaunch.ps1", "update-relaunch.sh", "pick-app.ps1",
+                     "pick-app-launch.vbs", "pick-app-result.txt", "user-alias.path",
+                     ".write-probe", ".write-test"
+                 })
+        {
+            string[] files;
+            try { files = Directory.GetFiles(root, pattern); }
+            catch { continue; }
+            foreach (var file in files)
+                try { File.Delete(file); } catch { }
+        }
+
+        foreach (var name in new[] { "geo-probes", "geoip", "engine-tmp" })
+        {
+            var path = Path.Combine(root, name);
+            try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch { }
+        }
     }
 
     public static async Task<string> DownloadEngineAsync(string root, Action<string> log, string lang = "ru")

@@ -1329,17 +1329,13 @@ switch (cmd)
         try
         {
             foreach (var f in Directory.GetFiles(Ceho.Root, "sub-*.txt")) File.Delete(f);
-            foreach (var f in Directory.GetFiles(Ceho.Root, "*.log")) File.Delete(f);
-
-            // Резервная копия прошлой версии больше ни для чего не нужна, а сообщение
-            // об удалении обещает, что рядом остался только сам файл программы.
-            foreach (var f in Directory.GetFiles(Ceho.Root, "*.old")) File.Delete(f);
-
             var pointer = Path.Combine(Ceho.Root, "panel.port");
             if (File.Exists(pointer)) File.Delete(pointer);
         }
         catch { }
 
+        await Ceho.DisposeCountryDatabaseAsync();
+        Installer.RemoveRuntimeFiles(Ceho.Root);
         Installer.Remove(Ceho.Root, Console.WriteLine, cfg.Language);
 
         foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName, Installer.CronetFileName }.Distinct())
@@ -1356,7 +1352,9 @@ switch (cmd)
         {
             try
             {
-                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"{Ceho.Root}\"")
+                var binary = Installer.BinaryPath(Ceho.Root);
+                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                    $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & rmdir /q \"{Ceho.Root}\"")
                 {
                     CreateNoWindow = true,
                     UseShellExecute = false
@@ -1365,7 +1363,7 @@ switch (cmd)
             }
             catch { }
         }
-        else if (args.Contains("--purge"))
+        else
         {
             try
             {
@@ -1957,16 +1955,17 @@ if (cmd is "daemon" or "web")
             TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", _ => {});
             TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress, Ceho.Root);
             DaemonControl.ClearRunning(Ceho.Root);
+            await Ceho.DisposeCountryDatabaseAsync();
             try
             {
                 foreach (var f in new[] { Ceho.ConfigPath, Ceho.RuntimeConfigPath })
                     if (File.Exists(f)) File.Delete(f);
                 foreach (var f in Directory.GetFiles(Ceho.Root, "sub-*.txt")) File.Delete(f);
-                foreach (var f in Directory.GetFiles(Ceho.Root, "*.log")) File.Delete(f);
                 var pointer = Path.Combine(Ceho.Root, "panel.port");
                 if (File.Exists(pointer)) File.Delete(pointer);
             }
             catch { }
+            Installer.RemoveRuntimeFiles(Ceho.Root);
             Installer.Remove(Ceho.Root, _ => {}, cfg.Language);
             foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName, Installer.CronetFileName }.Distinct())
             {
@@ -1978,12 +1977,25 @@ if (cmd is "daemon" or "web")
             {
                 try
                 {
-                    var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"{Ceho.Root}\"")
+                    var binary = Installer.BinaryPath(Ceho.Root);
+                    var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                        $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & rmdir /q \"{Ceho.Root}\"")
                     {
                         CreateNoWindow = true,
                         UseShellExecute = false
                     };
                     System.Diagnostics.Process.Start(psi);
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    var self = Installer.BinaryPath(Ceho.Root);
+                    if (File.Exists(self)) File.Delete(self);
+                    if (Directory.Exists(Ceho.Root) && Directory.GetFileSystemEntries(Ceho.Root).Length == 0)
+                        Directory.Delete(Ceho.Root);
                 }
                 catch { }
             }
