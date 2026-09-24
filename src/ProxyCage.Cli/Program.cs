@@ -171,6 +171,22 @@ if (cmd == "version")
     return 0;
 }
 
+if (cmd == "_prepare-install")
+{
+    if (!OperatingSystem.IsWindows() || !Os.IsElevated()) return 1;
+
+    Autostart.StopService();
+    DaemonControl.RequestStop(Ceho.Root);
+    DaemonControl.WaitForExit(Ceho.Root, 8000);
+    if (!DaemonControl.StopInstalledWindowsDaemons(Ceho.Root)) return 1;
+
+    TunCleanup.ReleaseOurs(
+        Ceho.RuntimeConfigPath, cfg0.TunAddress, Ceho.Root,
+        _ => { }, attempts: 3, aggressive: true, beforeStart: TunCleanup.Devices());
+    DaemonControl.ClearRunning(Ceho.Root);
+    return 0;
+}
+
 if (cmd is "wrap" or "unwrap" or "wrapped")
 {
     if (cmd == "wrapped")
@@ -1293,6 +1309,14 @@ switch (cmd)
         Autostart.Purge();
         if (DaemonControl.RequestStop(Ceho.Root))
             await Task.Delay(TimeSpan.FromSeconds(8));
+
+        // schtasks /end может оставить отдельный daemon живым без задания и pid-файла.
+        // Не удаляем настройки, пока установленный файл всё ещё занят нашим процессом.
+        if (OperatingSystem.IsWindows() && !DaemonControl.StopInstalledWindowsDaemons(Ceho.Root))
+        {
+            Console.Error.WriteLine("Не удалось остановить CehoProxy; удаление отменено.");
+            return 1;
+        }
 
         TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
         TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", Console.WriteLine);

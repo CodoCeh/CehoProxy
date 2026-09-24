@@ -1,5 +1,5 @@
 #define AppName "CehoProxy"
-#define AppVersion "1.2.66"
+#define AppVersion "1.2.67"
 #define AppPublisher "КодоЦех"
 #define AppUrl "https://codoceh.ru"
 #define RepoUrl "https://github.com/CodoCeh/CehoProxy"
@@ -72,6 +72,20 @@ Type: files; Name: "{app}\*.log"
 Type: dirifempty; Name: "{app}"
 
 [Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ExitCode: Integer;
+begin
+  Result := '';
+  if not FileExists(ExpandConstant('{app}\cehoproxy.exe')) then
+    Exit;
+
+  ExtractTemporaryFile('cehoproxy.exe');
+  if not Exec(ExpandConstant('{tmp}\cehoproxy.exe'), '_prepare-install',
+    ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) or (ExitCode <> 0) then
+    Result := 'Не удалось остановить работающий CehoProxy. Установка отменена без удаления настроек.';
+end;
+
 // Сам деинсталлятор удалить себя не может: он в этот момент работает. Windows умеет
 // удалить файл при следующей перезагрузке — просим её об этом, иначе после «полного
 // удаления» в папке навсегда остаётся четырёхмегабайтный файл. Поймано живьём.

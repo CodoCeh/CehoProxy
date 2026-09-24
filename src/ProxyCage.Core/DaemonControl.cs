@@ -47,6 +47,34 @@ public static class DaemonControl
 
     public static bool IsRunning(string root) => RunningPid(root) is not null;
 
+    [SupportedOSPlatform("windows")]
+    public static bool StopInstalledWindowsDaemons(string root)
+    {
+        var installed = Os.RealPath(Installer.BinaryPath(root));
+        foreach (var process in Process.GetProcessesByName("cehoproxy"))
+        {
+            using (process)
+            {
+                if (process.Id == Environment.ProcessId) continue;
+
+                string? path;
+                try { path = process.MainModule?.FileName; }
+                catch { continue; }
+                if (path is null || !Os.RealPath(path).Equals(installed, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    if (!process.HasExited) process.Kill();
+                    if (!process.WaitForExit(5000)) return false;
+                }
+                catch (InvalidOperationException) { }
+                catch { return false; }
+            }
+        }
+        return true;
+    }
+
     public static bool IsStarting(string root, TimeSpan? gracePeriod = null)
     {
         try
