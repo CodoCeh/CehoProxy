@@ -169,6 +169,10 @@ public static class Autostart
         }
         catch (Exception ex) { return $"не удалось записать {PlistPath}: {ex.Message}"; }
 
+        // Уже работающий ручной daemon удерживает pid-файл: bootstrap сейчас
+        // запустил бы конкурирующий экземпляр в цикле. Plist подхватится при reboot.
+        if (DaemonControl.IsRunning(workingDir)) return null;
+
         Os.Run("launchctl", $"bootout system/{LaunchdLabel}");
         var (code, output) = Os.Run("launchctl", $"bootstrap system {PlistPath}");
         return code == 0 ? null : $"не удалось включить автозапуск: {output}";
