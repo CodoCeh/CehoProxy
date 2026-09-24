@@ -9,6 +9,30 @@ public sealed class CountryDatabaseDownloadCollection { }
 public sealed class DbIpLiteCountryDatabaseTests
 {
     [Fact]
+    public async Task Bundled_database_is_readable_and_survives_reopening()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cehoproxy-geo-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using (var database = new DbIpLiteCountryDatabase(root))
+            {
+                await database.InstallBundledAsync();
+                Assert.True(database.IsAvailable);
+                Assert.Equal("2026-09", database.Version);
+                Assert.Equal("US", database.LookupCountry(IPAddress.Parse("8.8.8.8")));
+            }
+            using var reopened = new DbIpLiteCountryDatabase(root);
+            Assert.True(reopened.IsAvailable);
+            Assert.Equal("2026-09", reopened.Version);
+            Assert.Equal("US", reopened.LookupCountry(IPAddress.Parse("8.8.8.8")));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task EnsureCurrentAsync_times_out_if_response_body_stalls_after_headers()
     {
         var root = Path.Combine(Path.GetTempPath(), "cehoproxy-geo-test-" + Guid.NewGuid().ToString("N"));

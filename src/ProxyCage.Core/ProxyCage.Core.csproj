@@ -10,6 +10,7 @@
     <InternalsVisibleTo Include="ProxyCage.Core.Tests" />
     <InternalsVisibleTo Include="cehoproxy" />
     <PackageReference Include="MaxMind.Db" Version="5.2.0" />
+    <EmbeddedResource Include="Assets/dbip-country-lite-2026-09.mmdb.gz" />
   </ItemGroup>
 
 </Project>
