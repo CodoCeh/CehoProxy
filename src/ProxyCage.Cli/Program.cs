@@ -1889,18 +1889,10 @@ if (cmd is "daemon" or "web")
                 StopTunnel();
                 return TunnelShutdown.Release(c, Ceho.Root, Ceho.RuntimeConfigPath, m => report.Note(m));
             });
-        if (!shut.Ok) return Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot");
+        if (!shut.Ok)
+            throw new InvalidOperationException(Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot"));
 
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
-        try
-        {
-            report.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);
-            await Ceho.ApplyAsync(report);
-        }
-        catch (Exception ex)
-        {
-            return ex.Message;
-        }
         report.Stage(Strings.T(c.Language, "upd_relaunch"), 95);
         DaemonControl.SpawnUpdateRelaunchHelper(
             Ceho.OwnExecutablePath, downloaded, Ceho.Root);
