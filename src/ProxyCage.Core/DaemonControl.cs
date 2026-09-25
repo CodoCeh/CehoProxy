@@ -355,6 +355,9 @@ public static class DaemonControl
             """;
     }
 
+    internal static void WriteWindowsUpdateRelaunchScript(string path, string script) =>
+        File.WriteAllText(path, script, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
     public static void SpawnUpdateRelaunchHelper(
         string exe, string downloaded, string root, string expectedVersion, string jobId,
         bool inheritConsole = false)
@@ -366,7 +369,7 @@ public static class DaemonControl
         if (Os.IsWindows)
         {
             var script = Path.Combine(root, "update-relaunch.ps1");
-            File.WriteAllText(script, WindowsUpdateRelaunchScript(
+            WriteWindowsUpdateRelaunchScript(script, WindowsUpdateRelaunchScript(
                 pid, exe, downloaded, root, autostart, expectedVersion, jobId,
                 UpdateHandoff.PathFor(root)));
             using var helper = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")

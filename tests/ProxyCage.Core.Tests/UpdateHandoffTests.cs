@@ -90,6 +90,23 @@ public sealed class UpdateHandoffTests
     }
 
     [Fact]
+    public void Windows_helper_script_is_written_with_utf8_bom_for_powershell_5()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "ceho-update-helper-" + Guid.NewGuid().ToString("N") + ".ps1");
+        try
+        {
+            DaemonControl.WriteWindowsUpdateRelaunchScript(path, "Write-Output 'Проверка'");
+            var bytes = File.ReadAllBytes(path);
+            Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+            Assert.Contains("Проверка", File.ReadAllText(path));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Web_job_script_redirects_helper_failure_and_waits_during_pending()
     {
         Assert.Contains("if(j.state==='running')", WebUi.JobScript);
