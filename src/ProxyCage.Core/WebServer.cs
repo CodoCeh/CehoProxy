@@ -6,6 +6,10 @@ namespace ProxyCage.Core;
 
 public sealed class WebServer
 {
+    private sealed record JobPayload(
+        string State, int Percent, string Stage, string? Result, bool IsError,
+        bool Relaunch, double Seconds);
+
     private const string CookieName = "ceho";
 
     private const string JobPool = "pool";
@@ -261,26 +265,43 @@ public sealed class WebServer
 
     private async Task HandleJobAsync(HttpListenerContext ctx)
     {
-        var job = Jobs.Find(ctx.Request.QueryString["id"]);
-        var payload = job is null
-            ? new { state = "gone", percent = 100, stage = "", result = (string?)null, isError = false, relaunch = false, seconds = 0.0 }
-            : new
+        var id = ctx.Request.QueryString["id"];
+        var job = Jobs.Find(id);
+        var handoff = UpdateHandoff.Read(Root);
+        JobPayload payload;
+
+        var handoffStageReached = job is null
+            || (job.Kind == JobUpdate && job.RelaunchPanel && job.Percent >= 90);
+        if (handoff is not null && UpdateHandoff.MatchesJob(handoff, id, handoffStageReached))
+        {
+            payload = handoff.State switch
             {
-                state = job.State switch
+                "verified" => new JobPayload(
+                    "done", 100, handoff.Message, handoff.Message, false, true,
+                    Math.Round(job?.Elapsed.TotalSeconds ?? 0, 1)),
+                "failed" => new JobPayload(
+                    "failed", 100, handoff.Message, handoff.Message, true, false,
+                    Math.Round(job?.Elapsed.TotalSeconds ?? 0, 1)),
+                _ => new JobPayload(
+                    "running", Math.Max(95, job?.Percent ?? 95), handoff.Message, null, false, true,
+                    Math.Round(job?.Elapsed.TotalSeconds ?? 0, 1)),
+            };
+        }
+        else if (job is null)
+            payload = new JobPayload("gone", 100, "", null, false, false, 0);
+        else
+            payload = new JobPayload(
+                job.State switch
                 {
                     JobState.Running => "running",
                     JobState.Done => "done",
                     _ => "failed",
                 },
-                percent = job.Percent,
-                stage = job.Stage,
-                result = job.Result,
-                isError = job.IsError,
-                relaunch = job.RelaunchPanel,
-                seconds = Math.Round(job.Elapsed.TotalSeconds, 1),
-            };
+                job.Percent, job.Stage, job.Result, job.IsError, job.RelaunchPanel,
+                Math.Round(job.Elapsed.TotalSeconds, 1));
 
-        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        var json = System.Text.Json.JsonSerializer.Serialize(payload,
+            new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
         var bytes = Encoding.UTF8.GetBytes(json);
         ctx.Response.ContentType = "application/json; charset=utf-8";
         ctx.Response.Headers.Add("Cache-Control", "no-store");

@@ -473,6 +473,8 @@ public static class Installer
                      "node-country-cache.json.tmp", "tun-devices.txt",
                      "cehoproxy.log", "cehoproxy.log.*", "sing-box.log",
                      "sing-box.log.*", "crash-*.log", "cehoproxy.exe.old",
+                     "update-status.json", "update-status.json.tmp",
+                     "cehoproxy-update.log", "cehoproxy-update.log.*",
                      "cehoproxy.exe.new", "cehoproxy.old", "cehoproxy.new",
                      "cehoproxy.before-*", "ceho-engine.exe.old", "ceho-engine.exe.new",
                      "ceho-engine.old", "ceho-engine.new", "sing-box.exe.old", "sing-box.exe.new",

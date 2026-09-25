@@ -97,13 +97,13 @@ public static class Updater
 
     internal static async Task<(string Downloaded, TunnelShutdown.Result Shutdown)> DownloadThenPrepareForUpdateAsync(
         Func<Task<string>> download,
-        Func<TunnelShutdown.Result> prepareForUpdate)
+        Func<Task<TunnelShutdown.Result>> prepareForUpdate)
     {
         var downloaded = await download();
         TunnelShutdown.Result shutdown;
         try
         {
-            shutdown = prepareForUpdate();
+            shutdown = await prepareForUpdate();
         }
         catch
         {

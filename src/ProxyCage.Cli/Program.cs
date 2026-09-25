@@ -171,6 +171,19 @@ if (cmd == "version")
     return 0;
 }
 
+if (cmd == "update-status")
+{
+    var status = UpdateHandoff.Read(Ceho.Root);
+    if (status is null)
+    {
+        Console.Error.WriteLine("Нет сохранённого результата обновления.");
+        return 1;
+    }
+
+    Console.WriteLine(status.Message);
+    return UpdateHandoff.ExitCode(status);
+}
+
 if (cmd == "_prepare-install")
 {
     if (!OperatingSystem.IsWindows() || !Os.IsElevated()) return 1;
@@ -911,7 +924,8 @@ switch (cmd)
                 () =>
                 {
                     Console.WriteLine("  " + Cli.S(cfg, "upd_stopping_tun"));
-                    return TunnelShutdown.PrepareForUpdate(cfg, Ceho.Root, Ceho.RuntimeConfigPath, Console.WriteLine);
+                    return Task.FromResult(TunnelShutdown.PrepareForUpdate(
+                        cfg, Ceho.Root, Ceho.RuntimeConfigPath, Console.WriteLine));
                 });
             if (!shut.Ok)
             {
@@ -925,10 +939,40 @@ switch (cmd)
             }
             catch (Exception ex)
             {
+                if (Os.IsWindows)
+                {
+                    try { if (File.Exists(downloaded)) File.Delete(downloaded); } catch { }
+                    TunnelShutdown.RestoreAfterUpdateHandoffFailure(shut, Ceho.Root, Console.WriteLine);
+                    throw new InvalidOperationException("Не удалось применить настройки перед обновлением.", ex);
+                }
                 Console.WriteLine("  " + ex.Message);
             }
 
-            DaemonControl.SpawnUpdateRelaunchHelper(Ceho.OwnExecutablePath, downloaded, Ceho.Root);
+            var handoffId = Os.IsWindows ? "cli-" + Guid.NewGuid().ToString("N") : "";
+            try
+            {
+                if (Os.IsWindows)
+                    UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Pending(handoffId, release.Version));
+                DaemonControl.SpawnUpdateRelaunchHelper(
+                    Ceho.OwnExecutablePath, downloaded, Ceho.Root, release.Version, handoffId,
+                    inheritConsole: Os.IsWindows);
+            }
+            catch
+            {
+                if (Os.IsWindows)
+                {
+                    try { if (File.Exists(downloaded)) File.Delete(downloaded); } catch { }
+                    try { UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Failed(handoffId, release.Version)); } catch { }
+                    TunnelShutdown.RestoreAfterUpdateHandoffFailure(shut, Ceho.Root, Console.WriteLine);
+                }
+                throw;
+            }
+
+            if (Os.IsWindows)
+            {
+                Console.WriteLine("Замена ожидает завершения этой команды; проверьте итог через chp update-status.");
+                return UpdateHandoff.PendingExitCode;
+            }
             Console.WriteLine(Cli.S(cfg, "upd_done", release.Version));
             return 0;
         }
@@ -1908,21 +1952,34 @@ if (cmd is "daemon" or "web")
             () =>
             {
                 report.Stage(Strings.T(c.Language, "upd_stopping_tun"), 80);
-                StopTunnel();
-                return TunnelShutdown.Release(c, Ceho.Root, Ceho.RuntimeConfigPath, m => report.Note(m));
+                return TunnelShutdown.PrepareFromRunningDaemonAsync(
+                    c, Ceho.Root, Ceho.RuntimeConfigPath, () => { StopTunnel(); },
+                    async () => { await StartTunnel(null); }, m => report.Note(m));
             });
         if (!shut.Ok)
             throw new InvalidOperationException(Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot"));
 
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
-        report.Stage(Strings.T(c.Language, "upd_relaunch"), 95);
+        var handoffId = report is JobProgress jobProgress
+            ? jobProgress.JobId
+            : "web-" + Guid.NewGuid().ToString("N");
         try
         {
+            if (Os.IsWindows)
+                UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Pending(handoffId, release.Version));
+            report.Stage(Os.IsWindows
+                ? "Замена ожидает перезапуска службы; проверяю установленную версию."
+                : Strings.T(c.Language, "upd_relaunch"), 95);
             DaemonControl.SpawnUpdateRelaunchHelper(
-                Ceho.OwnExecutablePath, downloaded, Ceho.Root);
+                Ceho.OwnExecutablePath, downloaded, Ceho.Root, release.Version, handoffId);
         }
         catch
         {
+            if (Os.IsWindows)
+            {
+                try { if (File.Exists(downloaded)) File.Delete(downloaded); } catch { }
+                try { UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Failed(handoffId, release.Version)); } catch { }
+            }
             try { await StartTunnel(null); } catch { }
             throw;
         }
@@ -1931,7 +1988,9 @@ if (cmd is "daemon" or "web")
             await Task.Delay(2500);
             Environment.Exit(0);
         });
-        return Strings.T(c.Language, "upd_done", release.Version);
+        return Os.IsWindows
+            ? "Замена ожидает перезапуска службы; панель покажет результат после проверки версии."
+            : Strings.T(c.Language, "upd_done", release.Version);
     };
     web.OnPool = report =>
         Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath), preferCache: false, report);

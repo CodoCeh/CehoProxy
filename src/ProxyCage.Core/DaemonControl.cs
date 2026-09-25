@@ -234,7 +234,130 @@ public static class DaemonControl
         });
     }
 
-    public static void SpawnUpdateRelaunchHelper(string exe, string downloaded, string root)
+    public static string WindowsUpdateRelaunchScript(
+        int pid, string exe, string downloaded, string root, bool autostart,
+        string expectedVersion, string jobId, string statusPath)
+    {
+        static string Q(string s) => s.Replace("'", "''");
+        var start = autostart
+            ? "schtasks /run /tn CehoProxy | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'Не удалось запустить задачу CehoProxy' }"
+            : $"Start-Process -FilePath '{Q(exe)}' -ArgumentList 'daemon' -WorkingDirectory '{Q(root)}' -WindowStyle Hidden";
+
+        return $$"""
+            $ErrorActionPreference = 'Stop'
+            $watch = {{pid}}
+            $exe = '{{Q(exe)}}'
+            $downloaded = '{{Q(downloaded)}}'
+            $backup = '{{Q(exe)}}.old'
+            $root = '{{Q(root)}}'
+            $statusPath = '{{Q(statusPath)}}'
+            $expectedVersion = '{{Q(expectedVersion)}}'
+            $jobId = '{{Q(jobId)}}'
+            $logPath = Join-Path $root 'cehoproxy-update.log'
+            $previousVersion = ''
+            $movedCurrentToBackup = $false
+            $exitCode = 0
+
+            function Set-UpdateStatus([string]$state, [string]$message) {
+              $payload = @{ jobId = $jobId; state = $state; version = $expectedVersion; message = $message } | ConvertTo-Json -Compress
+              $temporary = $statusPath + '.tmp'
+              [System.IO.File]::WriteAllText($temporary, $payload, [System.Text.UTF8Encoding]::new($false))
+              Move-Item -LiteralPath $temporary -Destination $statusPath -Force
+            }
+
+            function Wait-InstalledDaemon {
+              $deadline = (Get-Date).AddSeconds(45)
+              while ((Get-Date) -lt $deadline) {
+                if (Test-Path -LiteralPath (Join-Path $root 'cehoproxy.pid')) {
+                  $daemonPid = 0
+                  $pidText = (Get-Content -LiteralPath (Join-Path $root 'cehoproxy.pid') -Raw).Trim()
+                  if ([int]::TryParse($pidText, [ref]$daemonPid)) {
+                    $daemon = Get-Process -Id $daemonPid -ErrorAction SilentlyContinue
+                    if ($daemon -and $daemon.Path -and ([System.IO.Path]::GetFullPath($daemon.Path) -ieq [System.IO.Path]::GetFullPath($exe))) { return $true }
+                  }
+                }
+                Start-Sleep -Seconds 1
+              }
+              return $false
+            }
+
+            function Stop-InstalledDaemon {
+              if ({{(autostart ? "$true" : "$false")}}) { schtasks /end /tn CehoProxy | Out-Null }
+              $pidFile = Join-Path $root 'cehoproxy.pid'
+              if (Test-Path -LiteralPath $pidFile) {
+                $daemonPid = 0
+                $pidText = (Get-Content -LiteralPath $pidFile -Raw).Trim()
+                if ([int]::TryParse($pidText, [ref]$daemonPid)) {
+                  $daemon = Get-Process -Id $daemonPid -ErrorAction SilentlyContinue
+                  if ($daemon -and $daemon.Path -and ([System.IO.Path]::GetFullPath($daemon.Path) -ieq [System.IO.Path]::GetFullPath($exe))) {
+                    Stop-Process -Id $daemonPid -Force -ErrorAction SilentlyContinue
+                    Wait-Process -Id $daemonPid -Timeout 10 -ErrorAction SilentlyContinue
+                  }
+                }
+              }
+            }
+
+            try {
+              while (Get-Process -Id $watch -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 1 }
+              Start-Sleep -Milliseconds 500
+              if (-not (Test-Path -LiteralPath $downloaded)) { throw 'Загруженный файл обновления не найден' }
+              if (Test-Path -LiteralPath $exe) {
+                $oldVersionOutput = & $exe version 2>&1
+                if ($LASTEXITCODE -eq 0) { $previousVersion = ([string]$oldVersionOutput[0]).Trim() }
+              }
+              if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
+              if (Test-Path -LiteralPath $exe) {
+                Move-Item -LiteralPath $exe -Destination $backup -Force
+                $movedCurrentToBackup = $true
+              }
+              Move-Item -LiteralPath $downloaded -Destination $exe -Force
+
+              $versionOutput = & $exe version 2>&1
+              if ($LASTEXITCODE -ne 0 -or ([string]$versionOutput[0]).Trim() -ne $expectedVersion) {
+                throw "Проверка версии не прошла: ожидалась $expectedVersion"
+              }
+
+              {{start}}
+              if (-not (Wait-InstalledDaemon)) { throw 'Новый daemon не запустился' }
+              try { Add-Content -LiteralPath $logPath -Value "[$(Get-Date -Format o)] verified version $expectedVersion" } catch {}
+              Set-UpdateStatus 'verified' "Установка версии $expectedVersion проверена."
+              try { if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force } } catch {}
+              Write-Host "CehoProxy update verified: $expectedVersion"
+            }
+            catch {
+              $failure = $_.Exception.Message
+              $rollbackMessage = 'Не удалось проверить обновление. Откат предыдущей версии не подтверждён; подробности в журнале обновления.'
+              try {
+                Stop-InstalledDaemon
+                if ($movedCurrentToBackup -and (Test-Path -LiteralPath $backup)) {
+                  if (Test-Path -LiteralPath $exe) { Remove-Item -LiteralPath $exe -Force }
+                  Move-Item -LiteralPath $backup -Destination $exe -Force
+                }
+                if (Test-Path -LiteralPath $exe) {
+                  if ($previousVersion) {
+                    $rollbackVersionOutput = & $exe version 2>&1
+                    if ($LASTEXITCODE -ne 0 -or ([string]$rollbackVersionOutput[0]).Trim() -ne $previousVersion) { throw 'Предыдущая версия не восстановилась' }
+                  }
+                  {{start}}
+                  if (-not (Wait-InstalledDaemon)) { throw 'Не удалось поднять предыдущий daemon' }
+                  $rollbackMessage = 'Не удалось проверить обновление; предыдущая версия восстановлена.'
+                }
+              } catch { $failure = $failure + '; rollback/restart: ' + $_.Exception.Message }
+              try { Set-UpdateStatus 'failed' $rollbackMessage } catch {}
+              try { Add-Content -LiteralPath $logPath -Value "[$(Get-Date -Format o)] update failed: $failure" } catch {}
+              Write-Error "CehoProxy update failed: $failure"
+              $exitCode = 1
+            }
+            finally {
+              Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+            }
+            exit $exitCode
+            """;
+    }
+
+    public static void SpawnUpdateRelaunchHelper(
+        string exe, string downloaded, string root, string expectedVersion, string jobId,
+        bool inheritConsole = false)
     {
         var pid = Environment.ProcessId;
         var backup = exe + ".old";
@@ -242,26 +365,14 @@ public static class DaemonControl
 
         if (Os.IsWindows)
         {
-            static string Q(string s) => s.Replace("'", "''");
-            var start = autostart
-                ? "schtasks /run /tn CehoProxy | Out-Null"
-                : $"Start-Process -FilePath '{Q(exe)}' -ArgumentList 'daemon' -WorkingDirectory '{Q(root)}' -WindowStyle Hidden";
             var script = Path.Combine(root, "update-relaunch.ps1");
-            File.WriteAllText(script, $$"""
-                $watch = {{pid}}
-                while (Get-Process -Id $watch -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 1 }
-                Start-Sleep -Milliseconds 500
-                Remove-Item -LiteralPath '{{Q(backup)}}' -Force -ErrorAction SilentlyContinue
-                if (Test-Path -LiteralPath '{{Q(exe)}}') { Move-Item -LiteralPath '{{Q(exe)}}' -Destination '{{Q(backup)}}' -Force }
-                try { Move-Item -LiteralPath '{{Q(downloaded)}}' -Destination '{{Q(exe)}}' -Force }
-                catch { if (-not (Test-Path -LiteralPath '{{Q(exe)}}') -and (Test-Path -LiteralPath '{{Q(backup)}}')) { Move-Item -LiteralPath '{{Q(backup)}}' -Destination '{{Q(exe)}}' }; throw }
-                {{start}}
-                Remove-Item -LiteralPath '{{Q(script)}}' -Force -ErrorAction SilentlyContinue
-                """);
-            Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
+            File.WriteAllText(script, WindowsUpdateRelaunchScript(
+                pid, exe, downloaded, root, autostart, expectedVersion, jobId,
+                UpdateHandoff.PathFor(root)));
+            using var helper = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
             {
-                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root,
-            });
+                UseShellExecute = false, CreateNoWindow = !inheritConsole, WorkingDirectory = root,
+            }) ?? throw new InvalidOperationException("Не удалось запустить помощник обновления Windows.");
             return;
         }
 

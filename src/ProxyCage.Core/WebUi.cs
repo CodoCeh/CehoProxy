@@ -361,6 +361,11 @@ public static class WebUi
             if(num)num.textContent=j.percent+'%';
             if(stage&&j.stage)stage.textContent=j.stage;
             if(j.state==='running'){setTimeout(tick,700);return}
+            if(j.state==='failed'&&box.dataset.relaunch){
+              var tab=new URLSearchParams(location.search).get('tab')||'state';
+              location.replace('/?tab='+encodeURIComponent(tab)+'&m='+encodeURIComponent(j.result||'Обновление не удалось.')+'&e=1');
+              return;
+            }
             if((j.relaunch||box.dataset.relaunch)&&!j.isError){waitPanel();return}
             location.reload();
           })

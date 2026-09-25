@@ -14,6 +14,8 @@ public class FullUninstallCleanupTests
                          "singbox.json", "hwid.txt", "node-country-cache.json",
                          "node-country-cache.json.tmp", "tun-devices.txt",
                          "cehoproxy.log", "cehoproxy.log.1", "sing-box.log.1",
+                         "cehoproxy-update.log", "cehoproxy-update.log.1",
+                         "update-status.json", "update-status.json.tmp",
                          "crash-old.log", "cehoproxy.exe.old", "cehoproxy.exe.new",
                          "cehoproxy.old", "cehoproxy.new", "sing-box.old", "sing-box.new",
                          "ceho-engine.old", "ceho-engine.new",

@@ -85,6 +85,8 @@ public sealed class JobProgress : IStageReport
 
     internal JobProgress(Job job) => _job = job;
 
+    public string JobId => _job.Id;
+
     /// <summary>Новый этап: и текст, и доля выполненного, чтобы полоса двигалась осмысленно.</summary>
     public void Stage(string text, int percent)
     {

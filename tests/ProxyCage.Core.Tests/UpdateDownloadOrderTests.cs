@@ -18,7 +18,7 @@ public sealed class UpdateDownloadOrderTests
                     await File.WriteAllTextAsync(staged, "new binary");
                     return staged;
                 },
-                () => new TunnelShutdown.Result(false, "upd_need_reboot", null));
+                () => Task.FromResult(new TunnelShutdown.Result(false, "upd_need_reboot", null)));
 
             Assert.False(result.Shutdown.Ok);
             Assert.False(File.Exists(staged));
@@ -40,12 +40,12 @@ public sealed class UpdateDownloadOrderTests
                 downloadCompleted = true;
                 return "staged.exe.new";
             },
-            () =>
+            () => Task.Run(() =>
             {
                 Assert.True(downloadCompleted, "Download must finish before tunnel shutdown.");
                 serviceIsUp = false;
                 return new TunnelShutdown.Result(true, null, null);
-            });
+            }));
 
         Assert.Equal("staged.exe.new", downloaded);
         Assert.True(shutdown.Ok);

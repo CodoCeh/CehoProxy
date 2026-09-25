@@ -50,7 +50,7 @@ public static class Cli
                 ("chp log [engine|crash|clear]", "the journal: the program, the engine and crashes"),
                 ("chp detect", "find installed AI tools"),
                 ("chp apply", "rebuild the rules"),
-                ("chp update · version", "update and version"),
+                ("chp update · update-status · version", "update, handoff status and version"),
                 (sudo + "chp uninstall", "remove everything"),
             ]),
         ]
@@ -91,7 +91,7 @@ public static class Cli
                 ("chp log [движок|падения|очистить]", "журнал: программа, движок и падения"),
                 ("chp detect", "найти установленные ИИ-инструменты"),
                 ("chp apply", "пересобрать правила"),
-                ("chp update · version", "обновление и версия"),
+                ("chp update · update-status · version", "обновление, его итог и версия"),
                 (sudo + "chp uninstall", "удалить всё"),
             ]),
         ];
