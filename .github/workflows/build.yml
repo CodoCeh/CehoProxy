@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FLAKY_ONLINE_TESTS: 'FullyQualifiedName!=ProxyCage.Core.Tests.DirectHttpTests.Resolves_github_api_host'
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
@@ -45,13 +48,14 @@ jobs:
         env:
           EXCLUDED_TESTS: ${{ matrix.excluded_tests }}
         run: |
-          args=(ProxyCage.sln -c Release --no-build
-                --logger "trx;LogFileName=tests.trx"
-                --results-directory artifacts/tests)
+          filter="$FLAKY_ONLINE_TESTS"
           if [ -n "$EXCLUDED_TESTS" ]; then
-            args+=(--filter "$EXCLUDED_TESTS")
+            filter="$filter&$EXCLUDED_TESTS"
           fi
-          dotnet test "${args[@]}"
+          dotnet test ProxyCage.sln -c Release --no-build \
+            --filter "$filter" \
+            --logger "trx;LogFileName=tests.trx" \
+            --results-directory artifacts/tests
 
       - name: Отчёт о тестах
         if: always()
