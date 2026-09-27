@@ -133,6 +133,7 @@ function Stop-CehoLeftovers {
     cmd /c "schtasks /end /tn CehoProxy >nul 2>&1" | Out-Null
     cmd /c "taskkill /F /IM ceho-engine.exe >nul 2>&1" | Out-Null
     cmd /c "taskkill /F /IM sing-box.exe >nul 2>&1" | Out-Null
+    cmd /c "taskkill /F /IM cehoproxy-tray.exe >nul 2>&1" | Out-Null
     $running = Get-Process -Name 'cehoproxy','ceho-engine','sing-box' -ErrorAction SilentlyContinue
     if (-not $running) { return $false }
     Write-Host "Останавливаю работающий CehoProxy перед заменой..."
@@ -250,6 +251,41 @@ if ((Test-Path $cronetStaged) -and (Get-Item $cronetStaged).Length -gt 1MB) {
         }
     }
     try { Remove-Item $cronetStaged -Force } catch { }
+}
+
+$trayExe = Join-Path $root 'cehoproxy-tray.exe'
+$trayNear = Join-Path $sourceDir 'cehoproxy-tray.exe'
+if (Test-Path $trayNear) {
+    try { Copy-Item -Path $trayNear -Destination $trayExe -Force } catch { }
+} elseif (-not (Test-Path $trayExe)) {
+    $trayUrl = "https://github.com/$Repo/releases/latest/download/cehoproxy-tray-win-x64.exe"
+    $trayTmp = Join-Path $env:TEMP 'cehoproxy-tray-download.exe'
+    Write-Host "Скачиваю значок состояния..."
+    if ($curl) {
+        & curl.exe -sSL --fail --retry 2 --connect-timeout 30 --output $trayTmp $trayUrl
+    }
+    if ((Test-Path $trayTmp) -and (Get-Item $trayTmp).Length -gt 10MB) {
+        try { Move-Item -Path $trayTmp -Destination $trayExe -Force } catch { }
+    } else {
+        try { Remove-Item $trayTmp -Force -ErrorAction SilentlyContinue } catch { }
+        Write-Host "Значок скачать не удалось - панель работает и без него."
+    }
+}
+
+if (Test-Path $trayExe) {
+    try {
+        $startup = [Environment]::GetFolderPath('CommonStartup')
+        $shell = New-Object -ComObject WScript.Shell
+        $link = $shell.CreateShortcut((Join-Path $startup 'CehoProxy.lnk'))
+        $link.TargetPath = $trayExe
+        $link.WorkingDirectory = $root
+        $link.Description = 'CehoProxy - состояние защиты в трее'
+        $link.Save()
+    } catch {
+        Write-Host "Значок не удалось добавить в автозапуск: $($_.Exception.Message)"
+    }
+    try { Start-Process -FilePath $trayExe -WorkingDirectory $root } catch { }
+    Write-Host "Значок состояния в трее запущен."
 }
 
 # Текущее окно PowerShell не видит Machine PATH, пока его не перечитать.

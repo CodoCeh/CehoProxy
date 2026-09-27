@@ -265,6 +265,12 @@ dotnet publish src/ProxyCage.Cli/ProxyCage.Cli.csproj -c Release \
   -r osx-arm64 --self-contained true -p:PublishSingleFile=true -o out
 ```
 
+Значок состояния собирается отдельно: на Windows —
+`dotnet publish src/ProxyCage.Tray.Windows/ProxyCage.Tray.Windows.csproj -c Release -r win-x64
+--self-contained true -p:PublishSingleFile=true -o publish` (собирается и с macOS),
+на macOS — `scripts/build-tray-mac.sh arm64 publish`. Оба кладут результат в `publish/`,
+откуда его забирает `scripts/make-release.py`.
+
 Система собирается ключом `-r`: `win-x64`, `linux-x64`, `linux-arm64`, `osx-arm64`, `osx-x64`.
 Платформенные различия собраны в пяти файлах и больше нигде: `Os`, `SingBoxProcess`,
 `TunCleanup`, `Autostart`, `AppDetector`.

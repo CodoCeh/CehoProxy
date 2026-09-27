@@ -71,6 +71,15 @@ if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
   fi
 fi
 
+TRAY_INSTALLER="$(dirname "$0")/install-tray-mac.sh"
+if [ "$OS" = "osx" ]; then
+  if [ -x "$TRAY_INSTALLER" ]; then
+    "$TRAY_INSTALLER" "$(dirname "$SRC")" || true
+  else
+    echo "Значок состояния в строке меню лежит в архиве CehoProxy-*-macos-*.zip на странице релизов."
+  fi
+fi
+
 # Регистрация в системе, затирание файлов прошлой сборки и возврат автозапуска.
 # Настройки и сохранённые подписки эта команда не трогает.
 # Движок ставится тут же: без него туннель не поднимется, а искать его руками — лишний шаг.
