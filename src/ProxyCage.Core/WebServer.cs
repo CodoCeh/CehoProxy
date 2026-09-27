@@ -250,7 +250,8 @@ public sealed class WebServer
     {
         if (ctx.Request.HttpMethod != "POST") { ctx.Response.StatusCode = 405; ctx.Response.Close(); return; }
 
-        var check = Auth.Check(cfg, ctx.Request.Headers["X-Ceho-Password"]);
+        var check = Auth.Check(cfg, Auth.FromHeaders(
+            ctx.Request.Headers[Auth.PasswordHeader], ctx.Request.Headers[Auth.PasswordHeaderBase64]));
         if (!check.Ok)
         {
             ctx.Response.StatusCode = check.Locked ? 429 : 401;

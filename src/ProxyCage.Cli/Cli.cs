@@ -363,7 +363,9 @@ public static class Cli
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-            http.DefaultRequestHeaders.TryAddWithoutValidation("X-Ceho-Password", password);
+            if (Auth.HeaderSafe(password))
+                http.DefaultRequestHeaders.TryAddWithoutValidation(Auth.PasswordHeader, password);
+            http.DefaultRequestHeaders.TryAddWithoutValidation(Auth.PasswordHeaderBase64, Auth.Encode(password));
             var response = await http.PostAsync($"http://127.0.0.1:{port}/api",
                 new StringContent(payload, System.Text.Encoding.UTF8, "text/plain"));
             return ((int)response.StatusCode, await response.Content.ReadAsStringAsync());

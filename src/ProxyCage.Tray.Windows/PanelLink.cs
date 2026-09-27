@@ -94,7 +94,10 @@ internal sealed class PanelLink : IDisposable
                 Content = new StringContent(
                     string.Join("\n", argv), System.Text.Encoding.UTF8, "text/plain"),
             };
-            request.Headers.TryAddWithoutValidation("X-Ceho-Password", Password ?? "");
+            var password = Password ?? "";
+            if (Auth.HeaderSafe(password))
+                request.Headers.TryAddWithoutValidation(Auth.PasswordHeader, password);
+            request.Headers.TryAddWithoutValidation(Auth.PasswordHeaderBase64, Auth.Encode(password));
             using var response = await _http.SendAsync(request);
             var retryAfter = response.Headers.TryGetValues("Retry-After", out var values)
                 ? values.FirstOrDefault()

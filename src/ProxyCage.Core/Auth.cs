@@ -14,6 +14,21 @@ public static class Auth
     public static bool HasPassword(CehoConfig cfg) =>
         !string.IsNullOrEmpty(cfg.PasswordHash) && !string.IsNullOrEmpty(cfg.PasswordSalt);
 
+    public const string PasswordHeader = "X-Ceho-Password";
+    public const string PasswordHeaderBase64 = "X-Ceho-Password-B64";
+
+    public static string Encode(string password) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(password));
+
+    public static bool HeaderSafe(string password) => Ascii.IsValid(password);
+
+    public static string? FromHeaders(string? plain, string? base64)
+    {
+        if (string.IsNullOrEmpty(base64)) return plain;
+        try { return Encoding.UTF8.GetString(Convert.FromBase64String(base64)); }
+        catch { return plain; }
+    }
+
     public static void SetPassword(CehoConfig cfg, string password)
     {
         var salt = RandomNumberGenerator.GetBytes(SaltBytes);

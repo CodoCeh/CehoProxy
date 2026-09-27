@@ -125,7 +125,10 @@ final class PanelLink {
         request.httpMethod = "POST"
         request.setValue(type, forHTTPHeaderField: "Content-Type")
         if let password = password {
-            request.setValue(password, forHTTPHeaderField: "X-Ceho-Password")
+            if password.allSatisfy({ $0.isASCII }) {
+                request.setValue(password, forHTTPHeaderField: "X-Ceho-Password")
+            }
+            request.setValue(Data(password.utf8).base64EncodedString(), forHTTPHeaderField: "X-Ceho-Password-B64")
         }
         request.httpBody = body.data(using: .utf8)
         session.dataTask(with: request) { data, response, _ in
