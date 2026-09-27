@@ -110,7 +110,7 @@ public static class Cli
         ? [
             ("Every day", [
                 ("chp", "state and what to do next"),
-                ("chp status [--json]", "state and the real exit IP"),
+                ("chp status [--json] [--quick]", "state and the real exit IP"),
                 ("chp verify", "prove isolation by live connections"),
                 ("chp open", "open the panel in a browser"),
             ]),
@@ -151,7 +151,7 @@ public static class Cli
         : [
             ("Каждый день", [
                 ("chp", "состояние и что делать дальше"),
-                ("chp status [--json]", "состояние и реальный IP выхода"),
+                ("chp status [--json] [--quick]", "состояние и реальный IP выхода"),
                 ("chp verify", "доказать изоляцию по живым соединениям"),
                 ("chp open", "открыть панель в браузере"),
             ]),

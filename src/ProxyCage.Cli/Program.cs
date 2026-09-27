@@ -1450,7 +1450,9 @@ switch (cmd)
         var running = daemon && tunnel;
         if (args.Contains("--json"))
         {
-            var (country, ip) = running ? await Ceho.ProbeExitAsync(cfg.MixedPort) : (null, null);
+            var (country, ip) = running && !args.Contains("--quick")
+                ? await Ceho.ProbeExitAsync(cfg.MixedPort)
+                : (null, null);
             Console.WriteLine(new System.Text.Json.Nodes.JsonObject
             {
                 ["running"] = running,
