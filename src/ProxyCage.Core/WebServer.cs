@@ -1407,6 +1407,8 @@ public sealed class WebServer
               .Append("<label class=sr-only for=wiz-url>").Append(E(S("wiz_title1", []))).Append("</label>")
               .Append("<input id=wiz-url type=url name=url required placeholder=\"https://…\">")
               .Append("<button>").Append(E(S("wiz_next", []))).Append("</button></form>");
+            sb.Append("<p class=hint>").Append(E(S("wiz_no_link", [])))
+              .Append(" <a href=\"/?tab=help\">").Append(E(S("sub_where_title", []))).Append("</a></p>");
         }
         else if (step == 2)
         {
@@ -2692,6 +2694,8 @@ public sealed class WebServer
         sb.Append("<p class=hint>").Append(E(S("help_doctor", new object[] { sudo }))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("help_multiuser", []))).Append("</p></section>");
 
+        RenderSubscriptionHelp(sb, S);
+
         // Про вмешательство в систему честнее рассказать самим, чем оставлять человека гадать,
         // почему в списке адаптеров появился ещё один туннель.
         sb.Append("<section><h2>").Append(E(S("touch_title", []))).Append("</h2>");
@@ -2701,6 +2705,20 @@ public sealed class WebServer
             sb.Append("<li>").Append(E(S(key, []))).Append("</li>");
         sb.Append("</ul>");
         sb.Append("<p class=hint>").Append(E(S("touch_not", []))).Append("</p></section>");
+    }
+
+    private const string VpnBot = "CeBers_VPN_bot";
+
+    private static void RenderSubscriptionHelp(StringBuilder sb, Func<string, object[], string> S)
+    {
+        sb.Append("<section><h2>").Append(E(S("sub_where_title", []))).Append("</h2>");
+        sb.Append("<p class=lede>").Append(E(S("sub_where_what", []))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_formats", []))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_get", []))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_ours", []))).Append(' ')
+          .Append("<a href=\"https://t.me/").Append(VpnBot).Append("\" target=_blank rel=noopener>@")
+          .Append(VpnBot).Append("</a></p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_own", []))).Append("</p></section>");
     }
 
     private async Task RefreshLiveLatencyAsync(CehoConfig cfg)

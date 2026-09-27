@@ -46,6 +46,11 @@ public static class Strings
         ["subs_kind_naive_hint"] = new(
             "Адрес, логин и пароль вашего собственного сервера. Он работает вместе с серверами подписок.",
             "The address, login and password of your own server. It works together with subscription servers."),
+        ["sub_where_formats"] = new(
+            "Подходит обычная ссылка, которая открывает список серверов, и файл настроек, сохранённый из " +
+            "другого VPN-клиента. Вместо подписки можно вставить и ссылку на один сервер.",
+            "A plain link that opens a list of servers will do, and so will a settings file saved from another " +
+            "VPN client. Instead of a subscription you can also paste a link to a single server."),
     };
 
     public static string T(string? lang, string key, params object[] args)
@@ -1554,5 +1559,33 @@ public static class Strings
         ["auth_lock_log"] = new(
             "неверный пароль панели, попытка подряд {0}; вход закрыт на {1} с",
             "wrong panel password, attempt {0} in a row; sign-in closed for {1} s"),
+        ["sub_where_title"] = new("Где взять ссылку-подписку", "Where to get a subscription link"),
+        ["sub_where_what"] = new(
+            "Подписка — это одна ссылка от VPN-сервиса. По ней CehoProxy сам скачивает список серверов " +
+            "и обновляет его; вписывать серверы вручную не нужно. Своих подписок у нас нет — вы приносите свою.",
+            "A subscription is a single link from a VPN service. CehoProxy downloads the list of servers " +
+            "from it and keeps the list fresh; you do not type servers by hand. We ship no subscriptions of " +
+            "our own — you bring your own."),
+        ["sub_where_formats"] = new(
+            "Мы понимаем ссылку http(s), которая отдаёт список серверов текстом или в base64, файл Clash (YAML) " +
+            "и файл sing-box (JSON). Вместо подписки можно вставить и одну ссылку на сервер: vless://, vmess://, " +
+            "trojan://, ss://, hysteria2:// (hy2://), tuic:// или naive://.",
+            "We understand an http(s) link that returns a list of servers as plain text or base64, a Clash file " +
+            "(YAML) and a sing-box file (JSON). Instead of a subscription you can paste a single server link: " +
+            "vless://, vmess://, trojan://, ss://, hysteria2:// (hy2://), tuic:// or naive://."),
+        ["sub_where_get"] = new(
+            "Ссылку выдаёт любой VPN-сервис, который разрешает сторонние программы: ищите в его личном кабинете " +
+            "или боте пункт «Подписка», «Импорт» или «Добавить в клиент».",
+            "Any VPN service that allows third-party apps gives you such a link: look in its account page or bot " +
+            "for \"Subscription\", \"Import\" or \"Add to client\"."),
+        ["sub_where_ours"] = new(
+            "Один из вариантов — наш телеграм-бот:", "One of the options is our Telegram bot:"),
+        ["sub_where_own"] = new(
+            "Если у вас есть собственный сервер, откройте «Подписки» и выберите «Свой сервер»: понадобятся " +
+            "его адрес, логин и пароль.",
+            "If you run your own server, open \"Subscriptions\" and choose \"Own server\": you will need its " +
+            "address, login and password."),
+        ["wiz_no_link"] = new(
+            "Ссылки ещё нет? Читайте:", "No link yet? Read:"),
     };
 }
