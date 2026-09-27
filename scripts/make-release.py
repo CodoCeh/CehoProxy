@@ -35,6 +35,28 @@ def refuse_engine():
                 "Он под GPL и в релиз не выкладывается — уберите его "
                 "(например, в publish/.engine/) и соберите заново.")
 
+def tray_files(suffix):
+    if suffix == "windows":
+        tray = os.path.join(BIN, "cehoproxy-tray.exe")
+        return [(tray, "CehoProxy/cehoproxy-tray.exe", True, False)] if os.path.exists(tray) else []
+
+    if not suffix.startswith("macos"):
+        return []
+
+    app = os.path.join(BIN, "CehoProxy Tray.app")
+    if not os.path.isdir(app):
+        return []
+
+    packed = [(os.path.join(ROOT, "scripts", "install-tray-mac.sh"),
+               "CehoProxy/install-tray-mac.sh", True, True)]
+    for folder, _, names in os.walk(app):
+        for plain in names:
+            src = os.path.join(folder, plain)
+            arc = "CehoProxy/CehoProxy Tray.app/" + os.path.relpath(src, app)
+            packed.append((src, arc, os.access(src, os.X_OK), False))
+    return packed
+
+
 def main():
     refuse_engine()
     os.makedirs(OUT, exist_ok=True)
@@ -43,6 +65,7 @@ def main():
         files = [(os.path.join(BIN, binary), f"CehoProxy/{binname}", True, False),
                  (os.path.join(ROOT, "scripts", installer), f"CehoProxy/{installer}", True, True)]
         files += [(os.path.join(ROOT, d), f"CehoProxy/{d}", False, True) for d in DOCS]
+        files += tray_files(suffix)
         if suffix == "windows":
             cronet = os.path.join(BIN, "libcronet.dll")
             if os.path.exists(cronet):

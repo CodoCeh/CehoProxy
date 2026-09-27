@@ -22,5 +22,9 @@ echo
 
 sudo "$BIN" install
 
+if [ -x ./install-tray-mac.sh ]; then
+  sudo ./install-tray-mac.sh .
+fi
+
 echo
 read -r -p "Готово. Нажмите Enter, чтобы закрыть окно."

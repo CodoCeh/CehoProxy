@@ -37,6 +37,7 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "..\publish\cehoproxy.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\publish\cehoproxy-tray.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\README.md";            DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE";              DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD-PARTY.md";       DestDir: "{app}"; Flags: ignoreversion
@@ -44,6 +45,8 @@ Source: "..\publish\libcronet.dll"; DestDir: "{app}"; Flags: ignoreversion skipi
 
 [Icons]
 Name: "{group}\Панель CehoProxy"; Filename: "{app}\cehoproxy.exe"; Parameters: "open"
+Name: "{group}\Значок CehoProxy"; Filename: "{app}\cehoproxy-tray.exe"
+Name: "{commonstartup}\CehoProxy"; Filename: "{app}\cehoproxy-tray.exe"
 Name: "{group}\Страница CehoProxy"; Filename: "{#RepoUrl}"
 Name: "{group}\Удалить CehoProxy"; Filename: "{uninstallexe}"
 
@@ -51,14 +54,20 @@ Name: "{group}\Удалить CehoProxy"; Filename: "{uninstallexe}"
 Filename: "{app}\cehoproxy.exe"; Parameters: "install --no-setup --with-engine"; \
   StatusMsg: "Регистрируем программу и скачиваем движок sing-box..."; \
   Flags: runhidden waituntilterminated
+Filename: "{app}\cehoproxy-tray.exe"; \
+  Flags: nowait runasoriginaluser skipifdoesntexist
 Filename: "{cmd}"; Parameters: "/k ""{app}\cehoproxy.exe"" setup"; \
   Description: "Настроить сейчас"; Flags: postinstall skipifsilent
 
 [UninstallRun]
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM cehoproxy-tray.exe"; \
+  Flags: runhidden waituntilterminated; RunOnceId: "cehoproxy_tray_stop"
 Filename: "{app}\cehoproxy.exe"; Parameters: "uninstall --yes"; \
   Flags: runhidden waituntilterminated; RunOnceId: "cehoproxy_cleanup"
 
 [UninstallDelete]
+Type: files; Name: "{app}\cehoproxy-tray.exe"
+Type: files; Name: "{commonstartup}\CehoProxy.lnk"
 Type: files; Name: "{app}\chp.cmd"
 Type: files; Name: "{app}\ceho-engine.exe"
 Type: files; Name: "{app}\sing-box.exe"
@@ -121,6 +130,9 @@ begin
   Result := '';
   if not FileExists(ExpandConstant('{app}\cehoproxy.exe')) then
     Exit;
+
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM cehoproxy-tray.exe',
+    '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
 
   ExtractTemporaryFile('cehoproxy.exe');
   if not Exec(ExpandConstant('{tmp}\cehoproxy.exe'), '_prepare-install',

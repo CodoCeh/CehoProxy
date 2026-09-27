@@ -53,6 +53,7 @@ upload+=("$BIN/CehoProxy.cmd")
 SETUP="$BIN/CehoProxy-Setup-$VER.exe"
 [[ -f "$SETUP" ]] && upload+=("$SETUP")
 [[ -f "$BIN/libcronet.dll" ]] && upload+=("$BIN/libcronet.dll")
+[[ -f "$BIN/cehoproxy-tray-win-x64.exe" ]] && upload+=("$BIN/cehoproxy-tray-win-x64.exe")
 
 echo "Uploading ${#upload[@]} paths to $REPO $TAG ..."
 "${upload[@]}"

@@ -361,8 +361,59 @@ public static class Installer
         catch { }
     }
 
+    public const string TrayLaunchAgentLabel = "ru.codoceh.cehoproxy.tray";
+
+    public const string TrayAppPath = "/Applications/CehoProxy Tray.app";
+
+    public const string TrayWindowsFileName = "cehoproxy-tray.exe";
+
+    public static void RemoveTray(string root)
+    {
+        if (Os.IsWindows)
+        {
+            Os.Run("taskkill", "/F /IM " + TrayWindowsFileName);
+            foreach (var folder in new[]
+                     {
+                         Environment.SpecialFolder.CommonStartup,
+                         Environment.SpecialFolder.Startup,
+                     })
+                try
+                {
+                    var link = Path.Combine(Environment.GetFolderPath(folder), "CehoProxy.lnk");
+                    if (File.Exists(link)) File.Delete(link);
+                }
+                catch { }
+            return;
+        }
+
+        if (!Os.IsMac) return;
+
+        var user = Environment.GetEnvironmentVariable("SUDO_USER");
+        if (!string.IsNullOrWhiteSpace(user) && user != "root")
+        {
+            var uid = Os.Run("id", $"-u {user}").Output.Trim();
+            if (uid.Length > 0) Os.Run("launchctl", $"bootout gui/{uid}/{TrayLaunchAgentLabel}");
+        }
+        Os.Run("pkill", "-f CehoProxyTray");
+
+        var home = InvokingUserHome();
+        if (home is not null)
+            try
+            {
+                var plist = Path.Combine(
+                    home, "Library", "LaunchAgents", TrayLaunchAgentLabel + ".plist");
+                if (File.Exists(plist)) File.Delete(plist);
+            }
+            catch { }
+
+        try { if (Directory.Exists(TrayAppPath)) Directory.Delete(TrayAppPath, true); }
+        catch { }
+    }
+
     public static void Remove(string root, Action<string> log, string lang = "ru")
     {
+        RemoveTray(root);
+
         if (Os.IsWindows)
         {
             LeakGuard.Remove(root);

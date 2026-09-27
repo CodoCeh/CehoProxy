@@ -1631,5 +1631,25 @@ public static class Strings
         ["upd_auto_done"] = new(
             "Версия {0} поставлена автообновлением {1}",
             "Version {0} was installed by auto-update on {1}"),
+        ["tray_panel"] = new("Открыть панель", "Open the panel"),
+        ["tray_quit"] = new("Выход", "Quit"),
+        ["tray_no_service"] = new("Служба не запущена", "The service is not running"),
+        ["tray_no_service_hint"] = new(
+            "Включить защиту может только администратор: {0}chp daemon",
+            "Only an administrator can turn protection on: {0}chp daemon"),
+        ["tray_need_password"] = new("Нужен пароль", "Password required"),
+        ["tray_sign_in"] = new("Ввести пароль…", "Enter the password…"),
+        ["tray_password_hint"] = new(
+            "Пока пароль не введён, значок ничего не показывает и не переключает",
+            "Until the password is entered the icon shows nothing and switches nothing"),
+        ["tray_password_prompt"] = new(
+            "Введите пароль панели CehoProxy. Он остаётся только в памяти этого сеанса.",
+            "Enter the CehoProxy panel password. It stays only in this session's memory."),
+        ["tray_wait"] = new(
+            "Панель закрыта ещё {0} с", "The panel stays closed for another {0} s"),
+        ["tray_wait_hint"] = new(
+            "Столько просит подождать сама панель после неверных попыток",
+            "The panel itself asks to wait this long after failed attempts"),
+        ["tray_failed"] = new("Панель не приняла команду", "The panel did not accept the command"),
     };
 }
