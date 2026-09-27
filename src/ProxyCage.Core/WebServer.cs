@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Web;
@@ -137,6 +138,12 @@ public sealed class WebServer
         if (path == "/job")
         {
             await HandleJobAsync(ctx);
+            return;
+        }
+
+        if (path == "/icon")
+        {
+            await HandleIconAsync(ctx, cfg);
             return;
         }
 
@@ -1081,6 +1088,73 @@ public sealed class WebServer
 
     private static string E(string? s) => WebUtility.HtmlEncode(s ?? "");
 
+    private async Task HandleIconAsync(HttpListenerContext ctx, CehoConfig cfg)
+    {
+        var wanted = ctx.Request.QueryString["path"];
+        var icon = wanted is { Length: > 0 } && IconAllowed(cfg, wanted)
+            ? AppIcons.Load(wanted, cfg.Language)
+            : null;
+        if (icon is null)
+        {
+            ctx.Response.StatusCode = 404;
+            ctx.Response.Close();
+            return;
+        }
+
+        ctx.Response.ContentType = icon.ContentType;
+        ctx.Response.Headers["Cache-Control"] = "private, max-age=600";
+        ctx.Response.ContentLength64 = icon.Bytes.Length;
+        await ctx.Response.OutputStream.WriteAsync(icon.Bytes);
+        ctx.Response.Close();
+    }
+
+    private static bool IconAllowed(CehoConfig cfg, string path)
+    {
+        var how = Os.IsLinux ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        if (cfg.Apps.Any(a => a.Folder.Equals(path, how))) return true;
+        try { return InstalledAppCatalog.Detect(cfg.Language).Any(e => e.Path.Equals(path, how)); }
+        catch { return false; }
+    }
+
+    private static void AppIcon(StringBuilder sb, string path, string label)
+    {
+        sb.Append("<span class=ico data-letter=\"").Append(E(Initial(label)))
+          .Append("\"><img loading=lazy alt=\"\" src=\"/icon?path=")
+          .Append(E(Uri.EscapeDataString(path))).Append("\" onerror=\"this.remove()\"></span>");
+    }
+
+    internal static string Initial(string label)
+    {
+        var text = label.Trim();
+        return text.Length == 0 ? "?" : StringInfo.GetNextTextElement(text, 0).ToUpperInvariant();
+    }
+
+    private static void RenderInstalledPicker(StringBuilder sb, Func<string, object[], string> S,
+        IReadOnlyList<InstalledAppCatalog.Entry> installed, string tab, string? wizardStep)
+    {
+        sb.Append("<form class=app-pick method=post action=/apps/installed>")
+          .Append("<input type=hidden name=tab value=").Append(tab).Append('>');
+        if (wizardStep is not null)
+            sb.Append("<input type=hidden name=wizard value=").Append(wizardStep).Append('>');
+
+        var id = "app-filter-" + tab;
+        sb.Append("<label class=sr-only for=").Append(id).Append('>')
+          .Append(E(S("apps_pick_search", []))).Append("</label>")
+          .Append("<input class=app-filter type=search autocomplete=off id=").Append(id)
+          .Append(" placeholder=\"").Append(E(S("apps_pick_search", []))).Append("\">");
+
+        sb.Append("<div class=app-grid>");
+        foreach (var app in installed)
+        {
+            sb.Append("<button class=app-card type=submit name=path value=\"").Append(E(app.Path))
+              .Append("\" data-name=\"").Append(E(app.Name.ToLowerInvariant())).Append("\">");
+            AppIcon(sb, app.Path, app.Name);
+            sb.Append("<span class=app-name title=\"").Append(E(app.Path)).Append("\">")
+              .Append(E(app.Name)).Append("</span></button>");
+        }
+        sb.Append("</div></form>");
+    }
+
     private static string RenderGate(CehoConfig cfg, string? error)
     {
         var sb = new StringBuilder();
@@ -1196,6 +1270,7 @@ public sealed class WebServer
 
         if (job is { Running: true }) sb.Append(WebUi.JobScript);
         if (tab == "subs" && cfg.Subscriptions.Count > 0) sb.Append(WebUi.SubModalScript);
+        if (tab is "apps" or "state") sb.Append(WebUi.AppFilterScript);
         if (tab is "state" or "doctor" && job is not { Running: true }) sb.Append(WebUi.StateRefreshScript);
         sb.Append("</body></html>");
         return sb.ToString();
@@ -1407,14 +1482,7 @@ public sealed class WebServer
             var installed = InstalledAppCatalog.Detect(cfg.Language);
             if (installed.Count > 0)
             {
-                sb.Append("<form class=row method=post action=/apps/installed><input type=hidden name=tab value=state>")
-                  .Append("<input type=hidden name=wizard value=3>")
-                  .Append("<label class=sr-only for=wiz-app>").Append(E(S("wiz_title2", []))).Append("</label>")
-                  .Append("<select id=wiz-app name=path required><option value=\"\">")
-                  .Append(E(S("apps_installed_choose", []))).Append("</option>");
-                foreach (var app in installed)
-                    sb.Append("<option value=\"").Append(E(app.Path)).Append("\">").Append(E(app.Name)).Append("</option>");
-                sb.Append("</select><button>").Append(E(S("wiz_next", []))).Append("</button></form>");
+                RenderInstalledPicker(sb, S, installed, "state", "3");
             }
             sb.Append("<p class=hint>").Append(E(S("wiz_other_app", []))).Append("</p>")
               .Append("<form class=row method=post action=/apps/add><input type=hidden name=tab value=state>")
@@ -1828,12 +1896,14 @@ public sealed class WebServer
             sb.Append("<p class=empty>").Append(E(S("apps_empty", []))).Append("</p>");
         else
         {
-            sb.Append("<div class=scroll><table class=t-apps><tr><th>")
-              .Append(E(S("col_name", []))).Append("</th><th>")
-              .Append(E(S("col_folder", []))).Append("</th><th></th></tr>");
+            sb.Append("<div class=scroll><table class=t-own><tr><th>")
+              .Append(E(S("col_name", []))).Append("</th><th></th></tr>");
             foreach (var a in cfg.Apps)
             {
-                sb.Append("<tr><td>").Append(E(a.Label));
+                sb.Append("<tr><td class=named>");
+                AppIcon(sb, a.Folder, a.Label);
+                sb.Append("<span title=\"").Append(E(a.Folder)).Append("\">")
+                  .Append(E(a.Label)).Append("</span>");
                 if (a.VersionAgnostic) sb.Append("<br><span class=tag>Microsoft Store</span>");
                 if (a.SingleFile) sb.Append("<br><span class=tag>").Append(E(S("col_file", []))).Append("</span>");
                 sb.Append("<br><span class=tag>")
@@ -1847,8 +1917,7 @@ public sealed class WebServer
                   .Append("<input type=text name=displayName value=\"").Append(E(a.Label))
                   .Append("\" placeholder=\"").Append(E(S("rename_app_ask", []))).Append("\">")
                   .Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></details>");
-                sb.Append("</td><td class=path><span title=\"").Append(E(a.Folder)).Append("\">")
-                  .Append(E(ShortPath(a.Folder))).Append("</span></td><td class=actions>");
+                sb.Append("</td><td class=actions>");
                 sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")
                   .Append(Uri.EscapeDataString(a.Folder)).Append("\">")
                   .Append(E(S("btn_tunnel", []))).Append("</a>");
@@ -1870,17 +1939,7 @@ public sealed class WebServer
         if (installed.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("apps_installed_none", []))).Append("</p>");
         else
-        {
-            sb.Append("<form class=\"row installed-add\" method=post action=/apps/installed>")
-              .Append("<input type=hidden name=tab value=apps><label class=sr-only for=installed-app>")
-              .Append(E(S("apps_installed_title", []))).Append("</label>")
-              .Append("<select id=installed-app name=path required><option value=\"\">")
-              .Append(E(S("apps_installed_choose", []))).Append("</option>");
-            foreach (var app in installed)
-                sb.Append("<option value=\"").Append(E(app.Path)).Append("\">")
-                  .Append(E(app.Name)).Append(" · ").Append(E(app.Path)).Append("</option>");
-            sb.Append("</select><button>").Append(E(S("btn_add", []))).Append("</button></form>");
-        }
+            RenderInstalledPicker(sb, S, installed, "apps", null);
         sb.Append("</div><div class=app-entry><h3>").Append(E(S("apps_manual_title", []))).Append("</h3>");
 
         var placeholder = S(Os.Kind switch

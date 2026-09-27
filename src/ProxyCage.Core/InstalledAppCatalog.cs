@@ -6,7 +6,7 @@ namespace ProxyCage.Core;
 
 public static class InstalledAppCatalog
 {
-    public sealed record Entry(string Name, string Path, string Source);
+    public sealed record Entry(string Name, string Path, string Source, string? Icon = null);
     private static readonly object CacheGate = new();
     private static IReadOnlyList<Entry>? _cached;
     private static DateTime _cachedAtUtc;
@@ -229,7 +229,9 @@ public static class InstalledAppCatalog
         if (command.Length == 0) command = ExecutableCommand(values.GetValueOrDefault("Exec", ""));
         if (name.Length == 0 || command.Length == 0) return null;
         var path = resolve(command);
-        return path is null ? null : new(name, path, "Linux");
+        if (path is null) return null;
+        var icon = values.GetValueOrDefault("Icon", "").Trim();
+        return new(name, path, "Linux", icon.Length == 0 ? null : icon);
     }
 
     private static bool IsTrue(string? value) =>

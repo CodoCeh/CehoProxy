@@ -139,7 +139,9 @@ public static class WebUi
     th{font-size:var(--fs-xs);font-weight:600;color:var(--muted);overflow-wrap:normal}
     table.t-apps th:nth-child(1){width:25%}
     table.t-apps th:nth-child(3){width:198px}
-    table.t-apps td{vertical-align:top}
+    table.t-own th:nth-child(1){width:auto}
+    table.t-own th:nth-child(2){width:198px}
+    table.t-apps td,table.t-own td{vertical-align:top}
     table.t-subs th:nth-child(1){width:118px}
     table.t-subs th:nth-child(3){width:108px}
     table.t-subs th:nth-child(4){width:112px}
@@ -160,12 +162,12 @@ public static class WebUi
     .scroll{overflow-x:auto}
     @media (max-width:760px){table{min-width:720px}}
     @media (max-width:700px){
-      table.t-apps{min-width:0}
-      table.t-apps tr:has(th){display:none}
-      table.t-apps tr{display:block;padding:12px 0;border-bottom:1px solid var(--line)}
-      table.t-apps td{display:block;border:0;padding:2px 0;width:auto}
-      table.t-apps td.actions{text-align:left;padding-top:8px}
-      table.t-apps td.actions form:first-child{margin-left:0}
+      table.t-apps,table.t-own{min-width:0}
+      table.t-apps tr:has(th),table.t-own tr:has(th){display:none}
+      table.t-apps tr,table.t-own tr{display:block;padding:12px 0;border-bottom:1px solid var(--line)}
+      table.t-apps td,table.t-own td{display:block;border:0;padding:2px 0;width:auto}
+      table.t-apps td.actions,table.t-own td.actions{text-align:left;padding-top:8px}
+      table.t-apps td.actions form:first-child,table.t-own td.actions form:first-child{margin-left:0}
     }
     @media (max-width:900px){
       table.t-subs{min-width:0}
@@ -190,8 +192,24 @@ public static class WebUi
       margin-top:24px;padding-top:22px;border-top:1px solid var(--line)}
     .app-entry{min-width:0}
     .app-entry .hint{min-height:40px;margin-top:0}
-    form.installed-add,form.app-add{align-items:stretch}
-    form.installed-add select{min-width:0;width:100%}
+    form.app-add{align-items:stretch}
+    form.app-pick{margin:10px 0 4px}
+    form.app-pick input.app-filter{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--line);
+      border-radius:10px;background:var(--surface);color:var(--text);font:inherit;font-size:var(--fs-s)}
+    .app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:8px;margin-top:10px;
+      max-height:326px;overflow:auto;padding:2px}
+    button.app-card{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 10px;text-align:left;
+      background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:10px;
+      font-weight:500;overflow:hidden}
+    button.app-card:hover{background:var(--panel2)}
+    button.app-card[hidden]{display:none}
+    .app-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ico{position:relative;flex:0 0 auto;width:28px;height:28px;margin-right:9px;border-radius:7px;
+      background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;
+      vertical-align:middle;overflow:hidden}
+    .ico::before{content:attr(data-letter);font-size:var(--fs-xs);font-weight:600;color:var(--muted)}
+    .ico img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+    td.named>span:first-of-type{font-weight:500;vertical-align:middle}
     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
       clip:rect(0,0,0,0);white-space:nowrap;border:0}
     details.rename{margin-top:7px}
@@ -422,6 +440,22 @@ public static class WebUi
             });
           }).catch(function(){});
       },10000);
+    })();
+    </script>
+    """;
+
+    public const string AppFilterScript = """
+    <script>
+    (function(){
+      document.querySelectorAll('input.app-filter').forEach(function(box){
+        var cards=box.parentElement.querySelectorAll('button.app-card');
+        box.addEventListener('input',function(){
+          var text=box.value.trim().toLowerCase();
+          cards.forEach(function(card){
+            card.hidden=text.length>0&&card.getAttribute('data-name').indexOf(text)<0;
+          });
+        });
+      });
     })();
     </script>
     """;

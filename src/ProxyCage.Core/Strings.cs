@@ -709,6 +709,7 @@ public static class Strings
             "Выберите программу — путь и область правила определятся автоматически.",
             "Choose an app and its path and rule scope will be detected automatically."),
         ["apps_installed_choose"] = new("Выберите приложение…", "Choose an app…"),
+        ["apps_pick_search"] = new("Поиск по названию", "Search by name"),
         ["apps_installed_none"] = new(
             "Установленные приложения не найдены. Можно выбрать файл или указать путь вручную.",
             "No installed apps were found. Choose a file or enter its path manually."),

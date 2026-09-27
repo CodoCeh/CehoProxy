@@ -12,6 +12,7 @@ public class InstalledAppCatalogTests
             Type=Application
             Name=Example Browser
             Name[ru]=Пример Браузера
+            Icon=example-browser
             TryExec=example-browser
             Exec=example-browser --new-window %U
             """;
@@ -22,6 +23,7 @@ public class InstalledAppCatalogTests
         Assert.NotNull(app);
         Assert.Equal("Пример Браузера", app.Name);
         Assert.Equal("/opt/example/example-browser", app.Path);
+        Assert.Equal("example-browser", app.Icon);
     }
 
     [Theory]
