@@ -1587,5 +1587,27 @@ public static class Strings
             "address, login and password."),
         ["wiz_no_link"] = new(
             "Ссылки ещё нет? Читайте:", "No link yet? Read:"),
+        ["upd_auto_on"] = new("Обновляется само", "Updates by itself"),
+        ["upd_auto_off"] = new("Обновление только вручную", "Updates by hand only"),
+        ["upd_auto_add"] = new("Обновлять само", "Update by itself"),
+        ["upd_auto_del"] = new("Обновлять вручную", "Update by hand"),
+        ["upd_auto_state_on"] = new(
+            "CehoProxy будет сам проверять обновления раз в 6 часов и ставить их. " +
+            "Защита на время замены выключается и поднимается снова; в журнале останется запись.",
+            "CehoProxy will check for updates every 6 hours and install them itself. " +
+            "Protection goes off for the replacement and comes back up; the journal keeps a record."),
+        ["upd_auto_state_off"] = new(
+            "CehoProxy не обновляется сам: новую версию ставите вы.",
+            "CehoProxy does not update itself: you install a new version yourself."),
+        ["upd_auto_starting"] = new(
+            "обновляюсь сам до версии {0}: защита ненадолго выключится и поднимется снова",
+            "updating myself to version {0}: protection goes off briefly and comes back up"),
+        ["upd_auto_installed"] = new(
+            "версия сменилась сама на {0}.", "the version changed by itself to {0}."),
+        ["upd_auto_failed"] = new(
+            "обновиться самому не удалось: {0}", "could not update by itself: {0}"),
+        ["upd_auto_done"] = new(
+            "Версия {0} поставлена автообновлением {1}",
+            "Version {0} was installed by auto-update on {1}"),
     };
 }

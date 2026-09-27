@@ -939,6 +939,13 @@ public sealed class WebServer
                     return (null, false, job.Id);
                 }
 
+                case "/autoupdate":
+                {
+                    cfg.AutoUpdate = f.ContainsKey("enable");
+                    Save(cfg);
+                    return (S(cfg.AutoUpdate ? "upd_auto_state_on" : "upd_auto_state_off"), false, null);
+                }
+
                 case "/autostart":
                 {
                     var on = f.ContainsKey("enable");
@@ -1376,6 +1383,19 @@ public sealed class WebServer
           .Append("<button class=ghost>").Append(E(S("upd_check", []))).Append("</button></form>")
           .Append("<form method=post action=/update><input type=hidden name=tab value=state><input type=hidden name=install value=1>")
           .Append("<button class=ghost>").Append(E(S("upd_apply", []))).Append("</button></form></div>");
+        sb.Append("<div class=\"line ").Append(cfg.AutoUpdate ? "on" : "off").Append("\"><span><span class=dot></span> ")
+          .Append(E(cfg.AutoUpdate ? S("upd_auto_on", []) : S("upd_auto_off", []))).Append("</span>")
+          .Append("<form method=post action=/autoupdate><input type=hidden name=tab value=state>")
+          .Append(cfg.AutoUpdate ? "" : "<input type=hidden name=enable value=1>")
+          .Append("<button class=ghost>").Append(E(cfg.AutoUpdate ? S("upd_auto_del", []) : S("upd_auto_add", [])))
+          .Append("</button></form></div>");
+        if (cfg.AutoUpdatedVersion == Updater.CurrentVersion && cfg.AutoUpdatedAtUtc is { } since)
+            sb.Append("<div class=line><span>")
+              .Append(E(S("upd_auto_done", new object[]
+              {
+                  cfg.AutoUpdatedVersion, since.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
+              })))
+              .Append("</span></div>");
         sb.Append("<div class=\"line ").Append(auto ? "on" : "off").Append("\"><span><span class=dot></span> ")
           .Append(E(auto ? S("autostart_on", []) : S("autostart_off", []))).Append("</span>")
           .Append("<form method=post action=/autostart><input type=hidden name=tab value=state>")
