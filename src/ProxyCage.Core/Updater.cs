@@ -157,6 +157,45 @@ public static class Updater
         return temp;
     }
 
+    public sealed record Applied(bool Ok, string Expected, string? Installed);
+
+    public static string? ReadVersion(string exe)
+    {
+        var (code, output) = Os.Run(exe, "version", 30000);
+        if (code != 0) return null;
+        var first = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return first?.Trim();
+    }
+
+    public static Applied ApplyDownloaded(
+        string downloaded, string targetPath, string expectedVersion, Action<string>? log = null)
+    {
+        var backup = targetPath + ".old";
+        ReplaceDownloadedFile(downloaded, targetPath, backup);
+
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(targetPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
+        var installed = ReadVersion(targetPath);
+        if (installed == expectedVersion) return new Applied(true, expectedVersion, installed);
+
+        log?.Invoke($"подмена не подтвердилась, возвращаю прежний файл: {backup}");
+        try
+        {
+            if (File.Exists(backup))
+            {
+                File.Move(backup, targetPath, overwrite: true);
+                installed = ReadVersion(targetPath);
+            }
+        }
+        catch { }
+
+        return new Applied(false, expectedVersion, installed);
+    }
+
     internal static void ReplaceDownloadedFile(string temp, string targetPath, string backup)
     {
         try { if (File.Exists(backup)) File.Delete(backup); } catch { }
