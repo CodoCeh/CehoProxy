@@ -358,111 +358,27 @@ public static class DaemonControl
     internal static void WriteWindowsUpdateRelaunchScript(string path, string script) =>
         File.WriteAllText(path, script, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
+    [SupportedOSPlatform("windows")]
     public static void SpawnUpdateRelaunchHelper(
         string exe, string downloaded, string root, string expectedVersion, string jobId,
         bool inheritConsole = false)
     {
-        var pid = Environment.ProcessId;
-        var backup = exe + ".old";
-        var autostart = Autostart.IsEnabled();
-
-        if (Os.IsWindows)
+        var script = Path.Combine(root, "update-relaunch.ps1");
+        WriteWindowsUpdateRelaunchScript(script, WindowsUpdateRelaunchScript(
+            Environment.ProcessId, exe, downloaded, root, Autostart.IsEnabled(), expectedVersion, jobId,
+            UpdateHandoff.PathFor(root)));
+        using var helper = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
         {
-            var script = Path.Combine(root, "update-relaunch.ps1");
-            WriteWindowsUpdateRelaunchScript(script, WindowsUpdateRelaunchScript(
-                pid, exe, downloaded, root, autostart, expectedVersion, jobId,
-                UpdateHandoff.PathFor(root)));
-            using var helper = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
-            {
-                UseShellExecute = false, CreateNoWindow = !inheritConsole, WorkingDirectory = root,
-            }) ?? throw new InvalidOperationException("Не удалось запустить помощник обновления Windows.");
-            return;
-        }
-
-        var sh = Path.Combine(root, "update-relaunch.sh");
-        var startUnix = autostart
-            ? (Os.IsLinux ? "systemctl start cehoproxy" : "launchctl kickstart -k system/ru.codoceh.cehoproxy")
-            : $"nohup \"{exe}\" daemon >/dev/null 2>&1 &";
-        var launchdLabel = $"ru.codoceh.cehoproxy.update.{pid}";
-        var cleanupLaunchd = Os.IsMac && autostart ? $"launchctl remove {launchdLabel}" : ":";
-        File.WriteAllText(sh, $$"""
-            #!/bin/sh
-            while kill -0 {{pid}} 2>/dev/null; do sleep 1; done
-            sleep 1
-            rm -f "{{backup}}"
-            if [ -f "{{exe}}" ]; then mv "{{exe}}" "{{backup}}"; fi
-            if ! mv "{{downloaded}}" "{{exe}}"; then
-              [ -f "{{exe}}" ] || mv "{{backup}}" "{{exe}}"
-              {{startUnix}}
-              rm -f "{{sh}}"
-              {{cleanupLaunchd}}
-              exit 0
-            fi
-            chmod 755 "{{exe}}"
-            {{startUnix}}
-            rm -f "{{sh}}"
-            {{cleanupLaunchd}}
-            """);
-        if (Os.IsLinux && autostart)
-        {
-            // systemd завершает дочерние процессы службы вместе с daemon.
-            // Отдельный transient unit переживёт выход старой версии.
-            using var helper = Process.Start(CreateSystemdUpdateStartInfo(sh, root, pid))
-                ?? throw new InvalidOperationException("не удалось запустить помощник обновления");
-            if (!helper.WaitForExit(10000) || helper.ExitCode != 0)
-                throw new InvalidOperationException("systemd не запустил помощник обновления");
-        }
-        else if (Os.IsMac && autostart)
-        {
-            using var helper = Process.Start(CreateLaunchdUpdateStartInfo(sh, root, launchdLabel))
-                ?? throw new InvalidOperationException("не удалось запустить помощник обновления");
-            if (!helper.WaitForExit(10000) || helper.ExitCode != 0)
-                throw new InvalidOperationException("launchd не запустил помощник обновления");
-        }
-        else
-        {
-            Process.Start(CreateUnixHelperStartInfo(sh, root));
-        }
+            UseShellExecute = false, CreateNoWindow = !inheritConsole, WorkingDirectory = root,
+        }) ?? throw new InvalidOperationException("Не удалось запустить помощник обновления Windows.");
     }
 
-    internal static ProcessStartInfo CreateSystemdUpdateStartInfo(string helperPath, string workingDirectory, int pid)
+    public static bool RestartAfterUpdate(string exe, string root, bool autostart, int timeoutMs = 30000)
     {
-        var startInfo = new ProcessStartInfo("systemd-run")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory,
-        };
-        startInfo.ArgumentList.Add($"--unit=cehoproxy-update-{pid}");
-        startInfo.ArgumentList.Add("--collect");
-        startInfo.ArgumentList.Add("/bin/sh");
-        startInfo.ArgumentList.Add(helperPath);
-        return startInfo;
-    }
+        if (!autostart) return StartInBackground(exe, root);
 
-    internal static ProcessStartInfo CreateLaunchdUpdateStartInfo(string helperPath, string workingDirectory, string label)
-    {
-        var startInfo = new ProcessStartInfo("launchctl")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory,
-        };
-        foreach (var arg in new[] { "submit", "-l", label, "-p", "/bin/sh", "--", "/bin/sh", helperPath })
-            startInfo.ArgumentList.Add(arg);
-        return startInfo;
-    }
-
-    internal static ProcessStartInfo CreateUnixHelperStartInfo(string helperPath, string workingDirectory)
-    {
-        var startInfo = new ProcessStartInfo("/bin/sh")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory,
-        };
-        startInfo.ArgumentList.Add(helperPath);
-        return startInfo;
+        Autostart.Restart();
+        return WaitUntilRunning(root, timeoutMs);
     }
 
     public static bool RequestStop(string root)

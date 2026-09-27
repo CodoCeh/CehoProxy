@@ -268,10 +268,46 @@ public static class Cli
         "status", "doctor", "verify", "apps", "add-app", "remove-app", "rename-app",
         "subs", "sub-add", "sub-remove", "sub-on", "sub-off", "countries", "country", "nodes", "node",
         "browser", "proxy-test", "ping", "detect", "apply", "lang", "set-port", "autostart", "speed",
-        "restart", "stop", "off", "timeout", "set-timeout", "log",
+        "restart", "stop", "off", "timeout", "set-timeout", "log", "update",
     };
 
     public static bool CanRunRemotely(string command) => RemoteAllowed.Contains(command);
+
+    public static TimeSpan RemoteTimeoutFor(string command) =>
+        command == "update" ? TimeSpan.FromMinutes(20) : TimeSpan.FromSeconds(60);
+
+    public static async Task<int?> EnsureRightsAsync(string[] args, CehoConfig cfg)
+    {
+        if (args.Length == 0) return null;
+        var cmd = args[0];
+        if (Elevation.Satisfied(Elevation.Needed(args, Ceho.Root), Ceho.Root)) return null;
+
+        if (CanRunRemotely(cmd)
+            && Auth.ReadPanelPointer(Ceho.Root) is not null
+            && DaemonControl.IsRunning(Ceho.Root))
+        {
+            Console.WriteLine(S(cfg, "rights_via_service"));
+            return await RunRemoteAsync(Ceho.Root, args, cfg.Language);
+        }
+
+        var way = Elevation.Way();
+        if (way == RightsAsk.None)
+        {
+            Console.Error.WriteLine(S(cfg, Os.IsWindows ? "pf_rights_need_win" : "pf_rights_need_unix"));
+            Console.Error.WriteLine(Os.IsWindows
+                ? S(cfg, "pf_rights_fix_win")
+                : S(cfg, "rights_no_way", cmd, "sudo chp " + string.Join(' ', args)));
+            return 1;
+        }
+
+        Console.WriteLine(S(cfg, way == RightsAsk.Terminal ? "rights_ask_sudo" : "rights_ask_window"));
+        var (code, error) = Elevation.Run(way, Environment.ProcessPath ?? Ceho.OwnExecutablePath, args);
+        if (code is not null) return code.Value;
+
+        Console.Error.WriteLine(S(cfg, "rights_failed", error ?? ""));
+        Console.Error.WriteLine(S(cfg, "rights_no_way", cmd, "sudo chp " + string.Join(' ', args)));
+        return 1;
+    }
 
     public static bool ConfigUnreadable(string configPath)
     {
@@ -331,11 +367,12 @@ public static class Cli
 
         var password = Opt(args, "--password") ?? Environment.GetEnvironmentVariable("CEHOPROXY_PASSWORD");
 
-        var (status, body) = await CallApiAsync(port.Value, payload, password ?? "", lang);
+        var timeout = RemoteTimeoutFor(args[0]);
+        var (status, body) = await CallApiAsync(port.Value, payload, password ?? "", lang, timeout);
         if (status == 401 && password is null && !Console.IsInputRedirected)
         {
             password = AskSecret(Strings.T(lang, "auth_password"));
-            (status, body) = await CallApiAsync(port.Value, payload, password, lang);
+            (status, body) = await CallApiAsync(port.Value, payload, password, lang, timeout);
         }
 
         if (status == 0) { Console.Error.WriteLine(body); return 1; }
@@ -356,11 +393,11 @@ public static class Cli
     }
 
     private static async Task<(int Status, string Body)> CallApiAsync(
-        int port, string payload, string password, string lang)
+        int port, string payload, string password, string lang, TimeSpan timeout)
     {
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+            using var http = new HttpClient { Timeout = timeout };
             http.DefaultRequestHeaders.TryAddWithoutValidation("X-Ceho-Password", password);
             var response = await http.PostAsync($"http://127.0.0.1:{port}/api",
                 new StringContent(payload, System.Text.Encoding.UTF8, "text/plain"));

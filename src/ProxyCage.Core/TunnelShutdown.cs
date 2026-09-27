@@ -16,7 +16,10 @@ public static class TunnelShutdown
         if (OperatingSystem.IsWindows())
             return PrepareWindowsForUpdate(cfg, root, runtimeConfigPath, log);
 
-        if (DaemonControl.IsRunning(root))
+        var wasRunning = DaemonControl.IsRunning(root);
+        var autostartWasOn = Autostart.IsEnabled();
+
+        if (wasRunning)
         {
             log?.Invoke("останавливаю службу перед обновлением");
             DaemonControl.RequestStop(root);
@@ -27,7 +30,8 @@ public static class TunnelShutdown
             }
         }
 
-        return Release(cfg, root, runtimeConfigPath, log);
+        return Release(cfg, root, runtimeConfigPath, log)
+            with { DaemonWasRunning = wasRunning, AutostartWasOn = autostartWasOn };
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
