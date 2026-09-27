@@ -120,6 +120,9 @@ public static class Updater
         try { File.Delete(path); } catch { }
     }
 
+    public static bool RestoreProtectionAfterApply(TunnelShutdown.Result shutdown, Func<bool> restart) =>
+        (!shutdown.DaemonWasRunning && !shutdown.AutostartWasOn) || restart();
+
     internal static async Task<string> InstallAsync(Release release, string targetPath, HttpClient http, Action<string>? log = null)
     {
         var temp = await DownloadAsync(release, targetPath, http, log);

@@ -97,4 +97,31 @@ public sealed class UpdateApplyTests : IDisposable
     {
         Assert.Equal(0, Installer.SweepOldBinaries(_root, Path.Combine(_root, "cehoproxy")));
     }
+
+    [Fact]
+    public void Protection_comes_back_even_when_the_swap_did_not_take()
+    {
+        var asked = 0;
+        var shutdown = new TunnelShutdown.Result(true, null, null) { DaemonWasRunning = true };
+
+        Assert.True(Updater.RestoreProtectionAfterApply(shutdown, () => { asked++; return true; }));
+        Assert.Equal(1, asked);
+    }
+
+    [Fact]
+    public void Protection_comes_back_when_only_autostart_was_on()
+    {
+        var shutdown = new TunnelShutdown.Result(true, null, null) { AutostartWasOn = true };
+
+        Assert.False(Updater.RestoreProtectionAfterApply(shutdown, () => false));
+    }
+
+    [Fact]
+    public void Nothing_is_restarted_when_protection_was_already_off()
+    {
+        var shutdown = new TunnelShutdown.Result(true, null, null);
+
+        Assert.True(Updater.RestoreProtectionAfterApply(
+            shutdown, () => throw new InvalidOperationException("не должны перезапускать")));
+    }
 }

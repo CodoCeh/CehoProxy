@@ -971,8 +971,12 @@ switch (cmd)
 
             var applied = Updater.ApplyDownloaded(
                 downloaded, Ceho.OwnExecutablePath, release.Version, m => Console.WriteLine("  " + m));
+            bool Restore() => Updater.RestoreProtectionAfterApply(shut,
+                () => DaemonControl.RestartAfterUpdate(Ceho.OwnExecutablePath, Ceho.Root, shut.AutostartWasOn));
+
             if (!applied.Ok)
             {
+                if (!Restore()) Console.WriteLine(Cli.S(cfg, "upd_restart_failed", "sudo "));
                 Console.Error.WriteLine(Cli.S(cfg, "upd_not_applied",
                     applied.Installed ?? Updater.CurrentVersion, release.Version));
                 Console.Error.WriteLine(Cli.S(cfg, "upd_finish_by_hand", File.Exists(downloaded)
@@ -982,9 +986,7 @@ switch (cmd)
             }
 
             Console.WriteLine("  " + Cli.S(cfg, "upd_applied", release.Version));
-            if ((shut.DaemonWasRunning || shut.AutostartWasOn)
-                && !DaemonControl.RestartAfterUpdate(Ceho.OwnExecutablePath, Ceho.Root, shut.AutostartWasOn))
-                Console.WriteLine(Cli.S(cfg, "upd_restart_failed", "sudo "));
+            if (!Restore()) Console.WriteLine(Cli.S(cfg, "upd_restart_failed", "sudo "));
 
             Console.WriteLine(Cli.S(cfg, "upd_done", release.Version));
             return 0;
