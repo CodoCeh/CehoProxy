@@ -160,6 +160,30 @@ public static class Installer
         return (wiped, kept);
     }
 
+    public static int SweepOldBinaries(string root, string binaryPath)
+    {
+        if (!Directory.Exists(root)) return 0;
+
+        var keep = Path.GetFullPath(binaryPath + ".old");
+        var stem = Path.GetFileNameWithoutExtension(binaryPath);
+        var removed = 0;
+
+        foreach (var pattern in new[] { stem + "*.bak", stem + "*.old", stem + "*.new", stem + ".before-*" })
+        {
+            string[] files;
+            try { files = Directory.GetFiles(root, pattern); }
+            catch { continue; }
+
+            foreach (var file in files)
+            {
+                if (Path.GetFullPath(file).Equals(keep, StringComparison.Ordinal)) continue;
+                try { File.Delete(file); removed++; } catch { }
+            }
+        }
+
+        return removed;
+    }
+
     public static string Install(string root, Action<string> log, string lang = "ru")
     {
         Directory.CreateDirectory(root);

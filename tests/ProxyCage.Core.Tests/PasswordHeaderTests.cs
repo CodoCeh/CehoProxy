@@ -3,6 +3,7 @@ using System.Net.Sockets;
 
 namespace ProxyCage.Core.Tests;
 
+[Collection("panel password")]
 public class PasswordHeaderTests
 {
     [Fact]

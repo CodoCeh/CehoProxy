@@ -1651,5 +1651,40 @@ public static class Strings
             "Столько просит подождать сама панель после неверных попыток",
             "The panel itself asks to wait this long after failed attempts"),
         ["tray_failed"] = new("Панель не приняла команду", "The panel did not accept the command"),
+        ["rights_via_service"] = new(
+            "Этой команде нужны права администратора. Рядом работает служба от администратора — передаю команду ей.",
+            "This command needs administrator rights. The service is running as administrator — handing the command over to it."),
+        ["rights_ask_sudo"] = new(
+            "Этой команде нужны права администратора: sudo сейчас спросит ваш пароль.",
+            "This command needs administrator rights: sudo will now ask for your password."),
+        ["rights_ask_window"] = new(
+            "Этой команде нужны права администратора: система спросит пароль в отдельном окне.",
+            "This command needs administrator rights: the system will ask for the password in a separate window."),
+        ["rights_no_way"] = new(
+            "Команде «{0}» нужны права администратора, а запросить их отсюда нечем. Выполните её сами: {1}",
+            "The \"{0}\" command needs administrator rights and there is no way to ask for them here. Run it yourself: {1}"),
+        ["rights_failed"] = new(
+            "Не удалось поднять права: {0}", "Could not raise privileges: {0}"),
+        ["upd_no_write"] = new(
+            "Заменить {0} не получится: {1}. Обновление не начинаю, чтобы не качать файл впустую.",
+            "{0} cannot be replaced: {1}. Not starting the update, so nothing is downloaded in vain."),
+        ["upd_not_applied"] = new(
+            "Обновление НЕ применилось: на месте осталась версия {0}, а не {1}.",
+            "The update was NOT applied: version {0} is still in place instead of {1}."),
+        ["upd_finish_by_hand"] = new(
+            "Завершите вручную одной командой: {0}",
+            "Finish it by hand with a single command: {0}"),
+        ["upd_restart_failed"] = new(
+            "Новая версия на месте, но защита сама не поднялась — включите её: {0}chp daemon",
+            "The new version is in place, but protection did not come back by itself — turn it on: {0}chp daemon"),
+        ["upd_remote_needs_yes"] = new(
+            "Обновление выполнит служба, и спросить подтверждение ей негде. Повторите так: chp update --yes",
+            "The service will perform the update and has nowhere to ask for confirmation. Repeat it this way: chp update --yes"),
+        ["upd_swept"] = new(
+            "убрано старых копий программы: {0}",
+            "old copies of the program removed: {0}"),
+        ["upd_applied"] = new(
+            "версия {0} на месте и отвечает",
+            "version {0} is in place and responds"),
     };
 }

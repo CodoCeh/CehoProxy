@@ -4,6 +4,7 @@ using ProxyCage.Core;
 
 namespace ProxyCage.Core.Tests;
 
+[Collection("panel password")]
 public class AuthThrottleTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ceho-auth-" + Guid.NewGuid().ToString("N")[..8]);

@@ -54,6 +54,8 @@ if (cmd is "help" or "--help" or "-h" or "/?")
     return 0;
 }
 
+if (await Cli.EnsureRightsAsync(args, cfg0) is { } handledElevated) return handledElevated;
+
 if (cmd == "install")
 {
     if (!Os.IsElevated())
@@ -282,26 +284,6 @@ if (cmd == "open")
 if (cmd == "daemon" && DaemonControl.WantsBackground(Console.IsInputRedirected,
         Environment.GetEnvironmentVariable(DaemonControl.ForegroundEnv)))
 {
-    if (!Os.IsElevated())
-    {
-        if (Os.IsWindows)
-        {
-            Console.Error.WriteLine(Strings.T(cfg0.Language, "pf_rights_need_win"));
-            Console.Error.WriteLine(Strings.T(cfg0.Language, "pf_rights_fix_win"));
-            return 1;
-        }
-
-        // Полный путь: sudo часто не видит /usr/local/bin, куда установщик кладёт chp.
-        var psi = new System.Diagnostics.ProcessStartInfo("sudo") { UseShellExecute = false };
-        psi.ArgumentList.Add("--");
-        psi.ArgumentList.Add(Ceho.OwnExecutablePath);
-        psi.ArgumentList.Add("daemon");
-        using var elevated = System.Diagnostics.Process.Start(psi);
-        if (elevated is null) return 1;
-        elevated.WaitForExit();
-        return elevated.ExitCode;
-    }
-
     var panelPort = CehoConfig.ReadWebPort(Ceho.ConfigPath, Ceho.Root);
     var panelUrl = $"http://127.0.0.1:{panelPort}";
     if (DaemonControl.IsRunning(Ceho.Root))
@@ -900,6 +882,14 @@ switch (cmd)
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
         Console.WriteLine(Cli.S(cfg, "upd_current", Updater.CurrentVersion));
+
+        var binaryDir = Path.GetDirectoryName(Ceho.OwnExecutablePath) ?? Ceho.Root;
+        if (!Preflight.FolderIsWritable(binaryDir, out var noWrite))
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "upd_no_write", Ceho.OwnExecutablePath, noWrite));
+            return 1;
+        }
+
         try
         {
             var release = await Updater.CheckAsync(Cli.Opt(args, "--repo") ?? cfg.UpdateRepo);
@@ -908,6 +898,9 @@ switch (cmd)
             Console.WriteLine(Cli.S(cfg, "upd_found", release.Version));
             if (!args.Contains("--yes") && !Cli.AskYes(Cli.S(cfg, "upd_apply"), true))
             { Console.WriteLine(Cli.S(cfg, "cancelled")); return 0; }
+
+            var swept = Installer.SweepOldBinaries(binaryDir, Ceho.OwnExecutablePath);
+            if (swept > 0) Console.WriteLine("  " + Cli.S(cfg, "upd_swept", swept));
 
             var (downloaded, shut) = await Updater.DownloadThenPrepareForUpdateAsync(
                 async () =>
@@ -954,31 +947,45 @@ switch (cmd)
                 Console.WriteLine("  " + ex.Message);
             }
 
-            var handoffId = Os.IsWindows ? "cli-" + Guid.NewGuid().ToString("N") : "";
-            try
+            if (OperatingSystem.IsWindows())
             {
-                if (Os.IsWindows)
+                var handoffId = "cli-" + Guid.NewGuid().ToString("N");
+                try
+                {
                     UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Pending(handoffId, release.Version));
-                DaemonControl.SpawnUpdateRelaunchHelper(
-                    Ceho.OwnExecutablePath, downloaded, Ceho.Root, release.Version, handoffId,
-                    inheritConsole: Os.IsWindows);
-            }
-            catch
-            {
-                if (Os.IsWindows)
+                    DaemonControl.SpawnUpdateRelaunchHelper(
+                        Ceho.OwnExecutablePath, downloaded, Ceho.Root, release.Version, handoffId,
+                        inheritConsole: true);
+                }
+                catch
                 {
                     try { if (File.Exists(downloaded)) File.Delete(downloaded); } catch { }
                     try { UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Failed(handoffId, release.Version)); } catch { }
                     TunnelShutdown.RestoreAfterUpdateHandoffFailure(shut, Ceho.Root, Console.WriteLine);
+                    throw;
                 }
-                throw;
-            }
 
-            if (Os.IsWindows)
-            {
                 Console.WriteLine("Замена ожидает завершения этой команды; проверьте итог через chp update-status.");
                 return UpdateHandoff.PendingExitCode;
             }
+
+            var applied = Updater.ApplyDownloaded(
+                downloaded, Ceho.OwnExecutablePath, release.Version, m => Console.WriteLine("  " + m));
+            if (!applied.Ok)
+            {
+                Console.Error.WriteLine(Cli.S(cfg, "upd_not_applied",
+                    applied.Installed ?? Updater.CurrentVersion, release.Version));
+                Console.Error.WriteLine(Cli.S(cfg, "upd_finish_by_hand", File.Exists(downloaded)
+                    ? $"sudo install -m 755 \"{downloaded}\" \"{Ceho.OwnExecutablePath}\""
+                    : "sudo chp update --yes"));
+                return 1;
+            }
+
+            Console.WriteLine("  " + Cli.S(cfg, "upd_applied", release.Version));
+            if ((shut.DaemonWasRunning || shut.AutostartWasOn)
+                && !DaemonControl.RestartAfterUpdate(Ceho.OwnExecutablePath, Ceho.Root, shut.AutostartWasOn))
+                Console.WriteLine(Cli.S(cfg, "upd_restart_failed", "sudo "));
+
             Console.WriteLine(Cli.S(cfg, "upd_done", release.Version));
             return 0;
         }
@@ -2056,13 +2063,21 @@ if (cmd is "daemon" or "web")
         return Strings.T(c.Language, "sub_checked_nodes", nodes.Count);
     };
 
-    web.OnUpdate = async (install, report) =>
+    async Task<string> UpdateAsync(bool install, IStageReport report)
     {
         var c = CehoConfig.Load(Ceho.ConfigPath);
         report.Stage(Strings.T(c.Language, "job_update_check"), 20);
         var release = await Updater.CheckAsync(c.UpdateRepo);
         if (release is null) return Strings.T(c.Language, "upd_none");
         if (!install) return Strings.T(c.Language, "upd_found", release.Version);
+
+        var binaryDir = Path.GetDirectoryName(Ceho.OwnExecutablePath) ?? Ceho.Root;
+        if (!Preflight.FolderIsWritable(binaryDir, out var noWrite))
+            throw new InvalidOperationException(
+                Strings.T(c.Language, "upd_no_write", Ceho.OwnExecutablePath, noWrite));
+
+        var swept = Installer.SweepOldBinaries(binaryDir, Ceho.OwnExecutablePath);
+        if (swept > 0) report.Note(Strings.T(c.Language, "upd_swept", swept));
 
         report.Stage(Strings.T(c.Language, "stage_download",
             release.Version, release.Size / 1024 / 1024), 40);
@@ -2099,35 +2114,60 @@ if (cmd is "daemon" or "web")
         var handoffId = report is JobProgress jobProgress
             ? jobProgress.JobId
             : "web-" + Guid.NewGuid().ToString("N");
-        try
+
+        if (OperatingSystem.IsWindows())
         {
-            if (Os.IsWindows)
+            try
+            {
                 UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Pending(handoffId, release.Version));
-            report.Stage(Os.IsWindows
-                ? "Замена ожидает перезапуска службы; проверяю установленную версию."
-                : Strings.T(c.Language, "upd_relaunch"), 95);
-            DaemonControl.SpawnUpdateRelaunchHelper(
-                Ceho.OwnExecutablePath, downloaded, Ceho.Root, release.Version, handoffId);
-        }
-        catch
-        {
-            if (Os.IsWindows)
+                report.Stage("Замена ожидает перезапуска службы; проверяю установленную версию.", 95);
+                DaemonControl.SpawnUpdateRelaunchHelper(
+                    Ceho.OwnExecutablePath, downloaded, Ceho.Root, release.Version, handoffId);
+            }
+            catch
             {
                 try { if (File.Exists(downloaded)) File.Delete(downloaded); } catch { }
                 try { UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Failed(handoffId, release.Version)); } catch { }
+                try { await StartTunnel(null); } catch { }
+                throw;
             }
-            try { await StartTunnel(null); } catch { }
-            throw;
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(2500);
+                Environment.Exit(0);
+            });
+            return "Замена ожидает перезапуска службы; панель покажет результат после проверки версии.";
         }
+
+        var applied = Updater.ApplyDownloaded(
+            downloaded, Ceho.OwnExecutablePath, release.Version, m => report.Note(m));
+        if (!applied.Ok)
+        {
+            try { UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Failed(handoffId, release.Version)); } catch { }
+            try { await StartTunnel(null); } catch { }
+            throw new InvalidOperationException(
+                Strings.T(c.Language, "upd_not_applied",
+                    applied.Installed ?? Updater.CurrentVersion, release.Version)
+                + " " + Strings.T(c.Language, "upd_finish_by_hand", "sudo chp update --yes"));
+        }
+
+        try { UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Verified(handoffId, release.Version)); } catch { }
+        report.Stage(Strings.T(c.Language, "upd_relaunch"), 95);
+
+        var autostart = Autostart.IsEnabled();
         _ = Task.Run(async () =>
         {
             await Task.Delay(2500);
+            if (autostart) Autostart.Restart();
+            else DaemonControl.SpawnRelaunchHelper(Ceho.OwnExecutablePath, Ceho.Root);
+            await Task.Delay(1500);
             Environment.Exit(0);
         });
-        return Os.IsWindows
-            ? "Замена ожидает перезапуска службы; панель покажет результат после проверки версии."
-            : Strings.T(c.Language, "upd_done", release.Version);
-    };
+        return Strings.T(c.Language, "upd_done", release.Version);
+    }
+
+    web.OnUpdate = UpdateAsync;
     web.OnPool = report =>
         Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath), preferCache: false, report);
     web.OnExit = () => Ceho.ProbeExitAsync(CehoConfig.Load(Ceho.ConfigPath).MixedPort);
@@ -2202,25 +2242,44 @@ if (cmd is "daemon" or "web")
         return Task.FromResult(Strings.T(cfg.Language, "uninstall_done"));
     };
 
-    web.OnApiCommand = argv => Task.Run(() =>
+    web.OnApiCommand = async argv =>
     {
         if (argv.Length == 0 || !Cli.CanRunRemotely(argv[0]))
             return (false, Strings.T(cfg.Language, "remote_not_allowed", argv.Length > 0 ? argv[0] : ""));
 
-        var psi = new System.Diagnostics.ProcessStartInfo(Ceho.OwnExecutablePath)
+        if (argv[0] == "update")
         {
-            UseShellExecute = false, RedirectStandardOutput = true,
-            RedirectStandardError = true, CreateNoWindow = true,
-        };
-        foreach (var a in argv) psi.ArgumentList.Add(a);
+            var install = argv.Contains("--yes");
+            try
+            {
+                var text = await UpdateAsync(install, new DelegateReport(Log.Info));
+                if (!install && !text.StartsWith(Strings.T(cfg.Language, "upd_none"), StringComparison.Ordinal))
+                    text += " " + Strings.T(cfg.Language, "upd_remote_needs_yes");
+                return (true, text);
+            }
+            catch (Exception ex)
+            {
+                return (false, Strings.T(cfg.Language, "upd_failed", ex.Message));
+            }
+        }
 
-        using var p = System.Diagnostics.Process.Start(psi);
-        if (p is null) return (false, "cannot start");
-        var stdout = p.StandardOutput.ReadToEnd();
-        var stderr = p.StandardError.ReadToEnd();
-        p.WaitForExit(60000);
-        return (p.ExitCode == 0, (stdout + stderr).Trim());
-    });
+        return await Task.Run(() =>
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(Ceho.OwnExecutablePath)
+            {
+                UseShellExecute = false, RedirectStandardOutput = true,
+                RedirectStandardError = true, CreateNoWindow = true,
+            };
+            foreach (var a in argv) psi.ArgumentList.Add(a);
+
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p is null) return (false, "cannot start");
+            var stdout = p.StandardOutput.ReadToEnd();
+            var stderr = p.StandardError.ReadToEnd();
+            p.WaitForExit(60000);
+            return (p.ExitCode == 0, (stdout + stderr).Trim());
+        });
+    };
 
     if (withTunnel && Os.IsElevated())
         try { Installer.AdoptSystemEngine(Ceho.Root, Log.Info, cfg.Language); }
