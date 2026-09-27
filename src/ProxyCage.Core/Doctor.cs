@@ -190,6 +190,9 @@ public static class Doctor
                 if (!Preflight.FolderIsWritable(root, out var why))
                     throw new InvalidOperationException(why);
 
+                if (Installer.AdoptSystemEngine(root, m => p?.Note(m), l) is { } adopted)
+                    return S("doc_did_engine", adopted);
+
                 var engine = await Installer.DownloadEngineAsync(root, m => p?.Note(m), l);
                 return S("doc_did_engine", engine);
             }

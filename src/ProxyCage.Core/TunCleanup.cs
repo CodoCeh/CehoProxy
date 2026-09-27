@@ -16,6 +16,17 @@ public static class TunCleanup
     public static string AdapterName(int attempt) =>
         attempt <= 1 ? InterfaceName : $"{InterfaceName}-{attempt}";
 
+    public const string GuardConfigName = "guard.json";
+
+    public static string GuardConfigPath(string root) => Path.Combine(root, GuardConfigName);
+
+    public static int KillTunnelGuard(string root, Action<string>? log = null)
+    {
+        var killed = KillOurProcesses(GuardConfigPath(root), log);
+        LeakGuard.SetTunnelGuard(root, false);
+        return killed;
+    }
+
     public const int Iproute2TableIndex = 2122;
     public const int Iproute2RuleIndex = 9100;
 

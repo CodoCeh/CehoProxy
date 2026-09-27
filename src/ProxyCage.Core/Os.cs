@@ -69,6 +69,38 @@ public static class Os
         return $"{name} {Environment.OSVersion.Version} ({RuntimeInformation.OSArchitecture})";
     }
 
+    public static string? DefaultRouteInterface(bool ipv6)
+    {
+        if (IsWindows) return null;
+        try
+        {
+            var (code, output) = IsMac
+                ? Run("route", ipv6 ? "-n get -inet6 default" : "-n get default", 5000)
+                : Run("ip", ipv6 ? "-6 route show default" : "-4 route show default", 5000);
+            return code == 0 ? ParseDefaultRouteInterface(output, IsMac) : null;
+        }
+        catch { return null; }
+    }
+
+    internal static string? ParseDefaultRouteInterface(string output, bool mac)
+    {
+        foreach (var raw in output.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (mac)
+            {
+                if (!line.StartsWith("interface:", StringComparison.Ordinal)) continue;
+                var name = line["interface:".Length..].Trim();
+                return name.Length == 0 ? null : name;
+            }
+
+            var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var at = Array.IndexOf(words, "dev");
+            if (at >= 0 && at + 1 < words.Length) return words[at + 1];
+        }
+        return null;
+    }
+
     public static string? ResolveSingBox(string root)
     {
         var candidates = new List<string> { Path.Combine(root, EngineFileName), Path.Combine(root, SingBoxFileName) };

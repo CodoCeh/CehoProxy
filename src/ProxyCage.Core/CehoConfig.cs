@@ -70,6 +70,16 @@ public sealed class CehoConfig
 
     public string TunAddress { get; set; } = DefaultTunAddress;
 
+    public const string TunAddress6 = "fdce:b5:211::1/126";
+
+    public const string GuardTunAddress = "172.31.211.5/30";
+
+    public const string GuardTunAddress6 = "fdce:b5:211::5/126";
+
+    public bool TunIpv6 { get; set; } = true;
+
+    public bool FailClosed { get; set; } = true;
+
     public const string PanelModeSimple = "simple";
 
     public const string PanelModePro = "pro";

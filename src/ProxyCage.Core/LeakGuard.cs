@@ -16,6 +16,18 @@ public static class LeakGuard
 
     public static bool IsActive(string root) => File.Exists(Path.Combine(root, StateFile));
 
+    public static void SetTunnelGuard(string root, bool active)
+    {
+        if (Os.IsWindows) return;
+        var file = Path.Combine(root, StateFile);
+        try
+        {
+            if (active) File.WriteAllText(file, "tun");
+            else File.Delete(file);
+        }
+        catch { }
+    }
+
     public static string? Apply(CehoConfig cfg, string root)
     {
         if (!Os.IsWindows) return null;
@@ -63,8 +75,8 @@ public static class LeakGuard
 
     public static void Remove(string root)
     {
-        if (!Os.IsWindows) return;
-        Os.Run("netsh", $"advfirewall firewall delete rule name=\"{RuleName}\"", 30000);
+        if (Os.IsWindows)
+            Os.Run("netsh", $"advfirewall firewall delete rule name=\"{RuleName}\"", 30000);
         try { File.Delete(Path.Combine(root, StateFile)); } catch { }
     }
 

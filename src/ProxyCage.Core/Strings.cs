@@ -1045,6 +1045,9 @@ public static class Strings
             "будет убран при следующей перезагрузке: {0}", "will be removed on the next reboot: {0}"),
         ["inst_engine_downloading"] = new("скачиваю движок sing-box {0}", "downloading the sing-box engine {0}"),
         ["inst_engine_at"] = new("движок: {0}", "engine: {0}"),
+        ["inst_engine_adopted"] = new(
+            "движок нашёлся в системе и перенесён в папку программы: {0}",
+            "the engine was found in the system and copied into the program folder: {0}"),
         ["inst_done"] = new("Установлено.", "Installed."),
         ["inst_removed"] = new(
             "Программа удалена из системы.", "The program has been removed from the system."),
@@ -1157,6 +1160,24 @@ public static class Strings
         ["start_failed"] = new("Защита не включилась", "Protection did not start"),
         ["engine_gone"] = new(
             "Движок остановился сам, поднимаю заново", "The engine stopped on its own, starting it again"),
+        ["tun_ipv6_none"] = new(
+            "IPv6 не берём в туннель: у этого компьютера нет выхода по IPv6, утекать нечему.",
+            "IPv6 stays out of the tunnel: this computer has no IPv6 route, so there is nothing to leak."),
+        ["tun_ipv6_split"] = new(
+            "IPv6 не берём в туннель: у этого компьютера IPv4 идёт через {0}, а IPv6 через {1}. " +
+            "При разных выходах туннель оставил бы машину без IPv6.",
+            "IPv6 stays out of the tunnel: on this computer IPv4 goes through {0} and IPv6 through {1}. " +
+            "With different exits the tunnel would leave the machine without IPv6."),
+        ["guard_on"] = new(
+            "Выход закрыт: туннель поднят с запретом, изолированные программы остаются без сети, " +
+            "пока защита не заработает. Остальная система выходит как обычно.",
+            "The exit is closed: the tunnel is up in blocking mode, the isolated programs stay offline " +
+            "until protection is running. The rest of the system goes out as usual."),
+        ["guard_failed"] = new(
+            "Не удалось поднять запирающий туннель: {0}. Проверьте журнал: изолированные программы " +
+            "сейчас могут выйти напрямую.",
+            "The blocking tunnel did not start: {0}. Please check the log: the isolated programs " +
+            "may reach the network directly right now."),
         ["startup_blockers"] = new("Что мешает запуску:", "What blocks the start:"),
         ["panel_only"] = new(
             "Защита не включена; панель открыта: http://127.0.0.1:{0}",

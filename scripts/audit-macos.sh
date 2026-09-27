@@ -10,8 +10,11 @@ if [ -z "${CEHO:-}" ]; then
 fi
 CEHO="${CEHO:-cehoproxy}"
 APP="${1:-}"
-AUDIT_TIMEOUT="${AUDIT_TIMEOUT:-180}"
+AUDIT_TIMEOUT="${AUDIT_TIMEOUT:-300}"
 PROBE_URL="${PROBE_URL:-http://ip-api.com/json}"
+PROBE_URL6="${PROBE_URL6:-https://api64.ipify.org}"
+TUN_IP="${TUN_IP:-172.31.211.1}"
+GUARD_IP="${GUARD_IP:-172.31.211.5}"
 
 fail() { echo "ПРОВАЛ: $*"; FAILED=$((FAILED + 1)); }
 ok()   { echo "ок: $*"; }
@@ -34,6 +37,11 @@ fi
 [ -n "$APP" ] || { echo "укажи программу для проверки: sudo $0 /Applications/Имя.app"; exit 1; }
 
 exit_ip() { /usr/bin/curl -s --max-time 12 "$PROBE_URL" | sed -n 's/.*"query":"\([^"]*\)".*/\1/p'; }
+exit_ip6() { /usr/bin/curl -6 -s --max-time 12 "$PROBE_URL6"; }
+app_ip() { "$APP" -s --max-time "${1:-15}" "$PROBE_URL" 2>/dev/null | sed -n 's/.*"query":"\([^"]*\)".*/\1/p'; }
+app_ip6() { "$APP" -6 -s --max-time "${1:-15}" "$PROBE_URL6" 2>/dev/null; }
+tun_addresses() { /sbin/ifconfig | sed -n 's/^[[:space:]]*inet6\{0,1\} \([^ ]*\).*/\1/p'; }
+has_address() { tun_addresses | grep -qx "$1"; }
 
 cleanup() {
   "$CEHO" stop >/dev/null 2>&1
@@ -47,6 +55,7 @@ trap 'kill $WATCHDOG 2>/dev/null; cleanup' EXIT
 
 echo "=== 0. исходное состояние"
 BEFORE_IP=$(exit_ip); echo "IP системы без защиты: ${BEFORE_IP:-не определился}"
+BEFORE_IP6=$(exit_ip6); echo "IPv6 системы без защиты: ${BEFORE_IP6:-нет IPv6}"
 "$CEHO" add-app "$APP" | head -2
 
 echo
@@ -63,9 +72,18 @@ SYS_IP=$(exit_ip)
 [ "$SYS_IP" = "$BEFORE_IP" ] && ok "IP системы не изменился — туннель её не перехватил" \
   || fail "IP системы изменился: было $BEFORE_IP, стало $SYS_IP"
 
+if [ -n "$BEFORE_IP6" ]; then
+  SYS_IP6=$(exit_ip6)
+  [ -n "$SYS_IP6" ] && ok "IPv6 системы жив при поднятом туннеле: $SYS_IP6" \
+    || fail "IPv6 системы пропал при поднятом туннеле (было $BEFORE_IP6)"
+else
+  echo "пропуск: у этой машины нет выхода по IPv6, проверять нечего"
+  SYS_IP6=""
+fi
+
 echo
 echo "=== 3. изолированное приложение идёт через туннель"
-APP_IP=$("$APP" -s --max-time 15 "$PROBE_URL" 2>/dev/null | sed -n 's/.*"query":"\([^"]*\)".*/\1/p')
+APP_IP=$(app_ip)
 echo "IP приложения: ${APP_IP:-не определился}"
 if [ -n "$APP_IP" ] && [ "$APP_IP" != "$SYS_IP" ]; then
   ok "приложение выходит другим адресом — изоляция работает"
@@ -77,12 +95,36 @@ sleep 3
 "$CEHO" verify
 
 echo
-echo "=== 4. авария: kill -9 движку"
-pkill -9 -f "sing-box run"; sleep 4
-LEFT_IF=$(ifconfig -l | tr ' ' '\n' | grep -c '^utun')
-ROUTES=$(netstat -rn -f inet | grep -c '172\.19\.0')
-echo "интерфейсов utun в системе: $LEFT_IF, маршрутов в нашу подсеть: $ROUTES"
-[ "$ROUTES" = "0" ] && ok "маршруты туннеля ядро сняло само" || fail "остались маршруты на мёртвый интерфейс"
+echo "=== 3b. IPv6 изолированного приложения не идёт мимо туннеля"
+if [ -n "$SYS_IP6" ]; then
+  APP_IP6=$(app_ip6)
+  echo "IPv6 приложения: ${APP_IP6:-нет ответа}"
+  if [ -z "$APP_IP6" ]; then
+    ok "приложению IPv6 наружу не дали — утечки нет"
+  elif [ "$APP_IP6" = "$SYS_IP6" ]; then
+    fail "приложение вышло по IPv6 напрямую: $APP_IP6 — это адрес системы"
+  else
+    ok "IPv6 приложения отличается от системного: $APP_IP6"
+  fi
+else
+  echo "пропуск: у машины нет IPv6"
+fi
+
+echo
+echo "=== 4. авария: kill -9 движку, прямого выхода быть не должно"
+pkill -9 -f "sing-box run"
+LEAKED=""
+for i in $(seq 1 15); do
+  CRASH_APP_IP=$(app_ip 2)
+  if [ -n "$CRASH_APP_IP" ] && [ "$CRASH_APP_IP" = "$SYS_IP" ]; then
+    LEAKED="$CRASH_APP_IP"
+    break
+  fi
+done
+[ -z "$LEAKED" ] && ok "за время аварии приложение ни разу не вышло системным адресом" \
+  || fail "приложение вышло напрямую: $LEAKED"
+has_address "$GUARD_IP" && ok "поднялся запирающий туннель $GUARD_IP" \
+  || echo "запирающего туннеля нет — защита уже восстановилась сама"
 CRASH_IP=$(exit_ip)
 [ -n "$CRASH_IP" ] && ok "после аварии система в сети" || fail "после аварии система без сети"
 
@@ -92,17 +134,25 @@ echo "=== 5. самолечение: повторный запуск"
 "$CEHO" daemon >/tmp/ceho-audit2.log 2>&1 &
 sleep 15
 "$CEHO" status | head -1
-AFTER_IP=$("$APP" -s --max-time 15 "$PROBE_URL" 2>/dev/null | sed -n 's/.*"query":"\([^"]*\)".*/\1/p')
+AFTER_IP=$(app_ip)
 [ -n "$AFTER_IP" ] && ok "после аварии защита поднялась сама, IP приложения $AFTER_IP" \
   || fail "защита не поднялась после аварии"
 
 echo
 echo "=== 6. остановка и чистота"
 "$CEHO" stop >/dev/null 2>&1; sleep 5
-ROUTES=$(netstat -rn -f inet | grep -c '172\.19\.0')
+has_address "$TUN_IP" && fail "после остановки остался адрес туннеля $TUN_IP" \
+  || ok "адреса туннеля в системе нет"
+has_address "$GUARD_IP" && fail "после остановки остался запирающий туннель $GUARD_IP" \
+  || ok "запирающего туннеля в системе нет"
+ROUTES=$(netstat -rn -f inet | grep -c "${TUN_IP%.*}")
 [ "$ROUTES" = "0" ] && ok "после остановки маршрутов не осталось" || fail "после остановки остались маршруты"
 FINAL_IP=$(exit_ip)
 [ -n "$FINAL_IP" ] && ok "система в сети, IP $FINAL_IP" || fail "после остановки система без сети"
+if [ -n "$BEFORE_IP6" ]; then
+  FINAL_IP6=$(exit_ip6)
+  [ -n "$FINAL_IP6" ] && ok "IPv6 системы вернулся: $FINAL_IP6" || fail "после остановки система без IPv6"
+fi
 
 echo
 if [ "$FAILED" = "0" ]; then echo "ИТОГ: всё сошлось, замечаний нет"; else echo "ИТОГ: провалов $FAILED"; fi

@@ -505,6 +505,38 @@ public static class Installer
         }
     }
 
+    public static readonly string[] SystemEngineFolders =
+        ["/usr/local/bin", "/usr/bin", "/opt/homebrew/bin", "/opt/sing-box/bin"];
+
+    public static string? AdoptSystemEngine(string root, Action<string> log, string lang = "ru",
+        IEnumerable<string>? folders = null)
+    {
+        if (Os.IsWindows) return null;
+        if (Os.ResolveSingBox(root) is { } already) return already;
+
+        foreach (var folder in folders ?? SystemEngineFolders)
+        {
+            var found = Path.Combine(folder, Os.SingBoxFileName);
+            if (!File.Exists(found)) continue;
+
+            var engine = Path.Combine(root, Os.EngineFileName);
+            try
+            {
+                File.Copy(found, engine, overwrite: true);
+                File.SetUnixFileMode(engine,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+            }
+            catch { continue; }
+
+            log(Strings.T(lang, "inst_engine_adopted", found));
+            return engine;
+        }
+
+        return null;
+    }
+
     public const string EngineVersion = "1.14.0";
 
     public static async Task<string> DownloadEngineAsync(string root, Action<string> log, string lang = "ru")

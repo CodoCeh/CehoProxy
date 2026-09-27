@@ -1368,13 +1368,14 @@ switch (cmd)
             return 1;
         }
 
+        TunCleanup.KillOurProcesses(TunCleanup.GuardConfigPath(Ceho.Root), Console.WriteLine);
         TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
         TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", Console.WriteLine);
 
         TunCleanup.RemoveLeftovers(Console.WriteLine, cfg.TunAddress, Ceho.Root);
         DaemonControl.ClearRunning(Ceho.Root);
 
-        foreach (var f in new[] { Ceho.ConfigPath, Ceho.RuntimeConfigPath })
+        foreach (var f in new[] { Ceho.ConfigPath, Ceho.RuntimeConfigPath, TunCleanup.GuardConfigPath(Ceho.Root) })
             try { if (File.Exists(f)) File.Delete(f); } catch { }
         try
         {
@@ -1597,6 +1598,7 @@ switch (cmd)
             // остаётся наше мёртвое устройство. Раз оно наше, за собой убираем сами.
             if (Os.IsElevated())
             {
+                TunCleanup.KillTunnelGuard(Ceho.Root, Console.WriteLine);
                 TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
                 TunCleanup.ReleaseOurs(
                     Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Console.WriteLine,
@@ -1606,10 +1608,13 @@ switch (cmd)
             return 0;
         }
 
-        if (NodeProbe.TunnelIsUp(cfg.TunAddress) || DaemonControl.RunningPid(Ceho.Root) is not null)
+        if (NodeProbe.TunnelIsUp(cfg.TunAddress)
+            || NodeProbe.TunnelIsUp(CehoConfig.GuardTunAddress)
+            || DaemonControl.RunningPid(Ceho.Root) is not null)
         {
             if (OperatingSystem.IsWindows() && Os.IsElevated())
                 DaemonControl.StopInstalledWindowsDaemons(Ceho.Root);
+            TunCleanup.KillTunnelGuard(Ceho.Root, Console.WriteLine);
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
             TunCleanup.ReleaseOurs(
                 Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Console.WriteLine,
@@ -1619,6 +1624,7 @@ switch (cmd)
             return 0;
         }
 
+        LeakGuard.SetTunnelGuard(Ceho.Root, false);
         Console.Error.WriteLine(Cli.S(cfg, "state_off"));
         return 1;
     }
@@ -1735,11 +1741,68 @@ if (cmd is "daemon" or "web")
     Log.EchoToConsole = true;
 
     SingBoxProcess? proc = null;
+    SingBoxProcess? guard = null;
+    var guardConfigPath = TunCleanup.GuardConfigPath(Ceho.Root);
+    var shuttingDown = false;
     string? lastError = null;
     string? exitCountry = null, exitIp = null;
     var probed = false;
     string? boundAddress = null;
     var tunnelMissing = 0;
+
+    void StopGuard()
+    {
+        if (guard is null) return;
+        guard.Stop(5000);
+        guard.Dispose();
+        guard = null;
+        LeakGuard.SetTunnelGuard(Ceho.Root, false);
+    }
+
+    async Task StartGuard()
+    {
+        if (Os.IsWindows || guard is not null) return;
+        if (!withTunnel || shuttingDown || proc is not null)
+        {
+            LeakGuard.SetTunnelGuard(Ceho.Root, false);
+            return;
+        }
+
+        var c = CehoConfig.Load(Ceho.ConfigPath);
+        if (!c.FailClosed || !c.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)))
+        {
+            LeakGuard.SetTunnelGuard(Ceho.Root, false);
+            return;
+        }
+
+        try
+        {
+            TunCleanup.KillOurProcesses(guardConfigPath, Log.Info);
+            await File.WriteAllTextAsync(guardConfigPath, SingBoxConfigGenerator.GenerateFailClosed(c));
+            Auth.RestrictConfigAccess(guardConfigPath);
+
+            var p = new SingBoxProcess();
+            p.Start(Ceho.SingBoxPath, guardConfigPath, Ceho.Root);
+            await Task.Delay(700);
+            if (!p.IsRunning)
+            {
+                var reason = p.Explain(c.Language);
+                p.Dispose();
+                LeakGuard.SetTunnelGuard(Ceho.Root, false);
+                Log.Warn(Strings.T(c.Language, "guard_failed", reason));
+                return;
+            }
+
+            guard = p;
+            LeakGuard.SetTunnelGuard(Ceho.Root, true);
+            Log.Info(Strings.T(c.Language, "guard_on"));
+        }
+        catch (Exception ex)
+        {
+            LeakGuard.SetTunnelGuard(Ceho.Root, false);
+            Log.Warn(Strings.T(c.Language, "guard_failed", ex.Message));
+        }
+    }
 
     // Кнопку «Включить», сторож и доктор нельзя пускать в движок одновременно —
     // очередь общая на демон и «chp doctor fix» (именованный Mutex).
@@ -1816,6 +1879,7 @@ if (cmd is "daemon" or "web")
             if (reason is not null)
             {
                 lastError = reason;
+                await StartGuard();
                 return reason;
             }
 
@@ -1834,6 +1898,7 @@ if (cmd is "daemon" or "web")
         {
             Log.Error("защита не включилась", ex);
             lastError = ex.Message;
+            await StartGuard();
             return ex.Message;
         }
     }
@@ -1841,17 +1906,24 @@ if (cmd is "daemon" or "web")
     async Task<string?> BringEngineUp(CehoConfig c, IStageReport? report)
     {
         report?.Stage(Strings.T(c.Language, "stage_cleanup"), 94);
+
+        var handover = guard is not null;
+        StopGuard();
+
         var before = TunCleanup.Devices();
-        // Движок от упавшего прошлого сеанса нам не сын: демон его не убьёт, уходя,
-        // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
-        var killed = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
-        if (killed > 0) await Task.Delay(500);
-        TunCleanup.ReleaseOurs(
-            Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
-            attempts: 3, aggressive: true, beforeStart: before);
-        TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
-        TunCleanup.PrepareWintunForStart(Log.Info);
-        await Task.Delay(1500);
+        if (!handover)
+        {
+            // Движок от упавшего прошлого сеанса нам не сын: демон его не убьёт, уходя,
+            // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
+            var killed = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+            if (killed > 0) await Task.Delay(500);
+            TunCleanup.ReleaseOurs(
+                Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
+                attempts: 3, aggressive: true, beforeStart: before);
+            TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
+            TunCleanup.PrepareWintunForStart(Log.Info);
+            await Task.Delay(1500);
+        }
 
         report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
 
@@ -1915,6 +1987,7 @@ if (cmd is "daemon" or "web")
         TunCleanup.ReleaseOurs(
             Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Log.Info,
             attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
+        StartGuard().GetAwaiter().GetResult();
         return null;
     }
 
@@ -2050,8 +2123,11 @@ if (cmd is "daemon" or "web")
         _ = Task.Run(async () =>
         {
             await Task.Delay(1000);
+            shuttingDown = true;
             StopTunnel();
+            StopGuard();
             Autostart.Purge();
+            TunCleanup.KillOurProcesses(guardConfigPath, _ => {});
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
             TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", _ => {});
             TunCleanup.RemoveLeftovers(_ => {}, cfg.TunAddress, Ceho.Root);
@@ -2059,7 +2135,7 @@ if (cmd is "daemon" or "web")
             await Ceho.DisposeCountryDatabaseAsync();
             try
             {
-                foreach (var f in new[] { Ceho.ConfigPath, Ceho.RuntimeConfigPath })
+                foreach (var f in new[] { Ceho.ConfigPath, Ceho.RuntimeConfigPath, guardConfigPath })
                     if (File.Exists(f)) File.Delete(f);
                 foreach (var f in Directory.GetFiles(Ceho.Root, "sub-*.txt")) File.Delete(f);
                 var pointer = Path.Combine(Ceho.Root, "panel.port");
@@ -2125,6 +2201,26 @@ if (cmd is "daemon" or "web")
         return (p.ExitCode == 0, (stdout + stderr).Trim());
     });
 
+    if (withTunnel && Os.IsElevated())
+        try { Installer.AdoptSystemEngine(Ceho.Root, Log.Info, cfg.Language); }
+        catch (Exception ex) { Log.Error("движок из системы перенести не удалось", ex); }
+
+    if (withTunnel && !Os.IsWindows && cfg.TunIpv6)
+    {
+        var routeV4 = Os.DefaultRouteInterface(false);
+        var routeV6 = Os.DefaultRouteInterface(true);
+        if (routeV6 is null)
+        {
+            SingBoxConfigGenerator.Ipv6Allowed = false;
+            Log.Info(Strings.T(cfg.Language, "tun_ipv6_none"));
+        }
+        else if (routeV4 is not null && !routeV4.Equals(routeV6, StringComparison.Ordinal))
+        {
+            SingBoxConfigGenerator.Ipv6Allowed = false;
+            Log.Warn(Strings.T(cfg.Language, "tun_ipv6_split", routeV4, routeV6));
+        }
+    }
+
     var preflight = Preflight.Run(CehoConfig.Load(Ceho.ConfigPath), Ceho.Root);
     var startupBlockers = preflight.Where(c => c.Level == Preflight.Level.Blocker).ToList();
     if (startupBlockers.Count > 0)
@@ -2149,6 +2245,8 @@ if (cmd is "daemon" or "web")
 
     if (withTunnel)
     {
+        await StartGuard();
+
         var tunnelBlockers = startupBlockers
             .Where(c => !c.Title.Contains("орт ", StringComparison.OrdinalIgnoreCase)
                      && !c.Title.Contains("ort ", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -2174,6 +2272,18 @@ if (cmd is "daemon" or "web")
         {
             try
             {
+                if (proc is null && guard is not null && !guard.IsRunning)
+                {
+                    using (EngineMutex.Acquire(Ceho.Root))
+                    {
+                        if (proc is null && guard is not null && !guard.IsRunning)
+                        {
+                            StopGuard();
+                            await StartGuard();
+                        }
+                    }
+                }
+
                 if (proc is not null && !proc.IsRunning)
                 {
                     using (EngineMutex.Acquire(Ceho.Root))
@@ -2224,6 +2334,15 @@ if (cmd is "daemon" or "web")
                 if (Os.IsWindows && Os.IsElevated())
                     LeakGuard.Apply(CehoConfig.Load(Ceho.ConfigPath), Ceho.Root);
 
+                if (proc is null && guard is not null && !NodeProbe.TunnelIsUp(CehoConfig.GuardTunAddress))
+                {
+                    using (EngineMutex.Acquire(Ceho.Root))
+                    {
+                        StopGuard();
+                        await StartGuard();
+                    }
+                }
+
                 if (proc is not null)
                 {
                     var port = CehoConfig.Load(Ceho.ConfigPath).MixedPort;
@@ -2253,7 +2372,10 @@ if (cmd is "daemon" or "web")
 
     DaemonControl.WaitForStop();
     cts.Cancel();
+    shuttingDown = true;
     StopTunnel();
+    StopGuard();
+    TunCleanup.KillOurProcesses(guardConfigPath, Log.Info);
     web.Stop();
     DaemonControl.ClearRunning(Ceho.Root);
     Console.Error.WriteLine(Strings.T(cfg.Language, "stopped"));

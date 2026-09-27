@@ -513,7 +513,7 @@ public static class SingBoxConfigGenerator
         routeRules.Insert(tunHijackIndex, new JsonObject
         {
             ["protocol"] = "dns",
-            ["ip_cidr"] = new JsonArray { cfg.TunAddress },
+            ["ip_cidr"] = TunAddresses(cfg),
             ["action"] = "hijack-dns",
         });
         void InsertCountryMixed(int at)
@@ -654,6 +654,69 @@ public static class SingBoxConfigGenerator
         });
     }
 
+    public static string GenerateFailClosed(CehoConfig cfg, string? tunInterfaceName = null)
+    {
+        var apps = cfg.Apps.Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)).ToList();
+        if (apps.Count == 0)
+            throw new InvalidOperationException("Не добавлено ни одного приложения — изолировать нечего.");
+
+        var appRegexes = new JsonArray();
+        foreach (var app in apps)
+        {
+            foreach (var rx in AppDetector.ToRegexes(app)) appRegexes.Add(rx);
+        }
+
+        var routeRules = new JsonArray
+        {
+            new JsonObject
+            {
+                ["process_path_regex"] = OwnProcessRegexes(),
+                ["outbound"] = DirectTag,
+            },
+            new JsonObject
+            {
+                ["process_path_regex"] = appRegexes,
+                ["action"] = "reject",
+            },
+            new JsonObject
+            {
+                ["protocol"] = "dns",
+                ["ip_cidr"] = GuardTunAddresses(cfg),
+                ["action"] = "hijack-dns",
+            },
+        };
+
+        var config = new JsonObject
+        {
+            ["log"] = BuildLog(cfg),
+            ["dns"] = new JsonObject
+            {
+                ["servers"] = DirectDnsServers(CehoConfig.GuardTunAddress),
+                ["final"] = "dns-direct",
+                ["strategy"] = "ipv4_only",
+            },
+            ["inbounds"] = new JsonArray
+            {
+                BuildTun(cfg, tunInterfaceName, GuardTunAddresses(cfg)),
+            },
+            ["outbounds"] = new JsonArray { new JsonObject { ["type"] = "direct", ["tag"] = DirectTag } },
+            ["route"] = new JsonObject
+            {
+                ["find_process"] = true,
+                ["rules"] = routeRules,
+                ["final"] = DirectTag,
+                ["auto_detect_interface"] = true,
+                ["default_domain_resolver"] = new JsonObject { ["server"] = "dns-direct" },
+            },
+        };
+
+        return config.ToJsonString(new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
+        });
+    }
+
     private static JsonObject BuildMixedInbound(int port, string tag) => new()
     {
         ["type"] = "mixed",
@@ -750,7 +813,25 @@ public static class SingBoxConfigGenerator
         && cfg.NodeLatency.TryGetValue(node.Key, out var ms)
         && ms > limit;
 
-    private static JsonObject BuildTun(CehoConfig cfg, string? tunInterfaceName = null)
+    public static bool Ipv6Allowed { get; set; } = true;
+
+    internal static bool TunnelTakesIpv6(CehoConfig cfg) => cfg.TunIpv6 && !Os.IsWindows && Ipv6Allowed;
+
+    internal static JsonArray TunAddresses(CehoConfig cfg)
+    {
+        var addresses = new JsonArray { cfg.TunAddress };
+        if (TunnelTakesIpv6(cfg)) addresses.Add(CehoConfig.TunAddress6);
+        return addresses;
+    }
+
+    internal static JsonArray GuardTunAddresses(CehoConfig cfg)
+    {
+        var addresses = new JsonArray { CehoConfig.GuardTunAddress };
+        if (TunnelTakesIpv6(cfg)) addresses.Add(CehoConfig.GuardTunAddress6);
+        return addresses;
+    }
+
+    private static JsonObject BuildTun(CehoConfig cfg, string? tunInterfaceName = null, JsonArray? addresses = null)
     {
         // strict_route не включаем нигде. Он ставит на всю машину правила брандмауэра, которые
         // запрещают трафику идти мимо туннеля, — от этого ломаются чужие VPN, локальная сеть
@@ -760,7 +841,7 @@ public static class SingBoxConfigGenerator
         {
             ["type"] = "tun",
             ["tag"] = "tun-in",
-            ["address"] = new JsonArray { cfg.TunAddress },
+            ["address"] = addresses ?? TunAddresses(cfg),
             ["auto_route"] = true,
             // На Windows system-стек стабильнее для длинных TCP (HTTP/2 Cursor); gvisor — macOS/Linux.
             ["stack"] = Os.IsWindows ? "system" : "gvisor",

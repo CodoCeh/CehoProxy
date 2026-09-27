@@ -48,8 +48,8 @@ public sealed class AppIconTests
     [Fact]
     public void Linux_icon_name_resolves_inside_the_theme_folders()
     {
-        var wanted = "/usr/share/icons/hicolor/128x128/apps/example.png";
-        var smaller = "/usr/share/icons/hicolor/48x48/apps/example.png";
+        var wanted = Path.Combine("/usr/share/icons", "hicolor", "128x128", "apps", "example.png");
+        var smaller = Path.Combine("/usr/share/icons", "hicolor", "48x48", "apps", "example.png");
 
         var found = AppIcons.LinuxIconFile("example", file => file == wanted || file == smaller);
 
