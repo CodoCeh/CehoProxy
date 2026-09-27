@@ -48,6 +48,85 @@ public static class Auth
     private static byte[] Derive(string password, byte[] salt) =>
         Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, Iterations, HashAlgorithmName.SHA256, KeyBytes);
 
+    public readonly record struct AuthCheck(bool Ok, TimeSpan RetryAfter)
+    {
+        public bool Locked => !Ok && RetryAfter > TimeSpan.Zero;
+
+        public int RetrySeconds => (int)Math.Ceiling(RetryAfter.TotalSeconds);
+    }
+
+    private const int FreeAttempts = 3;
+    private static readonly TimeSpan FirstLock = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MaxLock = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan ForgetAfter = TimeSpan.FromMinutes(15);
+
+    private static readonly object Throttle = new();
+    private static int _failures;
+    private static DateTime _lastFailureUtc;
+    private static DateTime _openAtUtc;
+
+    public static AuthCheck Check(CehoConfig cfg, string? password)
+    {
+        if (!HasPassword(cfg)) return new AuthCheck(true, TimeSpan.Zero);
+
+        lock (Throttle)
+        {
+            var now = DateTime.UtcNow;
+            if (_failures > 0 && now - _lastFailureUtc > ForgetAfter)
+            {
+                _failures = 0;
+                _openAtUtc = default;
+            }
+            if (now < _openAtUtc) return new AuthCheck(false, _openAtUtc - now);
+        }
+
+        if (Verify(cfg, password))
+        {
+            lock (Throttle)
+            {
+                _failures = 0;
+                _openAtUtc = default;
+            }
+            return new AuthCheck(true, TimeSpan.Zero);
+        }
+
+        if (string.IsNullOrEmpty(password)) return new AuthCheck(false, TimeSpan.Zero);
+
+        int failures;
+        TimeSpan wait;
+        lock (Throttle)
+        {
+            _lastFailureUtc = DateTime.UtcNow;
+            failures = ++_failures;
+            wait = failures > FreeAttempts ? LockFor(failures) : TimeSpan.Zero;
+            if (wait > TimeSpan.Zero) _openAtUtc = _lastFailureUtc + wait;
+        }
+
+        var lang = cfg.Language;
+        Log.Warn(wait > TimeSpan.Zero
+            ? Strings.T(lang, "auth_lock_log", failures, (int)wait.TotalSeconds)
+            : Strings.T(lang, "auth_fail_log", failures));
+
+        return new AuthCheck(false, wait);
+    }
+
+    private static TimeSpan LockFor(int failures)
+    {
+        var steps = Math.Min(failures - FreeAttempts - 1, 16);
+        var seconds = FirstLock.TotalSeconds * Math.Pow(2, steps);
+        return seconds >= MaxLock.TotalSeconds ? MaxLock : TimeSpan.FromSeconds(seconds);
+    }
+
+    internal static void ResetThrottle()
+    {
+        lock (Throttle)
+        {
+            _failures = 0;
+            _openAtUtc = default;
+            _lastFailureUtc = default;
+        }
+    }
+
     private static readonly Dictionary<string, DateTime> Sessions = new(StringComparer.Ordinal);
     private static readonly object Gate = new();
     private static readonly TimeSpan SessionLife = TimeSpan.FromHours(12);

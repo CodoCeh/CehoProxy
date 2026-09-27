@@ -219,7 +219,8 @@ public sealed class WebServer
         if (ctx.Request.HttpMethod == "POST" && path == "/login")
         {
             var form = await ReadFormAsync(ctx.Request);
-            if (Auth.Verify(cfg, form.GetValueOrDefault("password", "")))
+            var check = Auth.Check(cfg, form.GetValueOrDefault("password", ""));
+            if (check.Ok)
             {
                 var token = Auth.IssueSession();
 
@@ -228,7 +229,9 @@ public sealed class WebServer
                 Redirect(ctx, "/");
                 return;
             }
-            error = Strings.T(cfg.Language, "auth_wrong");
+            error = check.Locked
+                ? Strings.T(cfg.Language, "auth_locked", check.RetrySeconds)
+                : Strings.T(cfg.Language, "auth_wrong");
         }
 
         await WriteHtmlAsync(ctx, RenderGate(cfg, error));
@@ -240,11 +243,14 @@ public sealed class WebServer
     {
         if (ctx.Request.HttpMethod != "POST") { ctx.Response.StatusCode = 405; ctx.Response.Close(); return; }
 
-        var password = ctx.Request.Headers["X-Ceho-Password"];
-        if (!Auth.Verify(cfg, password))
+        var check = Auth.Check(cfg, ctx.Request.Headers["X-Ceho-Password"]);
+        if (!check.Ok)
         {
-            ctx.Response.StatusCode = 401;
-            await WriteJsonAsync(ctx, false, Strings.T(cfg.Language, "auth_wrong"));
+            ctx.Response.StatusCode = check.Locked ? 429 : 401;
+            if (check.Locked) ctx.Response.Headers["Retry-After"] = check.RetrySeconds.ToString();
+            await WriteJsonAsync(ctx, false, check.Locked
+                ? Strings.T(cfg.Language, "auth_locked", check.RetrySeconds)
+                : Strings.T(cfg.Language, "auth_wrong"));
             return;
         }
 

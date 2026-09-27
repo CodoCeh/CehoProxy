@@ -1543,5 +1543,16 @@ public static class Strings
         ["engine_died_code"] = new(
             "Движок завершился с кодом {0}; что он сказал перед этим — во вкладке «Журнал».",
             "The engine exited with code {0}; what it said before that is in the \"Journal\" tab."),
+        ["auth_locked"] = new(
+            "Слишком много неверных паролей подряд. Вход закрыт, попробуйте через {0} с. " +
+            "Неудачные попытки записаны в журнал.",
+            "Too many wrong passwords in a row. Sign-in is closed, please try again in {0} s. " +
+            "The failed attempts are written to the journal."),
+        ["auth_fail_log"] = new(
+            "неверный пароль панели, попытка подряд {0}",
+            "wrong panel password, attempt {0} in a row"),
+        ["auth_lock_log"] = new(
+            "неверный пароль панели, попытка подряд {0}; вход закрыт на {1} с",
+            "wrong panel password, attempt {0} in a row; sign-in closed for {1} s"),
     };
 }
