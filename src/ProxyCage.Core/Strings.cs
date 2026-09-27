@@ -46,6 +46,11 @@ public static class Strings
         ["subs_kind_naive_hint"] = new(
             "Адрес, логин и пароль вашего собственного сервера. Он работает вместе с серверами подписок.",
             "The address, login and password of your own server. It works together with subscription servers."),
+        ["sub_where_formats"] = new(
+            "Подходит обычная ссылка, которая открывает список серверов, и файл настроек, сохранённый из " +
+            "другого VPN-клиента. Вместо подписки можно вставить и ссылку на один сервер.",
+            "A plain link that opens a list of servers will do, and so will a settings file saved from another " +
+            "VPN client. Instead of a subscription you can also paste a link to a single server."),
     };
 
     public static string T(string? lang, string key, params object[] args)
@@ -1565,5 +1570,66 @@ public static class Strings
         ["engine_died_code"] = new(
             "Движок завершился с кодом {0}; что он сказал перед этим — во вкладке «Журнал».",
             "The engine exited with code {0}; what it said before that is in the \"Journal\" tab."),
+        ["auth_locked"] = new(
+            "Слишком много неверных паролей подряд. Вход закрыт, попробуйте через {0} с. " +
+            "Неудачные попытки записаны в журнал.",
+            "Too many wrong passwords in a row. Sign-in is closed, please try again in {0} s. " +
+            "The failed attempts are written to the journal."),
+        ["auth_fail_log"] = new(
+            "неверный пароль панели, попытка подряд {0}",
+            "wrong panel password, attempt {0} in a row"),
+        ["auth_lock_log"] = new(
+            "неверный пароль панели, попытка подряд {0}; вход закрыт на {1} с",
+            "wrong panel password, attempt {0} in a row; sign-in closed for {1} s"),
+        ["sub_where_title"] = new("Где взять ссылку-подписку", "Where to get a subscription link"),
+        ["sub_where_what"] = new(
+            "Подписка — это одна ссылка от VPN-сервиса. По ней CehoProxy сам скачивает список серверов " +
+            "и обновляет его; вписывать серверы вручную не нужно. Своих подписок у нас нет — вы приносите свою.",
+            "A subscription is a single link from a VPN service. CehoProxy downloads the list of servers " +
+            "from it and keeps the list fresh; you do not type servers by hand. We ship no subscriptions of " +
+            "our own — you bring your own."),
+        ["sub_where_formats"] = new(
+            "Мы понимаем ссылку http(s), которая отдаёт список серверов текстом или в base64, файл Clash (YAML) " +
+            "и файл sing-box (JSON). Вместо подписки можно вставить и одну ссылку на сервер: vless://, vmess://, " +
+            "trojan://, ss://, hysteria2:// (hy2://), tuic:// или naive://.",
+            "We understand an http(s) link that returns a list of servers as plain text or base64, a Clash file " +
+            "(YAML) and a sing-box file (JSON). Instead of a subscription you can paste a single server link: " +
+            "vless://, vmess://, trojan://, ss://, hysteria2:// (hy2://), tuic:// or naive://."),
+        ["sub_where_get"] = new(
+            "Ссылку выдаёт любой VPN-сервис, который разрешает сторонние программы: ищите в его личном кабинете " +
+            "или боте пункт «Подписка», «Импорт» или «Добавить в клиент».",
+            "Any VPN service that allows third-party apps gives you such a link: look in its account page or bot " +
+            "for \"Subscription\", \"Import\" or \"Add to client\"."),
+        ["sub_where_ours"] = new(
+            "Один из вариантов — наш телеграм-бот:", "One of the options is our Telegram bot:"),
+        ["sub_where_own"] = new(
+            "Если у вас есть собственный сервер, откройте «Подписки» и выберите «Свой сервер»: понадобятся " +
+            "его адрес, логин и пароль.",
+            "If you run your own server, open \"Subscriptions\" and choose \"Own server\": you will need its " +
+            "address, login and password."),
+        ["wiz_no_link"] = new(
+            "Ссылки ещё нет? Читайте:", "No link yet? Read:"),
+        ["upd_auto_on"] = new("Обновляется само", "Updates by itself"),
+        ["upd_auto_off"] = new("Обновление только вручную", "Updates by hand only"),
+        ["upd_auto_add"] = new("Обновлять само", "Update by itself"),
+        ["upd_auto_del"] = new("Обновлять вручную", "Update by hand"),
+        ["upd_auto_state_on"] = new(
+            "CehoProxy будет сам проверять обновления раз в 6 часов и ставить их. " +
+            "Защита на время замены выключается и поднимается снова; в журнале останется запись.",
+            "CehoProxy will check for updates every 6 hours and install them itself. " +
+            "Protection goes off for the replacement and comes back up; the journal keeps a record."),
+        ["upd_auto_state_off"] = new(
+            "CehoProxy не обновляется сам: новую версию ставите вы.",
+            "CehoProxy does not update itself: you install a new version yourself."),
+        ["upd_auto_starting"] = new(
+            "обновляюсь сам до версии {0}: защита ненадолго выключится и поднимется снова",
+            "updating myself to version {0}: protection goes off briefly and comes back up"),
+        ["upd_auto_installed"] = new(
+            "версия сменилась сама на {0}.", "the version changed by itself to {0}."),
+        ["upd_auto_failed"] = new(
+            "обновиться самому не удалось: {0}", "could not update by itself: {0}"),
+        ["upd_auto_done"] = new(
+            "Версия {0} поставлена автообновлением {1}",
+            "Version {0} was installed by auto-update on {1}"),
     };
 }

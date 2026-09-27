@@ -13,7 +13,7 @@ public static class Cli
         "sub-add", "subs", "sub-remove", "sub-on", "sub-off", "countries", "country", "node", "nodes",
         "speed", "passwd", "lang", "set-port", "timeout", "set-proxy-port", "autostart", "daemon",
         "restart", "stop", "off", "run", "wrap", "unwrap", "wrapped", "browser", "doctor", "engine",
-        "log", "detect", "apply", "update", "update-status", "version", "uninstall", "ping", "proxy-test",
+        "log", "detect", "apply", "update", "update-status", "autoupdate", "version", "uninstall", "ping", "proxy-test",
     };
 
     private static readonly HashSet<string> ReadOnlyCommands = new(StringComparer.OrdinalIgnoreCase)
@@ -145,6 +145,7 @@ public static class Cli
                 ("chp detect", "find installed AI tools"),
                 ("chp apply", "rebuild the rules"),
                 ("chp update · update-status · version", "update, handoff status and version"),
+                ("chp autoupdate on|off", "look for updates and install them by itself"),
                 (sudo + "chp uninstall", "remove everything"),
             ]),
         ]
@@ -186,6 +187,7 @@ public static class Cli
                 ("chp detect", "найти установленные ИИ-инструменты"),
                 ("chp apply", "пересобрать правила"),
                 ("chp update · update-status · version", "обновление, его итог и версия"),
+                ("chp autoupdate on|off", "проверять обновления и ставить их самому"),
                 (sudo + "chp uninstall", "удалить всё"),
             ]),
         ];
@@ -267,7 +269,7 @@ public static class Cli
     {
         "status", "doctor", "verify", "apps", "add-app", "remove-app", "rename-app",
         "subs", "sub-add", "sub-remove", "sub-on", "sub-off", "countries", "country", "nodes", "node",
-        "browser", "proxy-test", "ping", "detect", "apply", "lang", "set-port", "autostart", "speed",
+        "browser", "proxy-test", "ping", "detect", "apply", "lang", "set-port", "autostart", "autoupdate", "speed",
         "restart", "stop", "off", "timeout", "set-timeout", "log",
     };
 
@@ -298,7 +300,7 @@ public static class Cli
     private static readonly HashSet<string> Mutating = new(StringComparer.Ordinal)
     {
         "add-app", "remove-app", "rename-app", "tunnel", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
-        "lang", "passwd", "apply", "autostart", "uninstall", "uninstal", "speed", "timeout", "set-timeout",
+        "lang", "passwd", "apply", "autostart", "autoupdate", "uninstall", "uninstal", "speed", "timeout", "set-timeout",
     };
 
     public static bool ChangesSettings(string command) => Mutating.Contains(command);

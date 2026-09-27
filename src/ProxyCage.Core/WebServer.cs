@@ -226,7 +226,8 @@ public sealed class WebServer
         if (ctx.Request.HttpMethod == "POST" && path == "/login")
         {
             var form = await ReadFormAsync(ctx.Request);
-            if (Auth.Verify(cfg, form.GetValueOrDefault("password", "")))
+            var check = Auth.Check(cfg, form.GetValueOrDefault("password", ""));
+            if (check.Ok)
             {
                 var token = Auth.IssueSession();
 
@@ -235,7 +236,9 @@ public sealed class WebServer
                 Redirect(ctx, "/");
                 return;
             }
-            error = Strings.T(cfg.Language, "auth_wrong");
+            error = check.Locked
+                ? Strings.T(cfg.Language, "auth_locked", check.RetrySeconds)
+                : Strings.T(cfg.Language, "auth_wrong");
         }
 
         await WriteHtmlAsync(ctx, RenderGate(cfg, error));
@@ -247,11 +250,14 @@ public sealed class WebServer
     {
         if (ctx.Request.HttpMethod != "POST") { ctx.Response.StatusCode = 405; ctx.Response.Close(); return; }
 
-        var password = ctx.Request.Headers["X-Ceho-Password"];
-        if (!Auth.Verify(cfg, password))
+        var check = Auth.Check(cfg, ctx.Request.Headers["X-Ceho-Password"]);
+        if (!check.Ok)
         {
-            ctx.Response.StatusCode = 401;
-            await WriteJsonAsync(ctx, false, Strings.T(cfg.Language, "auth_wrong"));
+            ctx.Response.StatusCode = check.Locked ? 429 : 401;
+            if (check.Locked) ctx.Response.Headers["Retry-After"] = check.RetrySeconds.ToString();
+            await WriteJsonAsync(ctx, false, check.Locked
+                ? Strings.T(cfg.Language, "auth_locked", check.RetrySeconds)
+                : Strings.T(cfg.Language, "auth_wrong"));
             return;
         }
 
@@ -940,6 +946,13 @@ public sealed class WebServer
                     return (null, false, job.Id);
                 }
 
+                case "/autoupdate":
+                {
+                    cfg.AutoUpdate = f.ContainsKey("enable");
+                    Save(cfg);
+                    return (S(cfg.AutoUpdate ? "upd_auto_state_on" : "upd_auto_state_off"), false, null);
+                }
+
                 case "/autostart":
                 {
                     var on = f.ContainsKey("enable");
@@ -1445,6 +1458,19 @@ public sealed class WebServer
           .Append("<button class=ghost>").Append(E(S("upd_check", []))).Append("</button></form>")
           .Append("<form method=post action=/update><input type=hidden name=tab value=state><input type=hidden name=install value=1>")
           .Append("<button class=ghost>").Append(E(S("upd_apply", []))).Append("</button></form></div>");
+        sb.Append("<div class=\"line ").Append(cfg.AutoUpdate ? "on" : "off").Append("\"><span><span class=dot></span> ")
+          .Append(E(cfg.AutoUpdate ? S("upd_auto_on", []) : S("upd_auto_off", []))).Append("</span>")
+          .Append("<form method=post action=/autoupdate><input type=hidden name=tab value=state>")
+          .Append(cfg.AutoUpdate ? "" : "<input type=hidden name=enable value=1>")
+          .Append("<button class=ghost>").Append(E(cfg.AutoUpdate ? S("upd_auto_del", []) : S("upd_auto_add", [])))
+          .Append("</button></form></div>");
+        if (cfg.AutoUpdatedVersion == Updater.CurrentVersion && cfg.AutoUpdatedAtUtc is { } since)
+            sb.Append("<div class=line><span>")
+              .Append(E(S("upd_auto_done", new object[]
+              {
+                  cfg.AutoUpdatedVersion, since.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
+              })))
+              .Append("</span></div>");
         sb.Append("<div class=\"line ").Append(auto ? "on" : "off").Append("\"><span><span class=dot></span> ")
           .Append(E(auto ? S("autostart_on", []) : S("autostart_off", []))).Append("</span>")
           .Append("<form method=post action=/autostart><input type=hidden name=tab value=state>")
@@ -1476,6 +1502,8 @@ public sealed class WebServer
               .Append("<label class=sr-only for=wiz-url>").Append(E(S("wiz_title1", []))).Append("</label>")
               .Append("<input id=wiz-url type=url name=url required placeholder=\"https://…\">")
               .Append("<button>").Append(E(S("wiz_next", []))).Append("</button></form>");
+            sb.Append("<p class=hint>").Append(E(S("wiz_no_link", [])))
+              .Append(" <a href=\"/?tab=help\">").Append(E(S("sub_where_title", []))).Append("</a></p>");
         }
         else if (step == 2)
         {
@@ -2745,6 +2773,8 @@ public sealed class WebServer
         sb.Append("<p class=hint>").Append(E(S("help_doctor", new object[] { sudo }))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("help_multiuser", []))).Append("</p></section>");
 
+        RenderSubscriptionHelp(sb, S);
+
         // Про вмешательство в систему честнее рассказать самим, чем оставлять человека гадать,
         // почему в списке адаптеров появился ещё один туннель.
         sb.Append("<section><h2>").Append(E(S("touch_title", []))).Append("</h2>");
@@ -2754,6 +2784,20 @@ public sealed class WebServer
             sb.Append("<li>").Append(E(S(key, []))).Append("</li>");
         sb.Append("</ul>");
         sb.Append("<p class=hint>").Append(E(S("touch_not", []))).Append("</p></section>");
+    }
+
+    private const string VpnBot = "CeBers_VPN_bot";
+
+    private static void RenderSubscriptionHelp(StringBuilder sb, Func<string, object[], string> S)
+    {
+        sb.Append("<section><h2>").Append(E(S("sub_where_title", []))).Append("</h2>");
+        sb.Append("<p class=lede>").Append(E(S("sub_where_what", []))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_formats", []))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_get", []))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_ours", []))).Append(' ')
+          .Append("<a href=\"https://t.me/").Append(VpnBot).Append("\" target=_blank rel=noopener>@")
+          .Append(VpnBot).Append("</a></p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_own", []))).Append("</p></section>");
     }
 
     private async Task RefreshLiveLatencyAsync(CehoConfig cfg)

@@ -1337,6 +1337,25 @@ switch (cmd)
         return 1;
     }
 
+    case "autoupdate":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        if (args.Length < 2)
+        {
+            Console.WriteLine(Cli.S(cfg, cfg.AutoUpdate ? "upd_auto_state_on" : "upd_auto_state_off"));
+            return 0;
+        }
+        if (args[1] is not ("on" or "off"))
+        {
+            Console.Error.WriteLine("autoupdate on | autoupdate off");
+            return 1;
+        }
+        cfg.AutoUpdate = args[1] == "on";
+        cfg.Save(Ceho.ConfigPath);
+        Console.WriteLine(Cli.S(cfg, cfg.AutoUpdate ? "upd_auto_state_on" : "upd_auto_state_off"));
+        return 0;
+    }
+
     case "uninstall":
     case "uninstal":
     {
@@ -2367,6 +2386,41 @@ if (cmd is "daemon" or "web")
             }
             catch (Exception ex) { Log.Error("проверка выхода не завершилась", ex); }
             try { await Task.Delay(TimeSpan.FromSeconds(30), cts.Token); } catch { return; }
+        }
+    });
+
+    _ = Task.Run(async () =>
+    {
+        var first = true;
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(first ? TimeSpan.FromMinutes(10) : TimeSpan.FromHours(6), cts.Token);
+            }
+            catch { return; }
+            first = false;
+
+            var c = CehoConfig.Load(Ceho.ConfigPath);
+            if (!c.AutoUpdate) continue;
+
+            try
+            {
+                var release = await Updater.CheckAsync(c.UpdateRepo);
+                if (release is null) continue;
+
+                Log.Warn(Strings.T(c.Language, "upd_auto_starting", release.Version));
+                var outcome = await web.OnUpdate!(true, new DelegateReport(Log.Info));
+                c = CehoConfig.Load(Ceho.ConfigPath);
+                c.AutoUpdatedVersion = release.Version;
+                c.AutoUpdatedAtUtc = DateTime.UtcNow;
+                c.SaveSubscriptionStatus(Ceho.ConfigPath);
+                Log.Warn(Strings.T(c.Language, "upd_auto_installed", release.Version) + " " + outcome);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(Strings.T(c.Language, "upd_auto_failed", ex.Message));
+            }
         }
     });
 

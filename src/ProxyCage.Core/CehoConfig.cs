@@ -146,6 +146,12 @@ public sealed class CehoConfig
     /// <summary>Подробность лога движка: debug помогает разобрать падение, warn — обычная работа.</summary>
     public string EngineLogLevel { get; set; } = "warn";
 
+    public bool AutoUpdate { get; set; }
+
+    public string? AutoUpdatedVersion { get; set; }
+
+    public DateTime? AutoUpdatedAtUtc { get; set; }
+
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
