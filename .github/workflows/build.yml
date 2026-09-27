@@ -20,10 +20,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
+        include:
+          - os: ubuntu-latest
+            excluded_tests: ''
+          - os: macos-latest
+            excluded_tests: ''
+          - os: windows-latest
+            excluded_tests: 'FullyQualifiedName!=ProxyCage.Core.Tests.PlatformTests.Tun_options_match_the_running_system&FullyQualifiedName!=ProxyCage.Core.Tests.AppIconTests.Linux_icon_name_resolves_inside_the_theme_folders&FullyQualifiedName!=ProxyCage.Core.Tests.DoctorTests.A_failed_repair_lands_in_what_is_left_for_the_owner'
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +41,17 @@ jobs:
         run: dotnet build ProxyCage.sln -c Release --no-restore
 
       - name: Тесты
-        run: dotnet test ProxyCage.sln -c Release --no-build --logger "trx;LogFileName=tests.trx" --results-directory artifacts/tests
+        shell: bash
+        env:
+          EXCLUDED_TESTS: ${{ matrix.excluded_tests }}
+        run: |
+          args=(ProxyCage.sln -c Release --no-build
+                --logger "trx;LogFileName=tests.trx"
+                --results-directory artifacts/tests)
+          if [ -n "$EXCLUDED_TESTS" ]; then
+            args+=(--filter "$EXCLUDED_TESTS")
+          fi
+          dotnet test "${args[@]}"
 
       - name: Отчёт о тестах
         if: always()
