@@ -52,6 +52,17 @@ jobs:
           fi
           echo "Тег $TAG и версия $VERSION совпадают."
 
+      - name: Версия установщика Windows
+        env:
+          VERSION: ${{ steps.read.outputs.version }}
+        run: |
+          iss=$(sed -n 's:^#define AppVersion "\(.*\)":\1:p' scripts/cehoproxy.iss | head -n1)
+          if [ "$iss" != "$VERSION" ]; then
+            echo "::warning::В scripts/cehoproxy.iss версия $iss, а в Directory.Build.props $VERSION — установщик Windows соберётся со старым номером."
+          else
+            echo "scripts/cehoproxy.iss: версия $iss."
+          fi
+
   binaries:
     name: ${{ matrix.rid }}
     needs: version
