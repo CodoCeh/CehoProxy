@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProxyCage.Core.Tests", "tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProxyCage.Cli", "src\ProxyCage.Cli\ProxyCage.Cli.csproj", "{50DA0469-C7B4-402E-A4C2-AABC3EAC59C7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProxyCage.Tray.Windows", "src\ProxyCage.Tray.Windows\ProxyCage.Tray.Windows.csproj", "{2E8D0422-6A04-42AF-BEF9-0EE67D0F7306}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -34,10 +36,15 @@ Global
 		{50DA0469-C7B4-402E-A4C2-AABC3EAC59C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{50DA0469-C7B4-402E-A4C2-AABC3EAC59C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{50DA0469-C7B4-402E-A4C2-AABC3EAC59C7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2E8D0422-6A04-42AF-BEF9-0EE67D0F7306}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E8D0422-6A04-42AF-BEF9-0EE67D0F7306}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2E8D0422-6A04-42AF-BEF9-0EE67D0F7306}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2E8D0422-6A04-42AF-BEF9-0EE67D0F7306}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{AF2C613D-DBFC-4ADC-95FE-165B75719F5A} = {7CC81A85-085C-488E-BB68-61C1B47AD554}
 		{FB667267-3C44-4CB0-A4D6-572102D5EA45} = {6976900E-1002-4DDE-B96F-50353A6F3407}
 		{50DA0469-C7B4-402E-A4C2-AABC3EAC59C7} = {7CC81A85-085C-488E-BB68-61C1B47AD554}
+		{2E8D0422-6A04-42AF-BEF9-0EE67D0F7306} = {7CC81A85-085C-488E-BB68-61C1B47AD554}
 	EndGlobalSection
 EndGlobal
