@@ -42,7 +42,7 @@ public static class Assistant
             AskProtection(cfg);
 
         Console.WriteLine();
-        Console.WriteLine("  " + Cli.S(cfg, "state_more"));
+        Cli.PrintMainCommands(cfg);
         return 0;
     }
 
@@ -65,7 +65,7 @@ public static class Assistant
         catch { return false; }
     }
 
-    private static void PrintState(CehoConfig cfg)
+    public static void PrintState(CehoConfig cfg)
     {
         var daemon = DaemonControl.IsRunning(Ceho.Root);
         var tunnel = NodeProbe.TunnelIsUp(cfg.TunAddress);
@@ -73,7 +73,9 @@ public static class Assistant
 
         Console.WriteLine();
         Console.WriteLine("  CehoProxy " + Updater.CurrentVersion + " · " +
-            (up ? Cli.S(cfg, "state_on") : daemon ? Cli.S(cfg, "state_broken") : Cli.S(cfg, "state_off")));
+            (up ? Cli.Paint(Cli.S(cfg, "state_on"), Preflight.Level.Ok)
+                : daemon ? Cli.Paint(Cli.S(cfg, "state_broken"), Preflight.Level.Blocker)
+                : Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)));
         if (!daemon && tunnel)
             Console.WriteLine("  " + Cli.S(cfg, "state_leftovers", Os.IsWindows ? "" : "sudo "));
         Console.WriteLine();

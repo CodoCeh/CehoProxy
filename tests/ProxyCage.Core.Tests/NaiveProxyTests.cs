@@ -66,6 +66,14 @@ public class NaiveProxyTests
         Assert.Equal(expected, mask.Invoke(null, [uri]));
     }
 
+    [Theory]
+    [InlineData("https://sub.example.com/api/v1/client/subscribe?token=abcdef123456", "https://sub.example.com/***3456")]
+    [InlineData("https://sub.example.com:8443/s/", "https://sub.example.com:8443/***")]
+    [InlineData("https://user:pass@host:8443/", "https://***:***@host:8443/")]
+    [InlineData("not a url", "***")]
+    public void Subscription_links_are_masked_for_display(string uri, string expected) =>
+        Assert.Equal(expected, WebServer.MaskUrl(uri));
+
 
     [Fact]
 

@@ -473,6 +473,7 @@ public static class Ceho
     public static async Task<string> ApplyAsync(IStageReport? report = null)
     {
         var cfg = CehoConfig.Load(ConfigPath);
+        if (Os.IsWindows && Os.IsElevated()) LeakGuard.Apply(cfg, Root);
         var moved = DaemonControl.IsRunning(Root) ? null : Preflight.SaveProxyPortIfBusy(cfg, ConfigPath);
         var nodes = await LoadAllNodesAsync(cfg, preferCache: false, report);
         report?.Stage(Strings.T(cfg.Language, "stage_writing_rules"), 97);

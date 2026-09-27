@@ -7,6 +7,47 @@ public static class Strings
     public static string Normalize(string? lang) =>
         lang is not null && Languages.Contains(lang.ToLowerInvariant()) ? lang.ToLowerInvariant() : "ru";
 
+    public static string T(string? lang, string key, bool simple, params object[] args)
+    {
+        if (!simple || !Simple.TryGetValue(key, out var pair)) return T(lang, key, args);
+        var text = Normalize(lang) == "en" ? pair.En : pair.Ru;
+        return args.Length == 0 ? text : string.Format(text, args);
+    }
+
+    public static IEnumerable<string> SimpleKeys => Simple.Keys;
+
+    private static readonly Dictionary<string, Pair> Simple = new(StringComparer.Ordinal)
+    {
+        ["pf_engine_missing"] = new("Не скачан движок VPN", "The VPN engine is not downloaded"),
+        ["pf_engine_detail"] = new(
+            "Без него CehoProxy не может подключиться к VPN.", "Without it CehoProxy cannot connect to the VPN."),
+        ["pf_engine_fix_win"] = new("Нажмите «Скачать движок».", "Press \"Download the engine\"."),
+        ["pf_engine_fix_unix"] = new("Нажмите «Скачать движок».", "Press \"Download the engine\"."),
+        ["apps_lede"] = new(
+            "Эти программы выходят в интернет только через VPN. Если VPN не отвечает, у них пропадает " +
+            "интернет, а не включается прямой выход. Остальные программы работают как обычно.",
+            "These apps reach the internet only through the VPN. If the VPN does not respond, they lose " +
+            "the internet instead of going out directly. Other apps work as usual."),
+        ["subs_pool"] = new(
+            "Серверы всех подписок складываются вместе, и CehoProxy сам выбирает работающий. " +
+            "Переключать подписки вручную не нужно.",
+            "Servers from all subscriptions are combined, and CehoProxy picks a working one itself. " +
+            "There is no need to switch subscriptions by hand."),
+        ["sub_nodes_n"] = new("серверов: {0}", "servers: {0}"),
+        ["help_doctor"] = new(
+            "Что-то не работает? Посмотрите «Самопроверку» на Главной: там сказано, что исправить.",
+            "Something is broken? Look at \"Self-check\" on the home screen: it says what to fix."),
+        ["uninstall_hint"] = new(
+            "Полностью выключает защиту и удаляет CehoProxy с компьютера вместе с настройками.",
+            "Turns protection off completely and removes CehoProxy from the computer together with its settings."),
+        ["subs_kind_naive"] = new("Свой сервер", "Own server"),
+        ["subs_kind_sub_hint"] = new(
+            "Ссылка, которую выдал ваш VPN-сервис.", "The link your VPN service gave you."),
+        ["subs_kind_naive_hint"] = new(
+            "Адрес, логин и пароль вашего собственного сервера. Он работает вместе с серверами подписок.",
+            "The address, login and password of your own server. It works together with subscription servers."),
+    };
+
     public static string T(string? lang, string key, params object[] args)
     {
         var l = Normalize(lang);
@@ -47,6 +88,9 @@ public static class Strings
             "Protection is starting — the tunnel is still coming up"),
         ["state_direct"] = new(
             "трафик программ идёт напрямую", "app traffic goes directly"),
+        ["state_guarded"] = new(
+            "программы в изоляции без интернета, пока защита выключена",
+            "isolated apps have no internet while protection is off"),
         ["state_checking"] = new("проверяю выход", "checking the exit"),
         ["state_no_exit"] = new(
             "ноды не отвечают, соединения программ рвутся",
@@ -73,14 +117,14 @@ public static class Strings
         ["pf_engine_ok"] = new("Движок на месте", "Engine found"),
         ["pf_engine_missing"] = new("Не найден {0}", "{0} not found"),
         ["pf_engine_detail"] = new(
-            "Искали в {0}, рядом с программой и в PATH.",
-            "Looked in {0}, next to the program and in PATH."),
+            "Искали в {0} и рядом с программой.",
+            "Looked in {0} and next to the program."),
         ["pf_engine_fix_win"] = new(
             "Скачайте движок командой: chp engine. В комплект он не входит — у него своя лицензия. Можно и вручную: положите {0} в папку настроек.",
             "Download the engine with: chp engine. It is not part of the package — it has its own licence. You can also do it by hand: put {0} into the settings folder."),
         ["pf_engine_fix_unix"] = new(
-            "Скачайте движок командой: sudo chp engine. Либо поставьте sing-box пакетным менеджером системы, либо положите файл в {0}.",
-            "Download the engine with: sudo chp engine. Or install sing-box with your package manager, or put the file into {0}."),
+            "Скачайте движок командой: sudo chp engine. Можно и вручную: положите файл в {0}.",
+            "Download the engine with: sudo chp engine. You can also do it by hand: put the file into {0}."),
         ["pf_cronet_missing"] = new(
             "Для NaiveProxy не хватает libcronet.dll",
             "libcronet.dll is missing for NaiveProxy"),
@@ -240,6 +284,16 @@ public static class Strings
         ["doc_name_service"] = new("служба", "the service"),
         ["doc_name_none"] = new("ничего", "nothing"),
         ["doc_engine_runs"] = new("Движок запускается: {0}", "The engine starts: {0}"),
+        ["doc_app_system_folder"] = new(
+            "«{0}» указывает на системную папку",
+            "\"{0}\" points to a system folder"),
+        ["doc_app_system_folder_detail"] = new(
+            "Под правило попадают все программы из {0}, а не одна.",
+            "The rule covers every program in {0}, not just one."),
+        ["doc_app_system_folder_fix"] = new(
+            "Уберите «{0}» и добавьте программу заново, указав её файл: chp remove-app, затем chp add-app.",
+            "Remove \"{0}\" and add the program again by its file: chp remove-app, then chp add-app."),
+        ["doc_engine_old"] = new("Движок устарел: версия {0}, нужна {1}", "The engine is outdated: version {0}, {1} is required"),
         ["doc_engine_broken"] = new("Движок не запускается", "The engine does not start"),
         ["doc_engine_broken_detail"] = new(
             "Файл на месте, но на запрос версии ответил кодом {0}.",
@@ -535,6 +589,65 @@ public static class Strings
         ["nav_access"] = new("Доступ", "Access"),
         ["nav_doctor"] = new("Проверка", "Check-up"),
         ["nav_help"] = new("Помощь", "Help"),
+        ["nav_more"] = new("Ещё", "More"),
+        ["btn_save_all"] = new("Сохранить всё", "Save all"),
+        ["fix_system_folder"] = new("Исправить: убрать запись и выбрать программу заново", "Fix: remove the entry and choose the app again"),
+        ["wiz_step1"] = new("Подписка", "Subscription"),
+        ["wiz_step2"] = new("Программа", "App"),
+        ["wiz_step3"] = new("Проверка", "Check"),
+        ["wiz_title1"] = new("Вставьте ссылку от вашего VPN-сервиса", "Paste the link from your VPN service"),
+        ["wiz_hint1"] = new(
+            "Её выдаёт VPN-сервис: в личном кабинете или в письме. CehoProxy проверит ссылку и найдёт серверы.",
+            "Your VPN service gives it out, in your account or by email. CehoProxy checks the link and finds the servers."),
+        ["wiz_title2"] = new("Выберите программу, которой нужен VPN", "Choose the app that needs the VPN"),
+        ["wiz_hint2"] = new(
+            "Через VPN пойдёт только она. Остальные программы продолжат работать как обычно.",
+            "Only this app goes through the VPN. Other apps keep working as usual."),
+        ["wiz_title3"] = new("Проверьте, что всё работает", "Check that everything works"),
+        ["wiz_hint3"] = new(
+            "Включите защиту и откройте программу. Ниже появится, идёт ли она через VPN.",
+            "Turn protection on and open the app. Below you will see whether it goes through the VPN."),
+        ["wiz_next"] = new("Дальше", "Next"),
+        ["wiz_done"] = new("Готово", "Done"),
+        ["wiz_other_app"] = new("Нужной программы нет в списке? Укажите путь к ней:", "The app is not listed? Enter its path:"),
+        ["hero_on"] = new("Защищено", "Protected"),
+        ["hero_busy"] = new("Подождите несколько секунд.", "Wait a few seconds."),
+        ["hero_no_exit"] = new("Нет связи с VPN", "No connection to the VPN"),
+        ["hero_no_exit_detail"] = new(
+            "Серверы не отвечают, у программ в изоляции сейчас нет интернета.",
+            "The servers do not respond; isolated apps have no internet right now."),
+        ["hero_checking"] = new("Подключаюсь к VPN", "Connecting to the VPN"),
+        ["hero_off_guarded"] = new("Защита выключена", "Protection is off"),
+        ["hero_off_guarded_detail"] = new(
+            "Программы в изоляции без интернета, пока защита не включена.",
+            "Isolated apps have no internet until protection is on."),
+        ["hero_off_direct"] = new("Защита выключена", "Protection is off"),
+        ["hero_off_direct_detail"] = new(
+            "Программы из списка сейчас выходят в интернет напрямую, без VPN.",
+            "The listed apps now reach the internet directly, without the VPN."),
+        ["live_no_apps"] = new(
+            "Пока нет ни одной программы. Добавьте ту, которой нужен VPN.",
+            "No apps yet. Add the one that needs the VPN."),
+        ["live_add_app"] = new("Добавить программу", "Add an app"),
+        ["app_offline"] = new("без интернета", "no internet"),
+        ["app_direct"] = new("напрямую, без VPN", "direct, without the VPN"),
+        ["app_unknown"] = new("проверяю…", "checking…"),
+        ["app_idle"] = new("не запущена", "not running"),
+        ["app_leak"] = new("соединений мимо VPN: {0}", "connections bypassing the VPN: {0}"),
+        ["app_tunnel"] = new("через VPN · соединений: {0}", "through the VPN · connections: {0}"),
+        ["app_quiet"] = new("запущена, соединений нет", "running, no connections"),
+        ["selfcheck_title"] = new("Самопроверка", "Self-check"),
+        ["check_more"] = new("Ещё замечаний: {0}", "More findings: {0}"),
+        ["check_running"] = new("Проверяю…", "Checking…"),
+        ["check_ok"] = new("Всё в порядке", "Everything is fine"),
+        ["check_found"] = new("Замечаний: {0}", "Findings: {0}"),
+        ["check_open"] = new("Подробнее", "Details"),
+        ["service_title"] = new("Программа", "Program"),
+        ["settings_title"] = new("Настройки: пароль, язык, удаление", "Settings: password, language, uninstall"),
+        ["mode_simple"] = new("Простой", "Simple"),
+        ["mode_pro"] = new("Для профи", "Pro"),
+        ["mode_label"] = new("Режим панели", "Panel mode"),
+        ["auth_set_link"] = new("Задать пароль", "Set a password"),
         ["sites_title"] = new("Список сайтов", "Site list"),
         ["sites_mode_except"] = new("Все, кроме списка", "All except the list"),
         ["sites_mode_only"] = new("Только список", "Only the list"),
@@ -968,12 +1081,14 @@ public static class Strings
             "Only the chosen programs resolve names through us. The rest of the system asks its usual "
             + "name server, exactly as before we were installed."),
         ["touch_not"] = new(
-            "Чего мы не делаем: не ставим правил брандмауэра, не трогаем системные настройки прокси, "
-            + "не удаляем и не выключаем адаптеры других VPN-клиентов. Выключенная защита не оставляет "
-            + "в системе ничего своего.",
-            "What we never do: we add no firewall rules, we do not touch the system proxy settings, and "
-            + "we never remove or disable other VPN clients' adapters. Once protection is off, nothing "
-            + "of ours is left in the system."),
+            "Чего мы не делаем: не трогаем системные настройки прокси, не удаляем и не выключаем адаптеры "
+            + "других VPN-клиентов. На Windows ставим одно правило брандмауэра «CehoProxy leak guard», только "
+            + "для выбранных программ: пока туннеля нет, они остаются без интернета, а не выходят напрямую. "
+            + "Правило снимается, когда программу убирают из списка или удаляют CehoProxy.",
+            "What we never do: we do not touch the system proxy settings, and we never remove or disable "
+            + "other VPN clients' adapters. On Windows we add one firewall rule, \"CehoProxy leak guard\", only "
+            + "for the chosen programs: while the tunnel is down they have no internet instead of going direct. "
+            + "The rule goes away when a program is removed from the list or CehoProxy is uninstalled."),
         ["help_title"] = new("Как пользоваться", "How to use"),
         ["help_1"] = new(
             "Добавьте подписку VPN-сервиса.", "Add your VPN service subscription."),
@@ -996,7 +1111,7 @@ public static class Strings
             "То же самое из терминала: {0}chp add-app ПУТЬ, {0}chp tunnel, {0}chp verify, {0}chp status.",
             "The same from a terminal: {0}chp add-app PATH, {0}chp tunnel, {0}chp verify, {0}chp status."),
         ["help_doctor"] = new(
-            "Что-то не работает — вкладка «Проверка»: осмотр пройдёт по всей цепочке, а кнопка " +
+            "Что-то не работает? Откройте вкладку «Проверка»: осмотр пройдёт по всей цепочке, а кнопка " +
             "«Починить» исправит то, что можно без вас. В терминале это {0}chp doctor и {0}chp doctor fix.",
             "If something is broken, open the \"Check-up\" tab: it walks the whole chain, and the " +
             "\"Fix it\" button repairs what can be done without you. In a terminal: {0}chp doctor " +
@@ -1124,6 +1239,7 @@ public static class Strings
         ["err_unknown_command"] = new(
             "Неизвестная команда: {0}. Запустите chp без аргументов, чтобы увидеть список.",
             "Unknown command: {0}. Run chp with no arguments to see the list."),
+        ["err_did_you_mean"] = new("Возможно, вы имели в виду: chp {0}", "Did you mean: chp {0}"),
         ["country_unknown"] = new("страна не определена", "country unknown"),
         ["country_db_check"] = new("Проверяю базу стран…", "Checking country database…"),
         ["country_probe"] = new("Определяю страны выходных IP…", "Resolving countries from exit IPs…"),
@@ -1227,7 +1343,6 @@ public static class Strings
             "Browser proxy: 127.0.0.1:{0}. Restart protection if it is on."),
         ["ask_lang"] = new("Язык интерфейса / interface language", "Язык интерфейса / interface language"),
         ["ask_nothing_to_pick"] = new("Выбирать не из чего.", "There is nothing to pick."),
-        ["state_more"] = new("Все команды: chp help", "All commands: chp help"),
         ["hint_ask_me"] = new(
             "Наберите chp — программа спросит, чего не хватает, и всё настроит.",
             "Type chp — the program will ask what is missing and set it up."),

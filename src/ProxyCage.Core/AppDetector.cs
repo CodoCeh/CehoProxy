@@ -55,6 +55,8 @@ public static class AppDetector
         if (!string.IsNullOrEmpty(home)) yield return home;
     }
 
+    public static bool CoversSystemFolder(AppEntry app) => !app.SingleFile && IsSystemFolder(app.Folder);
+
     private static bool IsSystemFolder(string folder) =>
         SystemFolders().Any(s => !string.IsNullOrEmpty(s) && SamePath(s, folder));
 

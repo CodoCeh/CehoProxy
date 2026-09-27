@@ -56,7 +56,7 @@ public static class Log
 
     private static string? RotatedPath => FilePath is null ? null : FilePath + ".1";
 
-    public static void Init(string root, string component)
+    public static void Init(string root, string component, bool announce = true)
     {
         lock (Gate)
         {
@@ -65,7 +65,8 @@ public static class Log
             try { Directory.CreateDirectory(root); } catch { }
         }
         DropLegacyFiles();
-        Write("info", _component, $"{component} {Updater.CurrentVersion} на {Os.Describe()}, pid {Environment.ProcessId}");
+        if (announce)
+            Write("info", _component, $"{component} {Updater.CurrentVersion} на {Os.Describe()}, pid {Environment.ProcessId}");
     }
 
     /// <summary>

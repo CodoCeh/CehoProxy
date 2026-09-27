@@ -45,10 +45,10 @@ public sealed class CountryRefreshPanelTests
             for (var i = 0; i < 30; i++)
             {
                 var page = await http.GetStringAsync("/?tab=exit");
-                if (page.Contains("name=all value=\"??\"")) break;
+                if (page.Contains("name=call value=\"??\"")) break;
                 await Task.Delay(50);
             }
-            Assert.Contains("name=all value=\"??\"", await http.GetStringAsync("/?tab=exit"));
+            Assert.Contains("name=call value=\"??\"", await http.GetStringAsync("/?tab=exit"));
 
             using var reply = await http.PostAsync("/countries/refresh", new FormUrlEncodedContent(
                 new Dictionary<string, string> { ["tab"] = "exit" }));
@@ -62,7 +62,7 @@ public sealed class CountryRefreshPanelTests
                 if (result.RootElement.GetProperty("state").GetString() == "done") break;
                 await Task.Delay(50);
             }
-            Assert.Contains("name=all value=\"US\"", await http.GetStringAsync("/?tab=exit"));
+            Assert.Contains("name=call value=\"US\"", await http.GetStringAsync("/?tab=exit"));
         }
         finally
         {

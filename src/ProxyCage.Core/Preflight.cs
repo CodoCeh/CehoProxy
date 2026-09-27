@@ -11,10 +11,10 @@ public static class Preflight
 
     public static bool IsElevated() => Os.IsElevated();
 
-    public static IReadOnlyList<Check> Run(CehoConfig cfg, string root)
+    public static IReadOnlyList<Check> Run(CehoConfig cfg, string root, bool simple = false)
     {
         var l = cfg.Language;
-        string S(string key, params object[] a) => Strings.T(l, key, a);
+        string S(string key, params object[] a) => Strings.T(l, key, simple, a);
 
         var checks = new List<Check>();
 

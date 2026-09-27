@@ -365,6 +365,7 @@ public static class Installer
     {
         if (Os.IsWindows)
         {
+            LeakGuard.Remove(root);
             AppPathPicker.CleanupForUninstall();
             try
             {
@@ -504,6 +505,8 @@ public static class Installer
         }
     }
 
+    public const string EngineVersion = "1.14.0";
+
     public static async Task<string> DownloadEngineAsync(string root, Action<string> log, string lang = "ru")
     {
         var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
@@ -513,9 +516,9 @@ public static class Installer
         using var http = DirectHttp.CreateClient(TimeSpan.FromMinutes(10));
         http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/vnd.github+json");
 
-        var json = await http.GetStringAsync("https://api.github.com/repos/SagerNet/sing-box/releases/tags/v1.14.0");
+        var json = await http.GetStringAsync($"https://api.github.com/repos/SagerNet/sing-box/releases/tags/v{EngineVersion}");
         using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var tag = doc.RootElement.GetProperty("tag_name").GetString()?.TrimStart('v') ?? "1.14.0";
+        var tag = doc.RootElement.GetProperty("tag_name").GetString()?.TrimStart('v') ?? EngineVersion;
 
         var wanted = $"sing-box-{tag}-{os}-{arch}." + (Os.IsWindows ? "zip" : "tar.gz");
         var asset = doc.RootElement.GetProperty("assets").EnumerateArray()

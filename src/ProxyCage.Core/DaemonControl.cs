@@ -491,21 +491,47 @@ public static class DaemonControl
         catch (UnauthorizedAccessException) { return false; }
     }
 
-    public static void WaitForStop()
+    [SupportedOSPlatform("windows")]
+    private static EventWaitHandle CreateWindowsStopEvent()
+    {
+        var security = new System.Security.AccessControl.EventWaitHandleSecurity();
+        foreach (var sid in new[]
+                 {
+                     System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid,
+                     System.Security.Principal.WellKnownSidType.LocalSystemSid,
+                 })
+            security.AddAccessRule(new System.Security.AccessControl.EventWaitHandleAccessRule(
+                new System.Security.Principal.SecurityIdentifier(sid, null),
+                System.Security.AccessControl.EventWaitHandleRights.FullControl,
+                System.Security.AccessControl.AccessControlType.Allow));
+        return EventWaitHandleAcl.Create(false, EventResetMode.ManualReset, WindowsEventName, out _, security);
+    }
+
+    private static EventWaitHandle? _windowsStop;
+    private static ManualResetEventSlim? _posixStop;
+    private static readonly List<PosixSignalRegistration> PosixSignals = new();
+
+    public static void ListenForStop()
     {
         if (OperatingSystem.IsWindows())
         {
-            using var stopEvent = new EventWaitHandle(false, EventResetMode.ManualReset, WindowsEventName);
-            stopEvent.Reset();
-            stopEvent.WaitOne();
+            if (_windowsStop is not null) return;
+            _windowsStop = CreateWindowsStopEvent();
+            _windowsStop.Reset();
             return;
         }
 
-        using var stop = new ManualResetEventSlim(false);
+        if (_posixStop is not null) return;
+        var stop = new ManualResetEventSlim(false);
+        foreach (var signal in new[] { PosixSignal.SIGTERM, PosixSignal.SIGINT, PosixSignal.SIGHUP })
+            PosixSignals.Add(PosixSignalRegistration.Create(signal, ctx => { ctx.Cancel = true; stop.Set(); }));
+        _posixStop = stop;
+    }
 
-        using var term = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; stop.Set(); });
-        using var intr = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; stop.Set(); });
-        using var hup = PosixSignalRegistration.Create(PosixSignal.SIGHUP, ctx => { ctx.Cancel = true; stop.Set(); });
-        stop.Wait();
+    public static void WaitForStop()
+    {
+        ListenForStop();
+        if (OperatingSystem.IsWindows()) _windowsStop!.WaitOne();
+        else _posixStop!.Wait();
     }
 }

@@ -150,6 +150,7 @@ public sealed class WebServer
             if (logView.Length > 0) q += $"&view={Uri.EscapeDataString(logView)}";
             if (msg is not null) q += $"&m={Uri.EscapeDataString(msg)}&e={(isError ? 1 : 0)}";
             if (jobId is not null) q += $"&job={Uri.EscapeDataString(jobId)}";
+            if (form.GetValueOrDefault("wizard") is { Length: > 0 } step) q += $"&wizard={Uri.EscapeDataString(step)}";
             Redirect(ctx, "/" + q);
             return;
         }
@@ -187,7 +188,8 @@ public sealed class WebServer
         var st = _state();
         if (current == "exit" && st.Running)
             await RefreshLiveLatencyAsync(cfg);
-        await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel));
+        await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel,
+            ctx.Request.QueryString["wizard"]));
     }
 
     private static bool IsSameOriginRequest(HttpListenerRequest request)
@@ -704,18 +706,44 @@ public sealed class WebServer
                     return (S("err_need_timeout"), true, null);
                 }
 
-                case "/countries/save":
+                case "/exit/save":
                 {
-                    var all = (f.GetValueOrDefault("all", "") ?? "")
-                        .Split(',', StringSplitOptions.RemoveEmptyEntries);
-                    var on = f.Keys.Where(k => k.StartsWith("c_", StringComparison.Ordinal))
-                        .Select(k => k[2..]).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
                     var prevExcluded = new List<string>(cfg.ExcludedCountries);
                     var prevPreferred = new List<string>(cfg.PreferredCountries);
+                    var prevBlocked = new List<string>(cfg.BlockedNodes);
+                    var prevLimit = cfg.MaxLatencyMs;
 
-                    cfg.ExcludedCountries = all.Where(c => !on.Contains(c)).ToList();
-                    cfg.PreferredCountries.RemoveAll(c => cfg.ExcludedCountries.Contains(c, StringComparer.OrdinalIgnoreCase));
+                    if (f.TryGetValue("call", out var countryList))
+                    {
+                        var all = countryList.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                        var on = f.Keys.Where(k => k.StartsWith("c_", StringComparison.Ordinal))
+                            .Select(k => k[2..]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        cfg.ExcludedCountries = cfg.ExcludedCountries
+                            .Where(c => !all.Contains(c, StringComparer.OrdinalIgnoreCase))
+                            .Concat(all.Where(c => !on.Contains(c)))
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                        cfg.PreferredCountries.RemoveAll(c => cfg.ExcludedCountries.Contains(c, StringComparer.OrdinalIgnoreCase));
+                    }
+
+                    if (f.TryGetValue("nall", out var nodeList))
+                    {
+                        var shown = nodeList.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(k => k.Trim()).Where(k => k.Length > 0).ToList();
+                        var keep = f.Keys.Where(k => k.StartsWith("n_", StringComparison.Ordinal))
+                            .Select(k => k[2..]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        cfg.BlockedNodes = cfg.BlockedNodes
+                            .Where(k => !shown.Contains(k, StringComparer.OrdinalIgnoreCase))
+                            .Concat(shown.Where(k => !keep.Contains(k)))
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    }
+
+                    cfg.RotationEnabled = f.ContainsKey("rotation");
+                    var checkUrl = f.GetValueOrDefault("checkurl", "").Trim();
+                    if (checkUrl.Length > 0) cfg.CheckUrl = checkUrl;
+                    if (int.TryParse(f.GetValueOrDefault("timeout", "").Trim(), out var tSec) && tSec is >= 1 and <= 300)
+                        cfg.TimeoutSeconds = tSec;
+                    var speed = f.GetValueOrDefault("speed", "").Trim();
+                    cfg.MaxLatencyMs = int.TryParse(speed, out var limit) && limit > 0 ? limit : null;
                     Save(cfg);
 
                     var job = Jobs.Start(JobApply, S("job_apply"), async p =>
@@ -729,51 +757,8 @@ public sealed class WebServer
                             var back = CehoConfig.Load(_configPath);
                             back.ExcludedCountries = prevExcluded;
                             back.PreferredCountries = prevPreferred;
-                            Save(back);
-                            throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
-                        }
-                    }, rerunIfBusy: true);
-                    return (null, false, job.Id);
-                }
-
-                case "/nodes/save":
-                {
-                    // Ключи нод, показанных на странице: только про них и решаем.
-                    // Ноды выключенных подписок в форму не попали — их выбор остаётся как был.
-                    var shown = (f.GetValueOrDefault("all", "") ?? "")
-                        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                        .Select(k => k.Trim())
-                        .Where(k => k.Length > 0)
-                        .ToList();
-                    var keep = f.Keys.Where(k => k.StartsWith("n_", StringComparison.Ordinal))
-                        .Select(k => k[2..]).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                    var prevBlocked = new List<string>(cfg.BlockedNodes);
-
-                    var offScreen = cfg.BlockedNodes
-                        .Where(k => !shown.Contains(k, StringComparer.OrdinalIgnoreCase));
-                    var justBlocked = shown.Where(k => !keep.Contains(k));
-                    cfg.BlockedNodes = offScreen.Concat(justBlocked)
-                        .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-                    if (cfg.BlockedNodes.Count == prevBlocked.Count
-                        && cfg.BlockedNodes.All(k => prevBlocked.Contains(k, StringComparer.OrdinalIgnoreCase)))
-                        return (S("nodes_unchanged"), false, null);
-
-                    Save(cfg);
-
-                    var job = Jobs.Start(JobApply, S("job_apply"), async p =>
-                    {
-                        try
-                        {
-                            var text = OnApply is null ? S("rules_rebuilt") : await OnApply(p);
-                            var off = CehoConfig.Load(_configPath).BlockedNodes.Count;
-                            return off > 0 ? $"{text} · {S("nodes_off_now", off)}" : text;
-                        }
-                        catch (PoolEmptyException ex)
-                        {
-                            var back = CehoConfig.Load(_configPath);
                             back.BlockedNodes = prevBlocked;
+                            back.MaxLatencyMs = prevLimit;
                             Save(back);
                             throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
                         }
@@ -887,37 +872,6 @@ public sealed class WebServer
                     return (null, false, StartPoolJob(cfg).Id);
                 }
 
-                case "/settings":
-                {
-                    cfg.RotationEnabled = f.ContainsKey("rotation");
-                    var checkUrl = f.GetValueOrDefault("checkurl", "").Trim();
-                    if (checkUrl.Length > 0) cfg.CheckUrl = checkUrl;
-
-                    if (int.TryParse(f.GetValueOrDefault("timeout", "").Trim(), out var tSec) && tSec is >= 1 and <= 300)
-                        cfg.TimeoutSeconds = tSec;
-
-                    var prevLimit = cfg.MaxLatencyMs;
-                    var speed = f.GetValueOrDefault("speed", "").Trim();
-                    cfg.MaxLatencyMs = int.TryParse(speed, out var limit) && limit > 0 ? limit : null;
-                    Save(cfg);
-
-                    var job = Jobs.Start(JobApply, S("job_apply"), async p =>
-                    {
-                        try
-                        {
-                            return OnApply is null ? S("rules_rebuilt") : await OnApply(p);
-                        }
-                        catch (PoolEmptyException ex)
-                        {
-                            var back = CehoConfig.Load(_configPath);
-                            back.MaxLatencyMs = prevLimit;
-                            Save(back);
-                            throw new InvalidOperationException($"{ex.Message} {S("change_reverted")}");
-                        }
-                    }, rerunIfBusy: true);
-                    return (null, false, job.Id);
-                }
-
                 case "/log/level":
                 {
                     var level = f.GetValueOrDefault("level", "warn").Trim().ToLowerInvariant();
@@ -932,6 +886,15 @@ public sealed class WebServer
                 {
                     Log.Clear();
                     return (S("log_cleared"), false, null);
+                }
+
+                case "/mode":
+                {
+                    cfg.PanelMode = f.GetValueOrDefault("mode") == CehoConfig.PanelModeSimple
+                        ? CehoConfig.PanelModeSimple
+                        : CehoConfig.PanelModePro;
+                    cfg.SaveSubscriptionStatus(_configPath);
+                    return (null, false, null);
                 }
 
                 case "/lang":
@@ -1051,6 +1014,7 @@ public sealed class WebServer
     {
         _doctor = result;
         _doctorAtUtc = DateTime.UtcNow;
+        _doctorSimple = false;
     }
 
     private Job StartPoolJob(CehoConfig cfg) =>
@@ -1154,9 +1118,9 @@ public sealed class WebServer
 
     private string RenderPage(
         CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr, Job? job,
-        LogView logView = LogView.All, string? tunnelFolder = null)
+        LogView logView = LogView.All, string? tunnelFolder = null, string? wizard = null)
     {
-        string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
+        string S(string key, params object[] a) => Strings.T(cfg.Language, key, cfg.SimplePanel, a);
         var sb = new StringBuilder();
         Head(sb, cfg, job);
         sb.Append("<div class=wrap>");
@@ -1164,19 +1128,37 @@ public sealed class WebServer
         sb.Append("<header>");
         sb.Append("<img class=logo src=\"").Append(Brand.LogoDataUri).Append("\" alt=\"КодоЦех\">");
         sb.Append("<span class=mark>Ceho<span>Proxy</span></span>");
-        sb.Append("<span class=where>").Append(E($"127.0.0.1:{cfg.WebPort}")).Append("</span></header>");
+        sb.Append("<form class=mode method=post action=/mode aria-label=\"").Append(E(S("mode_label")))
+          .Append("\"><input type=hidden name=tab value=\"").Append(E(tab)).Append("\">");
+        foreach (var (mode, key) in new[] { (CehoConfig.PanelModeSimple, "mode_simple"), (CehoConfig.PanelModePro, "mode_pro") })
+            sb.Append("<button name=mode value=").Append(mode)
+              .Append(cfg.PanelMode == mode ? " class=on aria-pressed=true" : " aria-pressed=false").Append('>')
+              .Append(E(S(key))).Append("</button>");
+        sb.Append("</form></header>");
 
-        var tabs = new (string Id, string Key)[]
-        {
-            ("state", "nav_state"), ("apps", "nav_apps"), ("sites", "nav_sites"), ("subs", "nav_subs"),
-            ("exit", "nav_exit"), ("browser", "nav_browser"),
-            ("doctor", "nav_doctor"),
-            ("log", "nav_log"), ("access", "nav_access"), ("help", "nav_help"),
-        };
-        sb.Append("<nav class=tabs>");
-        foreach (var (id, key) in tabs)
+        var tabs = cfg.SimplePanel
+            ? new (string Id, string Key)[] { ("state", "nav_state"), ("apps", "nav_apps"), ("subs", "nav_subs"), ("help", "nav_help") }
+            : new (string Id, string Key)[]
+            {
+                ("state", "nav_state"), ("apps", "nav_apps"), ("sites", "nav_sites"), ("subs", "nav_subs"),
+                ("exit", "nav_exit"), ("doctor", "nav_doctor"), ("access", "nav_access"),
+            };
+        var more = cfg.SimplePanel
+            ? Array.Empty<(string Id, string Key)>()
+            : new (string Id, string Key)[] { ("browser", "nav_browser"), ("log", "nav_log"), ("help", "nav_help") };
+        void Tab(string id, string key) =>
             sb.Append("<a href=\"/?tab=").Append(id).Append('"')
               .Append(id == tab ? " class=on" : "").Append('>').Append(E(S(key))).Append("</a>");
+        sb.Append("<nav class=tabs>");
+        foreach (var (id, key) in tabs) Tab(id, key);
+        var inMore = more.Any(m => m.Id == tab);
+        if (more.Length > 0)
+        {
+            sb.Append("<details class=more><summary").Append(inMore ? " class=on" : "").Append('>')
+              .Append(E(inMore ? S(more.First(m => m.Id == tab).Key) : S("nav_more"))).Append("</summary><div>");
+            foreach (var (id, key) in more) Tab(id, key);
+            sb.Append("</div></details>");
+        }
         sb.Append("</nav>");
 
         if (!string.IsNullOrEmpty(flash))
@@ -1196,7 +1178,7 @@ public sealed class WebServer
             case "log": RenderLog(sb, cfg, logView, S); break;
             case "access": RenderAccess(sb, cfg, S); break;
             case "help": RenderHelp(sb, cfg, S); break;
-            default: RenderState(sb, cfg, st, S); break;
+            default: RenderState(sb, cfg, st, S, wizard); break;
         }
 
         sb.Append("<footer><a class=forged href=\"").Append(Brand.Site).Append("\" target=_blank rel=noopener>")
@@ -1214,6 +1196,7 @@ public sealed class WebServer
 
         if (job is { Running: true }) sb.Append(WebUi.JobScript);
         if (tab == "subs" && cfg.Subscriptions.Count > 0) sb.Append(WebUi.SubModalScript);
+        if (tab is "state" or "doctor" && job is not { Running: true }) sb.Append(WebUi.StateRefreshScript);
         sb.Append("</body></html>");
         return sb.ToString();
     }
@@ -1236,7 +1219,8 @@ public sealed class WebServer
           .Append(" data-wait=\"").Append(E(S("job_wait_panel", []))).Append("\">");
         sb.Append("<div class=job-head><b>").Append(E(job.Title)).Append("</b>")
           .Append("<span class=job-num id=jn>").Append(job.Percent).Append("%</span></div>");
-        sb.Append("<div class=bar><span id=jf style=\"width:").Append(job.Percent).Append("%\"></span></div>");
+        sb.Append("<div class=bar><span id=jf style=\"transform:scaleX(")
+          .Append((job.Percent / 100.0).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(")\"></span></div>");
         sb.Append("<div class=job-stage id=js>").Append(E(job.Stage)).Append("</div>");
         sb.Append("<div class=job-foot>")
           .Append(E(S(job.Running ? "job_running" : job.IsError ? "job_failed" : "job_done",
@@ -1259,28 +1243,46 @@ public sealed class WebServer
         sb.Append("</div>");
     }
 
-    private void RenderState(StringBuilder sb, CehoConfig cfg, ControlState st, Func<string, object[], string> S)
+    private void RenderState(StringBuilder sb, CehoConfig cfg, ControlState st, Func<string, object[], string> S,
+        string? wizard = null)
     {
-        sb.Append("<section>");
-        var cls = !st.Running ? "off"
-                : st.ExitIp is not null ? "on"
-                : st.Probed ? "bad"
-                : "wait";
-        sb.Append("<div class=\"status ").Append(cls).Append("\"><span class=dot></span><b>");
-        sb.Append(E(st.Running
-            ? (cls == "bad" ? S("state_no_exit", []) : S("state_on", []))
-            : S("state_off", []))).Append("</b>");
-        sb.Append("<span class=detail>");
-        if (st.Running && st.ExitIp is not null)
-            sb.Append(E(S("exit_is", new object[] { st.ExitCountry ?? "?", st.ExitIp })));
-        else if (st.Running && !st.Probed) sb.Append(E(S("state_checking", [])));
-        else if (!st.Running) sb.Append(E(S("state_direct", [])));
-        sb.Append("</span></div>");
+        var step = cfg.Subscriptions.Count == 0 ? 1 : !cfg.Apps.Any(a => a.Enabled) ? 2 : wizard == "3" ? 3 : 0;
+        var guarded = LeakGuard.IsActive(Root);
+        var power = Jobs.Active(JobPower) ?? Jobs.Active(JobApply);
+        var (cls, title, detail) =
+            power is not null ? ("wait", power.Title, S("hero_busy", []))
+            : st.Running && st.ExitIp is not null ? ("on", S("hero_on", []), S("exit_is", [st.ExitCountry ?? "?", st.ExitIp]))
+            : st.Running && st.Probed ? ("bad", S("hero_no_exit", []), S("hero_no_exit_detail", []))
+            : st.Running ? ("wait", S("hero_checking", []), S("state_checking", []))
+            : guarded ? ("warn", S("hero_off_guarded", []), S("hero_off_guarded_detail", []))
+            : ("bad", S("hero_off_direct", []), S("hero_off_direct_detail", []));
 
-        var checks = Preflight.Run(cfg, Root);
+        sb.Append("<section data-live=hero><div class=\"hero ").Append(cls).Append("\"><span class=dot></span><div><h1>")
+          .Append(E(title)).Append("</h1><p>").Append(E(detail)).Append("</p></div>")
+          .Append("<form method=post><input type=hidden name=tab value=state>");
+        if (power is not null) { }
+        else if (st.Running)
+        {
+            sb.Append("<button type=submit formaction=\"/control/stop\" class=danger>").Append(E(S("btn_off", []))).Append("</button>");
+            if (!cfg.SimplePanel)
+                sb.Append("<button type=submit formaction=\"/control/restart\" class=ghost>").Append(E(S("btn_restart", []))).Append("</button>");
+        }
+        else
+            sb.Append("<button type=submit formaction=\"/control/start\" class=big").Append(Os.IsElevated() ? "" : " disabled").Append('>')
+              .Append(E(S("btn_on", []))).Append("</button>");
+        sb.Append("</form></div></section>");
+
+        sb.Append("<section>");
+        if (!Auth.HasPassword(cfg))
+            sb.Append("<div class=\"flash warn\">").Append(E(S("auth_no_password", [])))
+              .Append(" <a href=\"").Append(cfg.SimplePanel ? "#settings" : "/?tab=access").Append("\">")
+              .Append(E(S("auth_set_link", []))).Append("</a></div>");
+
+        var checks = Preflight.Run(cfg, Root, cfg.SimplePanel);
         var problems = checks.Where(c => c.Level != Preflight.Level.Ok)
             .Where(c => !c.Title.Contains("орт ", StringComparison.OrdinalIgnoreCase)
                      && !c.Title.Contains("ort ", StringComparison.OrdinalIgnoreCase))
+            .Where(c => step == 0 || (c.Title != S("pf_no_subs", []) && c.Title != S("pf_no_apps", [])))
             .ToList();
 
         if (st.LastError is not null && !problems.Any(c => st.LastError.Contains(c.Title, StringComparison.Ordinal)))
@@ -1300,7 +1302,7 @@ public sealed class WebServer
             if (c.Fix is not null) sb.Append(E(c.Fix));
 
             // В браузере набирать команду негде, поэтому движок скачивается кнопкой.
-            if (engineMissing && c.Title.Contains(Os.SingBoxFileName, StringComparison.OrdinalIgnoreCase))
+            if (engineMissing && c.Repair == Repair.Engine)
                 sb.Append("<form class=row method=post action=/engine/download>")
                   .Append("<input type=hidden name=tab value=state><button>")
                   .Append(E(S("engine_get", []))).Append("</button></form>");
@@ -1313,76 +1315,236 @@ public sealed class WebServer
               .Append("<input type=hidden name=tab value=doctor>")
               .Append("<button class=ghost>").Append(E(S("doc_heal", []))).Append("</button></form>");
 
-        if (st.Running)
+        sb.Append("</section>");
+
+        foreach (var broken in cfg.Apps.Where(a => a.Enabled && AppDetector.CoversSystemFolder(a)))
+            sb.Append("<section><div class=\"flash err\"><b>").Append(E(S("doc_app_system_folder", [broken.Label])))
+              .Append("</b>").Append(E(S("doc_app_system_folder_detail", [broken.Folder])))
+              .Append("<form method=post action=/apps/remove><input type=hidden name=tab value=apps>")
+              .Append("<input type=hidden name=folder value=\"").Append(E(broken.Folder)).Append("\">")
+              .Append("<button class=danger>").Append(E(S("fix_system_folder", []))).Append("</button></form></div></section>");
+
+        if (step > 0) RenderWizard(sb, cfg, step, S);
+        if (step is 0 or 3)
         {
-            sb.Append("<form class=row method=post>")
-              .Append("<input type=hidden name=tab value=state>")
-              .Append("<button type=submit formaction=\"/control/stop\" class=danger>")
-              .Append(E(S("btn_off", [])))
-              .Append("</button>")
-              .Append("<button type=submit formaction=\"/control/restart\">")
-              .Append(E(S("btn_restart", [])))
-              .Append("</button></form>");
+            RenderLiveApps(sb, cfg, st, guarded, S);
+            RenderCheckSummary(sb, cfg, S);
+        }
+
+        if (!cfg.SimplePanel)
+        {
+            sb.Append("<section><h2>").Append(E(S("summary_title", []))).Append("</h2><dl class=kv>");
+            sb.Append("<dt>").Append(E(S("nav_apps", []))).Append("</dt><dd>")
+              .Append(cfg.Apps.Count(a => a.Enabled)).Append("</dd>");
+            sb.Append("<dt>").Append(E(S("nav_subs", []))).Append("</dt><dd>")
+              .Append(E(S("subs_on_of", new object[] { cfg.Subscriptions.Count(s => s.Enabled), cfg.Subscriptions.Count })))
+              .Append("</dd>");
+            sb.Append("<dt>").Append(E(S("nav_exit", []))).Append("</dt><dd>")
+              .Append(E(cfg.PreferredCountries.Count > 0
+                  ? string.Join(", ", cfg.PreferredCountries)
+                  : cfg.ExcludedCountries.Count > 0
+                      ? S("country_any_but", [string.Join(", ", cfg.ExcludedCountries)])
+                      : S("country_any", [])));
+            if (cfg.BlockedNodes.Count > 0)
+                sb.Append(" · ").Append(E(S("nodes_off_now", new object[] { cfg.BlockedNodes.Count })));
+            sb.Append("</dd>");
+            sb.Append("<dt>").Append(E(S("nav_browser", []))).Append("</dt><dd>127.0.0.1:")
+              .Append(cfg.MixedPort).Append("</dd>");
+
+            var soonest = cfg.Subscriptions
+                .Where(s => s.Enabled && s.ExpiresUtc is not null)
+                .OrderBy(s => s.ExpiresUtc)
+                .FirstOrDefault();
+            if (soonest?.ExpiresUtc is { } when)
+                sb.Append("<dt>").Append(E(S("subs_expiry_short", []))).Append("</dt><dd>")
+                  .Append(E(ExpiryText(when, S))).Append("</dd>");
+
+            sb.Append("</dl></section>");
+        }
+
+
+        var auto = Autostart.IsEnabled();
+        sb.Append("<section><h2>").Append(E(S("service_title", []))).Append("</h2><div class=lines>");
+        sb.Append("<div class=line><span>").Append(E(S("upd_current", new object[] { Updater.CurrentVersion }))).Append("</span>")
+          .Append("<form method=post action=/update><input type=hidden name=tab value=state>")
+          .Append("<button class=ghost>").Append(E(S("upd_check", []))).Append("</button></form>")
+          .Append("<form method=post action=/update><input type=hidden name=tab value=state><input type=hidden name=install value=1>")
+          .Append("<button class=ghost>").Append(E(S("upd_apply", []))).Append("</button></form></div>");
+        sb.Append("<div class=\"line ").Append(auto ? "on" : "off").Append("\"><span><span class=dot></span> ")
+          .Append(E(auto ? S("autostart_on", []) : S("autostart_off", []))).Append("</span>")
+          .Append("<form method=post action=/autostart><input type=hidden name=tab value=state>")
+          .Append(auto ? "" : "<input type=hidden name=enable value=1>")
+          .Append("<button class=ghost>").Append(E(auto ? S("autostart_del", []) : S("autostart_add", [])))
+          .Append("</button></form></div></div></section>");
+
+        if (cfg.SimplePanel)
+        {
+            sb.Append("<details class=settings id=settings><summary>").Append(E(S("settings_title", []))).Append("</summary>");
+            RenderAccess(sb, cfg, S, "state");
+            sb.Append("</details>");
+        }
+    }
+
+    private static void RenderWizard(StringBuilder sb, CehoConfig cfg, int step, Func<string, object[], string> S)
+    {
+        sb.Append("<section class=wizard><ol class=wizard-steps>");
+        for (var i = 1; i <= 3; i++)
+            sb.Append("<li").Append(i == step ? " class=now" : i < step ? " class=done" : "").Append('>')
+              .Append(E(S($"wiz_step{i}", []))).Append("</li>");
+        sb.Append("</ol><h2>").Append(E(S($"wiz_title{step}", []))).Append("</h2><p class=lede>")
+          .Append(E(S($"wiz_hint{step}", []))).Append("</p>");
+
+        if (step == 1)
+        {
+            sb.Append("<form class=row method=post action=/subs/add><input type=hidden name=tab value=state>")
+              .Append("<input type=hidden name=kind value=sub><input type=hidden name=wizard value=2>")
+              .Append("<label class=sr-only for=wiz-url>").Append(E(S("wiz_title1", []))).Append("</label>")
+              .Append("<input id=wiz-url type=url name=url required placeholder=\"https://…\">")
+              .Append("<button>").Append(E(S("wiz_next", []))).Append("</button></form>");
+        }
+        else if (step == 2)
+        {
+            var installed = InstalledAppCatalog.Detect(cfg.Language);
+            if (installed.Count > 0)
+            {
+                sb.Append("<form class=row method=post action=/apps/installed><input type=hidden name=tab value=state>")
+                  .Append("<input type=hidden name=wizard value=3>")
+                  .Append("<label class=sr-only for=wiz-app>").Append(E(S("wiz_title2", []))).Append("</label>")
+                  .Append("<select id=wiz-app name=path required><option value=\"\">")
+                  .Append(E(S("apps_installed_choose", []))).Append("</option>");
+                foreach (var app in installed)
+                    sb.Append("<option value=\"").Append(E(app.Path)).Append("\">").Append(E(app.Name)).Append("</option>");
+                sb.Append("</select><button>").Append(E(S("wiz_next", []))).Append("</button></form>");
+            }
+            sb.Append("<p class=hint>").Append(E(S("wiz_other_app", []))).Append("</p>")
+              .Append("<form class=row method=post action=/apps/add><input type=hidden name=tab value=state>")
+              .Append("<input type=hidden name=wizard value=3>")
+              .Append("<label class=sr-only for=wiz-path>").Append(E(S("wiz_other_app", []))).Append("</label>")
+              .Append("<input id=wiz-path type=text name=path required placeholder=\"")
+              .Append(E(S(Os.Kind switch
+              {
+                  OsKind.Windows => "apps_placeholder_win",
+                  OsKind.Mac => "apps_placeholder_mac",
+                  _ => "apps_placeholder_linux",
+              }, []))).Append("\">")
+              .Append("<button class=ghost>").Append(E(S("btn_add", []))).Append("</button></form>");
         }
         else
         {
-            var canStart = Os.IsElevated();
-            sb.Append("<form class=row method=post>")
-              .Append("<input type=hidden name=tab value=state>")
-              .Append("<button type=submit formaction=\"/control/start\"").Append(canStart ? "" : " disabled").Append('>')
-              .Append(E(S("btn_on", [])))
-              .Append("</button>")
-              .Append("<button type=submit formaction=\"/control/restart\" class=ghost").Append(canStart ? "" : " disabled").Append('>')
-              .Append(E(S("btn_restart", [])))
-              .Append("</button></form>");
+            sb.Append("<p><a class=button href=\"/?tab=state\">").Append(E(S("wiz_done", []))).Append("</a></p>");
         }
         sb.Append("</section>");
+    }
 
-        sb.Append("<section><h2>").Append(E(S("summary_title", []))).Append("</h2><dl class=kv>");
-        sb.Append("<dt>").Append(E(S("nav_apps", []))).Append("</dt><dd>")
-          .Append(cfg.Apps.Count(a => a.Enabled)).Append("</dd>");
-        sb.Append("<dt>").Append(E(S("nav_subs", []))).Append("</dt><dd>")
-          .Append(E(S("subs_on_of", new object[] { cfg.Subscriptions.Count(s => s.Enabled), cfg.Subscriptions.Count })))
-          .Append("</dd>");
-        sb.Append("<dt>").Append(E(S("nav_exit", []))).Append("</dt><dd>")
-          .Append(E(cfg.PreferredCountries.Count > 0
-              ? string.Join(", ", cfg.PreferredCountries)
-              : cfg.ExcludedCountries.Count > 0
-                  ? S("country_any_but", [string.Join(", ", cfg.ExcludedCountries)])
-                  : S("country_any", [])));
-        if (cfg.BlockedNodes.Count > 0)
-            sb.Append(" · ").Append(E(S("nodes_off_now", new object[] { cfg.BlockedNodes.Count })));
-        sb.Append("</dd>");
-        sb.Append("<dt>").Append(E(S("nav_browser", []))).Append("</dt><dd>127.0.0.1:")
-          .Append(cfg.MixedPort).Append("</dd>");
+    public sealed record AppLive(string Folder, int Processes, int Tunneled, int Direct);
 
-        var soonest = cfg.Subscriptions
-            .Where(s => s.Enabled && s.ExpiresUtc is not null)
-            .OrderBy(s => s.ExpiresUtc)
-            .FirstOrDefault();
-        if (soonest?.ExpiresUtc is { } when)
-            sb.Append("<dt>").Append(E(S("subs_expiry_short", []))).Append("</dt><dd>")
-              .Append(E(ExpiryText(when, S))).Append("</dd>");
+    public Func<IReadOnlyList<AppLive>>? OnAppsLive { get; set; }
 
-        sb.Append("</dl></section>");
+    private IReadOnlyList<AppLive>? _appsLive;
+    private DateTime _appsLiveAtUtc;
 
-        sb.Append("<section><h2>").Append(E(S("upd_title", []))).Append("</h2>");
-        sb.Append("<p class=hint>").Append(E(S("upd_current", new object[] { Updater.CurrentVersion })))
-          .Append("</p>");
-        sb.Append("<form class=row method=post action=/update><input type=hidden name=tab value=state>")
-          .Append("<button class=ghost>").Append(E(S("upd_check", []))).Append("</button></form>");
-        sb.Append("<form class=row method=post action=/update><input type=hidden name=tab value=state>")
-          .Append("<input type=hidden name=install value=1>")
-          .Append("<button class=ghost>").Append(E(S("upd_apply", []))).Append("</button></form></section>");
+    private IReadOnlyList<AppLive>? AppsLive()
+    {
+        if (OnAppsLive is null) return null;
+        if (_appsLive is null || DateTime.UtcNow - _appsLiveAtUtc > TimeSpan.FromSeconds(10))
+        {
+            try { _appsLive = OnAppsLive(); }
+            catch (Exception ex) { Log.Warn($"панель не смогла проверить программы: {ex.Message}"); }
+            _appsLiveAtUtc = DateTime.UtcNow;
+        }
+        return _appsLive;
+    }
 
-        sb.Append("<section><h2>").Append(E(S("autostart_title", []))).Append("</h2>");
-        var auto = Autostart.IsEnabled();
-        sb.Append("<div class=\"status ").Append(auto ? "on" : "off").Append("\"><span class=dot></span><b>")
-          .Append(E(auto ? S("autostart_on", []) : S("autostart_off", []))).Append("</b></div>");
-        sb.Append("<form class=row method=post action=/autostart><input type=hidden name=tab value=state>");
-        if (!auto) sb.Append("<input type=hidden name=enable value=1>");
-        sb.Append("<button class=ghost>").Append(E(auto ? S("autostart_del", []) : S("autostart_add", [])))
-          .Append("</button></form></section>");
+    private void RenderLiveApps(StringBuilder sb, CehoConfig cfg, ControlState st, bool guarded, Func<string, object[], string> S)
+    {
+        var apps = cfg.Apps.Where(a => a.Enabled).ToList();
+        sb.Append("<section data-live=apps><h2>").Append(E(S("apps_title", []))).Append("</h2>");
+        if (apps.Count == 0)
+        {
+            sb.Append("<p class=lede>").Append(E(S("live_no_apps", []))).Append("</p>")
+              .Append("<a class=button href=\"/?tab=apps\">").Append(E(S("live_add_app", []))).Append("</a></section>");
+            return;
+        }
+
+        var live = st.Running ? AppsLive() : null;
+        sb.Append("<ul class=live-apps>");
+        foreach (var app in apps)
+        {
+            var info = live?.FirstOrDefault(l => l.Folder == app.Folder);
+            var (cls, text) =
+                !st.Running ? (guarded ? ("warn", S("app_offline", [])) : ("bad", S("app_direct", [])))
+                : info is null ? ("off", S("app_unknown", []))
+                : info.Processes == 0 ? ("off", S("app_idle", []))
+                : info.Direct > 0 ? ("bad", S("app_leak", [info.Direct]))
+                : info.Tunneled > 0 ? ("on", S("app_tunnel", [info.Tunneled]))
+                : ("on", S("app_quiet", []));
+            sb.Append("<li class=").Append(cls).Append("><span class=dot></span><b>").Append(E(app.Label))
+              .Append("</b><span class=detail>").Append(E(text)).Append("</span></li>");
+        }
+        sb.Append("</ul></section>");
+    }
+
+    private int _doctorRunning;
+    private bool? _doctorSimple;
+
+    private void EnsureFreshDoctor(CehoConfig cfg)
+    {
+        if (_doctor is not null && _doctorSimple == cfg.SimplePanel
+            && DateTime.UtcNow - _doctorAtUtc < TimeSpan.FromMinutes(10)) return;
+        if (Jobs.Find(JobDoctor) is { Running: true }) return;
+        if (Interlocked.Exchange(ref _doctorRunning, 1) == 1) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var result = await Doctor.CheckAsync(CehoConfig.Load(_configPath), Root, Tools(), null, cfg.SimplePanel);
+                Remember(result);
+                _doctorSimple = cfg.SimplePanel;
+            }
+            catch (Exception ex) { Log.Warn($"самопроверка панели не завершилась: {ex.Message}"); }
+            finally { Interlocked.Exchange(ref _doctorRunning, 0); }
+        });
+    }
+
+    private void RenderCheckSummary(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
+    {
+        EnsureFreshDoctor(cfg);
+        sb.Append("<section data-live=check><h2>").Append(E(S("selfcheck_title", []))).Append("</h2>");
+        if (_doctor is null || _doctorSimple != cfg.SimplePanel)
+        {
+            sb.Append("<div class=\"line wait\"><span><span class=dot></span> ").Append(E(S("check_running", [])))
+              .Append("</span></div></section>");
+            return;
+        }
+
+        var shown = Preflight.Run(cfg, Root, cfg.SimplePanel).Where(c => c.Level != Preflight.Level.Ok)
+            .Select(c => c.Title).ToHashSet();
+        var found = _doctor.Checks.Where(c => c.Level != Preflight.Level.Ok && !shown.Contains(c.Title))
+            .GroupBy(c => c.Title).Select(g => g.First()).ToList();
+        var cls = found.Count == 0 ? "on" : found.Any(c => c.Level == Preflight.Level.Blocker) ? "bad" : "warn";
+        sb.Append("<div class=\"line ").Append(cls).Append("\"><span><span class=dot></span> ")
+          .Append(E(found.Count == 0 ? S("check_ok", []) : S("check_found", [found.Count]))).Append("</span>");
+        if (found.Count > 0 && !cfg.SimplePanel)
+            sb.Append("<a href=\"/?tab=doctor\">").Append(E(S("check_open", []))).Append("</a>");
+        sb.Append("</div>");
+        if (found.Count > 0 && cfg.SimplePanel)
+        {
+            void Items(IEnumerable<Preflight.Check> items)
+            {
+                sb.Append("<ul class=findings>");
+                foreach (var c in items)
+                    sb.Append("<li><b>").Append(E(c.Title)).Append("</b>").Append(c.Fix is null ? "" : "<br>" + E(c.Fix)).Append("</li>");
+                sb.Append("</ul>");
+            }
+            Items(found.Take(3));
+            if (found.Count > 3)
+            {
+                sb.Append("<details class=more-findings><summary>").Append(E(S("check_more", [found.Count - 3]))).Append("</summary>");
+                Items(found.Skip(3));
+                sb.Append("</details>");
+            }
+        }
+        sb.Append("</section>");
     }
 
     /// <summary>
@@ -1406,10 +1568,11 @@ public sealed class WebServer
             RenderPingCard(sb, _lastPing, S);
         }
 
+        EnsureFreshDoctor(cfg);
         var report = _doctor;
         if (report is null)
         {
-            sb.Append("<p class=hint>").Append(E(S("doc_never", []))).Append("</p></section>");
+            sb.Append("<p class=hint data-live=doctor>").Append(E(S("check_running", []))).Append("</p></section>");
             return;
         }
 
@@ -1454,7 +1617,7 @@ public sealed class WebServer
         sb.Append("<div style=\"font-weight:600; margin-bottom:4px;\">").Append(E(S("ping_direct_title", []))).Append("</div>");
         if (dirOk)
         {
-            sb.Append("<span style=\"font-size:1.15em; font-weight:bold; color:").Append(ping.Direct.SuccessPercent >= 100 ? "#059669" : "#d97706").Append(";\">")
+            sb.Append("<span style=\"font-size:20px; font-weight:bold; color:").Append(ping.Direct.SuccessPercent >= 100 ? "#059669" : "#d97706").Append(";\">")
               .Append(ping.Direct.SuccessPercent).Append("%</span> ")
               .Append("<span class=hint>(").Append(ping.Direct.SuccessCount).Append("/").Append(ping.Direct.TotalAttempts).Append(")</span> · ")
               .Append("<b>").Append(ping.Direct.AvgMs).Append(" мс</b>");
@@ -1472,7 +1635,7 @@ public sealed class WebServer
         sb.Append("<div style=\"font-weight:600; margin-bottom:4px;\">").Append(E(S("ping_proxy_title", []))).Append("</div>");
         if (proxyOk)
         {
-            sb.Append("<span style=\"font-size:1.15em; font-weight:bold; color:").Append(ping.Proxy.SuccessPercent >= 100 ? "#059669" : "#d97706").Append(";\">")
+            sb.Append("<span style=\"font-size:20px; font-weight:bold; color:").Append(ping.Proxy.SuccessPercent >= 100 ? "#059669" : "#d97706").Append(";\">")
               .Append(ping.Proxy.SuccessPercent).Append("%</span> ")
               .Append("<span class=hint>(").Append(ping.Proxy.SuccessCount).Append("/").Append(ping.Proxy.TotalAttempts).Append(")</span> · ")
               .Append("<b>").Append(ping.Proxy.AvgMs).Append(" мс</b>");
@@ -1684,7 +1847,8 @@ public sealed class WebServer
                   .Append("<input type=text name=displayName value=\"").Append(E(a.Label))
                   .Append("\" placeholder=\"").Append(E(S("rename_app_ask", []))).Append("\">")
                   .Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></details>");
-                sb.Append("</td><td class=path>").Append(E(a.Folder)).Append("</td><td class=actions>");
+                sb.Append("</td><td class=path><span title=\"").Append(E(a.Folder)).Append("\">")
+                  .Append(E(ShortPath(a.Folder))).Append("</span></td><td class=actions>");
                 sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")
                   .Append(Uri.EscapeDataString(a.Folder)).Append("\">")
                   .Append(E(S("btn_tunnel", []))).Append("</a>");
@@ -1714,7 +1878,7 @@ public sealed class WebServer
               .Append(E(S("apps_installed_choose", []))).Append("</option>");
             foreach (var app in installed)
                 sb.Append("<option value=\"").Append(E(app.Path)).Append("\">")
-                  .Append(E(app.Name)).Append(" — ").Append(E(app.Path)).Append("</option>");
+                  .Append(E(app.Name)).Append(" · ").Append(E(app.Path)).Append("</option>");
             sb.Append("</select><button>").Append(E(S("btn_add", []))).Append("</button></form>");
         }
         sb.Append("</div><div class=app-entry><h3>").Append(E(S("apps_manual_title", []))).Append("</h3>");
@@ -1949,7 +2113,7 @@ public sealed class WebServer
                   .Append(E(s.Enabled ? S("on_word", []) : S("off_word", [])))
                   .Append("</button></form></td>");
 
-                sb.Append("<td>").Append(E(s.Name));
+                sb.Append("<td><span class=uname>").Append(E(s.Name)).Append("</span>");
                 if (SubscriptionKind.IsNaive(s))
                     sb.Append(" <span class=\"tag kind-naive\">").Append(E(S("subs_kind_naive", []))).Append("</span>");
                 else
@@ -1957,7 +2121,7 @@ public sealed class WebServer
                 if (s.LastNodes is { } nodes)
                     sb.Append("<br><span class=tag>").Append(E(S("sub_nodes_n", new object[] { nodes })))
                       .Append("</span>");
-                sb.Append("<div class=path>").Append(E(MaskNaiveUrl(s.Url))).Append("</div></td>");
+                sb.Append("<div class=path>").Append(E(cfg.SimplePanel ? HostOf(s.Url) : MaskUrl(s.Url))).Append("</div></td>");
 
                 sb.Append("<td>");
                 if (s.ExpiresUtc is { } when)
@@ -2046,6 +2210,7 @@ public sealed class WebServer
     {
         sb.Append("<section><h2>").Append(E(S("countries_title", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("countries_hint", []))).Append("</p>");
+        sb.Append("<form method=post action=/exit/save><input type=hidden name=tab value=exit>");
 
         // Список стран рисуется по последнему известному пулу. Скачивать подписки прямо
         // в обработчике страницы нельзя: именно на этом панель и подвисала.
@@ -2074,8 +2239,7 @@ public sealed class WebServer
                 ?? NodeProbe.Summarize(pool, cfg, _liveLatency)
                     .ToDictionary(c => c.Code, StringComparer.OrdinalIgnoreCase);
 
-            sb.Append("<form method=post action=/countries/save><input type=hidden name=tab value=exit>");
-            sb.Append("<input type=hidden name=all value=\"")
+            sb.Append("<input type=hidden name=call value=\"")
               .Append(E(string.Join(",", groups.Select(g => g.Key)))).Append("\">");
             sb.Append("<div class=scroll><table class=t-countries><tr><th>")
               .Append(E(S("col_use", []))).Append("</th><th>")
@@ -2104,7 +2268,6 @@ public sealed class WebServer
                 sb.Append("<td class=tag>").Append(E(protocols)).Append("</td></tr>");
             }
             sb.Append("</table></div>");
-            sb.Append("<button>").Append(E(S("btn_save", []))).Append("</button></form>");
 
             sb.Append("<p class=hint>").Append(E(S("pool_from", new object[]
             {
@@ -2114,15 +2277,14 @@ public sealed class WebServer
             RenderNodes(sb, cfg, groups, S, _liveLatency);
         }
 
-        sb.Append("<form class=row method=post action=/pool/refresh><input type=hidden name=tab value=exit>")
-          .Append("<button class=ghost>").Append(E(S("btn_pool_refresh", []))).Append("</button></form>");
-
-        sb.Append("<form class=row method=post action=/countries/refresh><input type=hidden name=tab value=exit>")
-          .Append("<button class=ghost>").Append(E(S("btn_measure", []))).Append("</button></form>");
+        sb.Append("<div class=row><button class=ghost formaction=/pool/refresh formnovalidate>")
+          .Append(E(S("btn_pool_refresh", []))).Append("</button>")
+          .Append("<button class=ghost formaction=/countries/refresh formnovalidate>")
+          .Append(E(S("btn_measure", []))).Append("</button></div>");
         sb.Append("<p class=hint>").Append(E(S("udp_not_measured", []))).Append("</p>");
 
         sb.Append("<h2>").Append(E(S("check_title", []))).Append("</h2>");
-        sb.Append("<form class=stack method=post action=/settings><input type=hidden name=tab value=exit>");
+        sb.Append("<div class=stack>");
         sb.Append("<label class=check><input type=checkbox name=rotation")
           .Append(cfg.RotationEnabled ? " checked" : "").Append("> ")
           .Append(E(S("rotation_label", []))).Append("</label>");
@@ -2136,8 +2298,8 @@ public sealed class WebServer
         sb.Append("<label class=field><span>").Append(E(S("timeout_label", []))).Append("</span>")
           .Append("<input type=text name=timeout inputmode=numeric value=\"")
           .Append(cfg.TimeoutSeconds.ToString()).Append("\" placeholder=\"45\"></label>");
-        sb.Append("<p class=hint>").Append(E(S("timeout_hint", []))).Append("</p>");
-        sb.Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></section>");
+        sb.Append("<p class=hint>").Append(E(S("timeout_hint", []))).Append("</p></div>");
+        sb.Append("<div class=save-bar><button>").Append(E(S("btn_save_all", []))).Append("</button></div></form></section>");
     }
 
     /// <summary>
@@ -2156,8 +2318,7 @@ public sealed class WebServer
         if (blocked > 0)
             sb.Append("<p class=hint>").Append(E(S("nodes_off_now", new object[] { blocked }))).Append("</p>");
 
-        sb.Append("<form method=post action=/nodes/save><input type=hidden name=tab value=exit>");
-        sb.Append("<input type=hidden name=all value=\"")
+        sb.Append("<input type=hidden name=nall value=\"")
           .Append(E(string.Join("\n", groups.SelectMany(g => g).Select(n => n.Key)))).Append("\">");
 
         foreach (var g in groups)
@@ -2206,8 +2367,6 @@ public sealed class WebServer
             }
             sb.Append("</table></div></details>");
         }
-
-        sb.Append("<button>").Append(E(S("btn_save", []))).Append("</button></form>");
     }
 
     private static void RenderBrowser(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
@@ -2366,6 +2525,30 @@ public sealed class WebServer
     private static string SubDialogId(string name) =>
         "subdlg-" + Math.Abs(StringComparer.Ordinal.GetHashCode(name)).ToString();
 
+    internal static string ShortPath(string path)
+    {
+        var parts = path.TrimEnd('\\', '/').Split('\\', '/').Where(p => p.Length > 0).ToArray();
+        if (parts.Length <= 3) return path;
+        var sep = path.Contains('\\') ? "\\" : "/";
+        return "…" + sep + string.Join(sep, parts[^2..]);
+    }
+
+    private static string HostOf(string url)
+    {
+        var at = url.LastIndexOf('@');
+        var rest = at >= 0 ? "https://" + url[(at + 1)..] : url;
+        return Uri.TryCreate(rest.Trim(), UriKind.Absolute, out var uri) ? uri.Host : "***";
+    }
+
+    public static string MaskUrl(string url)
+    {
+        if (NaiveProxyHelper.IsNaiveUri(url)) return MaskNaiveUrl(url);
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)) return "***";
+        var tail = uri.PathAndQuery.TrimEnd('/');
+        var visible = tail.Length > 8 ? tail[^4..] : "";
+        return $"{uri.Scheme}://{uri.Authority}/***{visible}";
+    }
+
     private static string MaskNaiveUrl(string url)
     {
         if (!NaiveProxyHelper.IsNaiveUri(url))
@@ -2446,7 +2629,7 @@ public sealed class WebServer
         sb.Append("<p class=hint>").Append(E(S("log_level_hint", []))).Append("</p></section>");
     }
 
-    private static void RenderAccess(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
+    private static void RenderAccess(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S, string tab = "access")
     {
         sb.Append("<section><h2>").Append(E(S("nav_access", []))).Append("</h2>");
 
@@ -2456,21 +2639,21 @@ public sealed class WebServer
         sb.Append("<div class=\"status ").Append(hasPassword ? "on" : "bad").Append("\"><span class=dot></span><b>")
           .Append(E(S(hasPassword ? "auth_is_set" : "auth_not_set", []))).Append("</b></div>");
 
-        sb.Append("<form class=row method=post action=/password><input type=hidden name=tab value=access>");
+        sb.Append("<form class=row method=post action=/password><input type=hidden name=tab value=").Append(tab).Append(">");
         sb.Append("<input type=password name=password placeholder=\"").Append(E(S("auth_password", []))).Append("\">");
         sb.Append("<input type=password name=password2 placeholder=\"")
           .Append(E(S("setup_password_again", []))).Append("\">");
         sb.Append("<button>").Append(E(S("btn_save", []))).Append("</button></form>");
         if (Auth.HasPassword(cfg))
         {
-            sb.Append("<form class=row method=post action=/password><input type=hidden name=tab value=access>")
+            sb.Append("<form class=row method=post action=/password><input type=hidden name=tab value=").Append(tab).Append(">")
               .Append("<input type=hidden name=clear value=1>")
               .Append("<button class=danger>").Append(E(S("auth_remove", []))).Append("</button></form>");
         }
         sb.Append("</section>");
 
         sb.Append("<section><h2>").Append(E(S("lang_title", []))).Append("</h2>");
-        sb.Append("<form class=row method=post action=/lang><input type=hidden name=tab value=access>");
+        sb.Append("<form class=row method=post action=/lang><input type=hidden name=tab value=").Append(tab).Append(">");
         sb.Append("<select name=lang style=\"flex:0 0 200px\">");
         foreach (var l in Strings.Languages)
             sb.Append("<option value=").Append(l).Append(cfg.Language == l ? " selected" : "").Append('>')
@@ -2481,7 +2664,7 @@ public sealed class WebServer
         sb.Append("<p class=hint>").Append(E(S("uninstall_hint", []))).Append("</p>");
         sb.Append("<form class=row method=post action=/uninstall onsubmit=\"return confirm('")
           .Append(E(S("uninstall_confirm_js", [])))
-          .Append("');\"><input type=hidden name=tab value=access>")
+          .Append("');\"><input type=hidden name=tab value=").Append(tab).Append(">")
           .Append("<button class=danger>").Append(E(S("btn_uninstall", [])))
           .Append("</button></form></section>");
     }

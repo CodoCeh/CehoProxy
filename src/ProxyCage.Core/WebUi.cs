@@ -10,6 +10,7 @@ public static class WebUi
       --ok-ink:#1f7a5a; --warn-ink:#836609; --danger-ink:#b33a31; --info-ink:#1c6f9b;
       --line:rgba(23,37,30,.14); --panel:rgba(23,37,30,.04); --panel2:rgba(23,37,30,.07);
       --radius:14px;
+      --fs-xs:12px; --fs-s:14px; --fs-m:16px; --fs-l:20px; --fs-xl:28px;
     }
     @media (prefers-color-scheme:dark){
       :root{
@@ -23,7 +24,7 @@ public static class WebUi
     body{
       margin:0; background:var(--bg); color:var(--text);
       font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
-      font-size:15px; line-height:1.55;
+      font-size:var(--fs-m); line-height:1.55;
     }
     .wrap{max-width:900px;margin:0 auto;padding:28px 20px 72px}
 
@@ -41,22 +42,36 @@ public static class WebUi
       padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:8px}
     .logo{width:34px;height:34px;border-radius:10px;flex:none;display:block;object-fit:cover;
       background:var(--panel);box-shadow:inset 0 0 0 1px var(--line)}
-    .mark{font-size:19px;font-weight:680;letter-spacing:-.015em}
+    .mark{font-size:var(--fs-l);font-weight:680;letter-spacing:-.015em}
     .mark span{color:var(--brand-ink)}
-    .where{color:var(--muted);font-size:13px;margin-left:auto;font-variant-numeric:tabular-nums}
+    .where{color:var(--muted);font-size:var(--fs-s);margin-left:auto;font-variant-numeric:tabular-nums}
+    header form.mode{margin:0 0 0 auto;display:inline-flex;gap:2px;padding:3px;border:1px solid var(--line);
+      border-radius:999px;background:var(--panel)}
+    header form.mode button{min-height:34px;padding:6px 14px;border:0;border-radius:999px;background:transparent;
+      color:var(--subtext);font-size:var(--fs-s);font-weight:500}
+    header form.mode button:hover{background:var(--panel2);color:var(--text)}
+    header form.mode button.on{background:var(--brand-ink);color:#f4fbf7;font-weight:600}
     nav.tabs{display:flex;gap:2px;flex-wrap:wrap;margin:0 0 20px;padding-top:14px}
     nav.tabs a{display:inline-flex;align-items:center;min-height:44px;padding:9px 13px;border-radius:9px;color:var(--subtext);text-decoration:none;
-      font-size:14px;transition:background .18s ease,color .18s ease}
+      font-size:var(--fs-s);transition:background .18s ease,color .18s ease}
     nav.tabs a:hover{background:var(--panel2);color:var(--text)}
     nav.tabs a.on{background:var(--brand-ink);color:#f4fbf7;font-weight:600}
+    nav.tabs details.more{position:relative}
+    nav.tabs details.more summary{display:inline-flex;align-items:center;min-height:44px;padding:9px 13px;border-radius:9px;
+      color:var(--subtext);cursor:pointer;list-style:none}
+    nav.tabs details.more summary::-webkit-details-marker{display:none}
+    nav.tabs details.more summary::after{content:"▾";margin-left:6px;font-size:var(--fs-xs)}
+    nav.tabs details.more summary.on{background:var(--brand-ink);color:#f4fbf7;font-weight:600}
+    nav.tabs details.more > div{position:absolute;left:0;z-index:5;display:flex;flex-direction:column;min-width:160px;
+      margin-top:4px;padding:6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg)}
 
-    h2{font-size:16px;font-weight:660;margin:0 0 10px;letter-spacing:-.01em}
-    h3{font-size:14px;font-weight:660;margin:0 0 4px;letter-spacing:-.005em}
+    h2{font-size:var(--fs-l);font-weight:660;margin:0 0 10px;letter-spacing:-.01em}
+    h3{font-size:var(--fs-m);font-weight:660;margin:0 0 4px;letter-spacing:-.005em}
     *+h2{margin-top:26px}
     section{margin:0 0 30px}
     p{margin:0 0 12px}
     .lede{color:var(--subtext);max-width:66ch}
-    .hint{color:var(--muted);font-size:13px;margin:6px 0 0;max-width:70ch}
+    .hint{color:var(--muted);font-size:var(--fs-s);margin:6px 0 0;max-width:70ch}
     .status{display:flex;align-items:center;gap:12px;padding:16px 18px;border:1px solid var(--line);
       border-radius:var(--radius);background:var(--surface);margin-bottom:12px}
     .dot{width:10px;height:10px;border-radius:50%;flex:none;position:relative}
@@ -65,16 +80,63 @@ public static class WebUi
     @keyframes halo{0%{box-shadow:0 0 0 0 rgba(224,168,46,.55)}70%{box-shadow:0 0 0 9px rgba(224,168,46,0)}100%{box-shadow:0 0 0 0 rgba(224,168,46,0)}}
     .wait .dot{animation:halo 1.8s ease-out infinite}
     .status b{font-weight:640}
-    .status .detail{color:var(--muted);font-size:13px;margin-left:auto;text-align:right;
+    .status .detail{color:var(--muted);font-size:var(--fs-s);margin-left:auto;text-align:right;
       font-variant-numeric:tabular-nums}
+    .warn .dot{background:var(--warn-ink)}
+    .hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:22px 24px;border:1px solid var(--line);
+      border-radius:var(--radius);background:var(--surface)}
+    .hero > .dot{width:14px;height:14px}
+    .hero > div{flex:1 1 240px;min-width:0}
+    .hero h1{margin:0;font-size:var(--fs-xl);line-height:1.3;font-weight:650}
+    .hero p{margin:4px 0 0;color:var(--muted);font-size:var(--fs-s)}
+    .hero form{display:flex;gap:8px;flex-wrap:wrap}
+    .hero.on{border-color:color-mix(in srgb,var(--ok-ink) 45%,var(--line))}
+    .hero.warn{border-color:color-mix(in srgb,var(--warn-ink) 45%,var(--line))}
+    .hero.bad{border-color:color-mix(in srgb,var(--danger-ink) 45%,var(--line))}
+    section.wizard{padding:22px 24px;border:1px solid color-mix(in srgb,var(--brand-ink) 45%,var(--line));
+      border-radius:var(--radius);background:var(--surface)}
+    section.wizard h2{margin-top:6px}
+    ol.wizard-steps{display:flex;gap:8px;flex-wrap:wrap;list-style:none;margin:0 0 12px;padding:0;counter-reset:step}
+    ol.wizard-steps li{counter-increment:step;display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:var(--fs-s)}
+    ol.wizard-steps li::before{content:counter(step);display:inline-flex;align-items:center;justify-content:center;
+      width:24px;height:24px;border-radius:50%;border:1px solid var(--line);font-size:var(--fs-xs)}
+    ol.wizard-steps li.now{color:var(--text);font-weight:600}
+    ol.wizard-steps li.now::before{background:var(--brand-ink);border-color:var(--brand-ink);color:#fff}
+    ol.wizard-steps li.done::before{content:"✓";color:var(--ok-ink);border-color:var(--ok-ink)}
+    ol.wizard-steps li + li::after{content:none}
+    .save-bar{position:sticky;bottom:0;padding:12px 0;background:var(--bg);border-top:1px solid var(--line);margin-top:18px}
+    button.big{min-height:48px;padding:12px 28px;font-size:var(--fs-m);font-weight:600}
+    ul.live-apps,ul.findings{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--radius);
+      background:var(--surface)}
+    ul.live-apps li,ul.findings li{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;
+      border-bottom:1px solid var(--line)}
+    ul.findings li{display:block;font-size:var(--fs-s);color:var(--subtext)}
+    ul.live-apps li:last-child,ul.findings li:last-child{border-bottom:0}
+    ul.live-apps .detail{margin-left:auto;color:var(--muted);font-size:var(--fs-s)}
+    ul.live-apps li.bad .detail{color:var(--danger-ink)}
+    ul.live-apps li.warn .detail{color:var(--warn-ink)}
+    ul.findings{margin-top:10px}
+    details.more-findings > summary{margin-top:10px;cursor:pointer;color:var(--subtext);font-size:var(--fs-s)}
+    .lines{display:flex;flex-direction:column;gap:8px}
+    .line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border:1px solid var(--line);
+      border-radius:var(--radius);background:var(--surface)}
+    .line > span:first-child{flex:1 1 200px;display:inline-flex;align-items:center;gap:8px}
+    .line form{margin:0}
+    .line button{min-height:36px;padding:7px 14px}
+    a.button{display:inline-flex;align-items:center;min-height:44px;padding:10px 18px;border-radius:10px;
+      background:var(--brand-ink);color:#fff;text-decoration:none;font-weight:600;margin-top:4px}
+    .flash a{color:inherit;text-decoration:underline;text-underline-offset:2px;font-weight:600}
+    details.settings{margin:0 0 30px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+    details.settings > summary{padding:14px 18px;cursor:pointer;font-weight:600}
+    details.settings > section{margin:0;padding:0 18px 18px}
 
     /* Ширины столбцов задаём сами: иначе браузер считает их от содержимого,
        и на каждом обновлении страницы черты столбцов уезжают в сторону. */
-    table{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:14px;table-layout:fixed}
+    table{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:var(--fs-s);table-layout:fixed}
     th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:middle;
       overflow-wrap:anywhere}
     /* Заголовки переносим только по пробелу: разорванное посередине слово читается как опечатка. */
-    th{font-size:12px;font-weight:600;color:var(--muted);overflow-wrap:normal}
+    th{font-size:var(--fs-xs);font-weight:600;color:var(--muted);overflow-wrap:normal}
     table.t-apps th:nth-child(1){width:25%}
     table.t-apps th:nth-child(3){width:198px}
     table.t-apps td{vertical-align:top}
@@ -97,13 +159,28 @@ public static class WebUi
        обёртки, а не сминает столбцы до переноса по буквам. */
     .scroll{overflow-x:auto}
     @media (max-width:760px){table{min-width:720px}}
+    @media (max-width:700px){
+      table.t-apps{min-width:0}
+      table.t-apps tr:has(th){display:none}
+      table.t-apps tr{display:block;padding:12px 0;border-bottom:1px solid var(--line)}
+      table.t-apps td{display:block;border:0;padding:2px 0;width:auto}
+      table.t-apps td.actions{text-align:left;padding-top:8px}
+      table.t-apps td.actions form:first-child{margin-left:0}
+    }
+    @media (max-width:900px){
+      table.t-subs{min-width:0}
+      table.t-subs tr:has(th){display:none}
+      table.t-subs tr{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;padding:12px 0;border-bottom:1px solid var(--line)}
+      table.t-subs td{display:block;border:0;padding:0}
+      table.t-subs td:nth-child(5),table.t-subs td.actions{grid-column:1/-1}
+    }
     tbody tr{transition:background .15s ease}
     tbody tr:hover{background:var(--panel)}
-    td.path{font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:12.5px;
+    td.path{font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:var(--fs-xs);
       color:var(--subtext);word-break:break-all}
     td.num{font-variant-numeric:tabular-nums}
-    .tag{font-size:12px;color:var(--info-ink)}
-    .flag{font-size:15px}
+    .tag{font-size:var(--fs-xs);color:var(--info-ink)}
+    .flag{font-size:var(--fs-m)}
     .empty{padding:20px;border:1px dashed var(--line);border-radius:var(--radius);
       color:var(--muted);background:var(--panel)}
 
@@ -118,23 +195,23 @@ public static class WebUi
     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
       clip:rect(0,0,0,0);white-space:nowrap;border:0}
     details.rename{margin-top:7px}
-    details.rename summary{width:max-content;color:var(--brand-ink);font-size:12px;cursor:pointer}
+    details.rename summary{width:max-content;color:var(--brand-ink);font-size:var(--fs-xs);cursor:pointer}
     details.rename form.row{display:grid;grid-template-columns:minmax(0,1fr) auto;margin:7px 0 0}
     details.rename input[type=text]{min-width:0;width:100%;padding:7px 9px}
     details.rename button{min-height:34px;padding:7px 11px}
     a.pick{display:inline-flex;align-items:center;min-height:40px;padding:10px 18px;
       border:1px solid var(--line);border-radius:10px;color:var(--text);text-decoration:none;
-      font-size:14px;font-weight:500;white-space:nowrap;box-sizing:border-box}
+      font-size:var(--fs-s);font-weight:500;white-space:nowrap;box-sizing:border-box}
     a.pick:hover{background:var(--panel2)}
     input[type=text],input[type=password],input[type=number],select{
       flex:1;min-width:200px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
-      background:var(--surface);color:var(--text);font:inherit;font-size:14px;
+      background:var(--surface);color:var(--text);font:inherit;font-size:var(--fs-s);
       transition:border-color .18s ease}
     input:hover,select:hover{border-color:var(--brand-ink)}
     input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{
       outline:2px solid var(--brand-ink);outline-offset:2px}
     button{padding:10px 18px;border:1px solid var(--brand-ink);border-radius:10px;
-      background:var(--brand-ink);color:#f4fbf7;font:inherit;font-size:14px;font-weight:600;
+      background:var(--brand-ink);color:#f4fbf7;font:inherit;font-size:var(--fs-s);font-weight:600;
       cursor:pointer;min-height:40px;transition:transform .12s ease,background .18s ease}
     button:hover{background:var(--brand-strong)}
     button:active{transform:translateY(1px)}
@@ -142,13 +219,13 @@ public static class WebUi
     button.ghost:hover{background:var(--panel2)}
     button.danger{background:transparent;color:var(--danger-ink);border-color:var(--line);font-weight:500}
     button.danger:hover{background:rgba(179,58,49,.09)}
-    form.stack{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:12px 0}
-    form.stack .field{width:100%;max-width:560px}
-    form.stack .hint{margin:0}
+    form.stack,div.stack{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:12px 0}
+    form.stack .field,div.stack .field{width:100%;max-width:560px}
+    form.stack .hint,div.stack .hint{margin:0}
     .kind-switch{display:inline-flex;border:1px solid var(--line);border-radius:10px;
       overflow:hidden;background:var(--panel);margin:2px 0 4px}
     .kind-switch input{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
-    .kind-switch label{padding:9px 16px;font-size:13px;font-weight:600;color:var(--muted);
+    .kind-switch label{padding:9px 16px;font-size:var(--fs-s);font-weight:600;color:var(--muted);
       cursor:pointer;user-select:none;transition:background .15s ease,color .15s ease}
     .kind-switch input:checked+label{background:var(--brand-ink);color:#f4fbf7}
     .kind-switch input:focus-visible+label{outline:2px solid var(--brand-ink);outline-offset:-2px}
@@ -161,7 +238,7 @@ public static class WebUi
       max-width:580px;width:calc(100% - 32px);background:var(--surface);color:var(--text);
       box-shadow:0 18px 48px rgba(15,20,17,.22)}
     dialog.sub-modal::backdrop{background:rgba(15,20,17,.42)}
-    dialog.sub-modal .modal-title{margin:0;padding:18px 22px 0;font-size:17px;font-weight:660}
+    dialog.sub-modal .modal-title{margin:0;padding:18px 22px 0;font-size:var(--fs-l);font-weight:660}
     dialog.sub-modal form.stack{margin:12px 22px 20px}
     .modal-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
     .sub-modals{display:contents}
@@ -171,7 +248,8 @@ public static class WebUi
     button[disabled]:active{transform:none}
     label.check{display:inline-flex;align-items:center;gap:8px;min-height:40px;cursor:pointer}
     label.field{display:inline-flex;align-items:center;gap:8px;min-height:40px;max-width:100%}
-    label.field span{color:var(--muted);font-size:13px;white-space:nowrap}
+    label.field span{color:var(--muted);font-size:var(--fs-s);white-space:nowrap}
+    @media (max-width:600px){label.field{flex-wrap:wrap}label.field span{white-space:normal}}
     /* Поле обязано ужиматься вместе с окном: минимальная ширина из общего правила
        вылезала за край страницы и тянула за собой полосу прокрутки. */
     label.field input{flex:1;min-width:0}
@@ -183,9 +261,12 @@ public static class WebUi
     td.actions{text-align:right;white-space:nowrap}
     td.actions form{display:inline-block;margin:0 0 0 6px;vertical-align:middle}
     td.actions button{min-height:34px;padding:7px 14px}
+    table.t-subs td.actions{white-space:normal}
+    table.t-subs td.actions > *{display:block;width:100%;margin:0 0 6px}
+    table.t-subs td.actions form button{width:100%}
     td.actions a.ghost{display:inline-block;margin:0 0 0 6px;vertical-align:middle;
       min-height:34px;padding:7px 14px;border:1px solid var(--line);border-radius:10px;
-      color:var(--text);text-decoration:none;font-weight:500;font-size:14px;line-height:18px;
+      color:var(--text);text-decoration:none;font-weight:500;font-size:var(--fs-s);line-height:18px;
       box-sizing:border-box}
     td.actions a.ghost:hover{background:var(--panel2)}
     .flash{padding:12px 15px;border:1px solid var(--line);border-radius:var(--radius);
@@ -198,10 +279,10 @@ public static class WebUi
 
     ol.steps,ul.steps{margin:0;padding-left:20px;color:var(--subtext);max-width:70ch}
     ol.steps li,ul.steps li{margin-bottom:8px}
-    code,.mono{font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:12.5px;
+    code,.mono{font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:var(--fs-xs);
       background:var(--panel2);padding:2px 6px;border-radius:6px}
     .kv{display:grid;grid-template-columns:190px 1fr;gap:8px 16px;margin:10px 0;
-      font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:13px}
+      font-family:ui-monospace,Consolas,"SF Mono",monospace;font-size:var(--fs-s)}
     .kv dt{color:var(--muted)} .kv dd{margin:0;overflow-wrap:anywhere}
     @media (max-width:520px){.kv{grid-template-columns:1fr;gap:2px 0}
       .kv dd{margin-bottom:8px}}
@@ -209,7 +290,7 @@ public static class WebUi
       .app-entry .hint{min-height:0}}
 
     footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
-      color:var(--muted);font-size:13px;display:flex;gap:14px;align-items:center;
+      color:var(--muted);font-size:var(--fs-s);display:flex;gap:14px;align-items:center;
       flex-wrap:wrap;justify-content:space-between}
     .forged{display:inline-flex;align-items:center;gap:9px;color:var(--brand-ink);
       text-decoration:none;font-weight:600;min-height:26px;transition:opacity .18s ease}
@@ -222,27 +303,27 @@ public static class WebUi
     .gate{max-width:380px;margin:14vh auto 0;padding:26px;border:1px solid var(--line);
       border-radius:var(--radius);background:var(--surface);animation:rise .4s ease both}
     .gate .logo{margin-bottom:14px}
-    .gate h1{font-size:18px;margin:0 0 6px;font-weight:660}
+    .gate h1{font-size:var(--fs-l);margin:0 0 6px;font-weight:660}
 
     .job{padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);
       background:var(--surface);margin-bottom:18px}
     .job.ok{border-color:var(--ok-ink)} .job.err{border-color:var(--danger-ink)}
     .job-head{display:flex;align-items:baseline;gap:10px}
     .job-head b{font-weight:640}
-    .job-num{margin-left:auto;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+    .job-num{margin-left:auto;color:var(--muted);font-size:var(--fs-s);font-variant-numeric:tabular-nums}
     .bar{height:8px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:10px 0 8px}
-    .bar>span{display:block;height:100%;border-radius:99px;background:var(--brand-ink);
-      width:0;transition:width .35s cubic-bezier(.2,.7,.3,1)}
+    .bar>span{display:block;height:100%;border-radius:99px;background:var(--brand-ink)}
+    .bar>#jf{width:100%;transform-origin:left;transition:transform .35s cubic-bezier(.2,.7,.3,1)}
     .job.run .bar>span{background:linear-gradient(90deg,var(--brand-ink),var(--brand-strong))}
     .job.err .bar>span{background:var(--danger-ink)}
     .bar.thin{height:5px;margin:5px 0 0;max-width:170px}
     /* Этап меняется каждые полсекунды. Разрешить ему перенос — значит дёргать вверх-вниз
        всё, что ниже, поэтому строка ровно одна, а длинное имя прячется за многоточие. */
-    .job-stage{font-size:13.5px;color:var(--subtext);min-height:21px;
+    .job-stage{font-size:var(--fs-s);color:var(--subtext);min-height:21px;
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .job-foot{font-size:12.5px;color:var(--muted);margin-top:4px;min-height:19px}
+    .job-foot{font-size:var(--fs-xs);color:var(--muted);margin-top:4px;min-height:19px}
     .job-foot a{color:var(--muted)}
-    .job-steps{margin-top:8px;font-size:12.5px;color:var(--muted)}
+    .job-steps{margin-top:8px;font-size:var(--fs-xs);color:var(--muted)}
     .job-steps summary{cursor:pointer}
     .job-steps ol{margin:6px 0 0;padding-left:22px}
 
@@ -253,13 +334,13 @@ public static class WebUi
     .modes span.mode-on{display:inline-flex;align-items:center;min-height:40px;padding:10px 18px;
       border:1px solid var(--brand-ink);border-radius:10px;background:var(--brand-ink);
       color:#f4fbf7;font-weight:600}
-    button.pill{min-height:28px;padding:3px 12px;font-size:12.5px;font-weight:600;border-radius:99px}
+    button.pill{min-height:28px;padding:3px 12px;font-size:var(--fs-xs);font-weight:600;border-radius:99px}
     button.pill.no{background:transparent;color:var(--muted);border-color:var(--line);font-weight:500}
     button.pill.no:hover{background:var(--panel2)}
     .until{font-variant-numeric:tabular-nums}
     .until.warn{color:var(--warn-ink);font-weight:600}
     .until.danger{color:var(--danger-ink);font-weight:600}
-    a.pill{display:inline-flex;align-items:center;min-height:28px;padding:3px 13px;font-size:12.5px;
+    a.pill{display:inline-flex;align-items:center;min-height:28px;padding:3px 13px;font-size:var(--fs-xs);
       border:1px solid var(--line);border-radius:99px;color:var(--subtext);text-decoration:none;
       transition:background .18s ease,color .18s ease}
     a.pill:hover{background:var(--panel2);color:var(--text)}
@@ -267,7 +348,7 @@ public static class WebUi
 
     details.nodes{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);
       margin:0 0 8px;padding:0 14px}
-    details.nodes>summary{cursor:pointer;padding:11px 0;font-size:14px;font-weight:600}
+    details.nodes>summary{cursor:pointer;padding:11px 0;font-size:var(--fs-s);font-weight:600}
     details.nodes>summary::marker{color:var(--muted)}
     details.nodes[open]>summary{border-bottom:1px solid var(--line)}
     details.nodes table{margin:0 0 6px}
@@ -282,9 +363,9 @@ public static class WebUi
     ul.checks li.warn .mk{color:var(--warn-ink)}
     ul.checks li.stop .mk{color:var(--danger-ink)}
     ul.checks b{font-weight:620;display:block}
-    ul.checks .why{display:block;color:var(--muted);font-size:13px}
+    ul.checks .why{display:block;color:var(--muted);font-size:var(--fs-s)}
     ul.checks .why.can{color:var(--brand-ink)}
-    ul.did{list-style:none;margin:10px 0 0;padding:0;color:var(--subtext);font-size:14px}
+    ul.did{list-style:none;margin:10px 0 0;padding:0;color:var(--subtext);font-size:var(--fs-s)}
     ul.did li{padding:5px 0 5px 20px;position:relative}
     ul.did li::before{content:"✓";position:absolute;left:0;color:var(--ok-ink);font-weight:700}
 
@@ -300,7 +381,7 @@ public static class WebUi
 
     pre.logbox{margin:6px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius);
       background:var(--panel);color:var(--subtext);font-family:ui-monospace,Consolas,"SF Mono",monospace;
-      font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+      font-size:var(--fs-xs);line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}
     """;
 
     /// <summary>
@@ -323,6 +404,24 @@ public static class WebUi
         });
         dlg.addEventListener('click',function(e){if(e.target===dlg)dlg.close();});
       });
+    })();
+    </script>
+    """;
+
+    public const string StateRefreshScript = """
+    <script>
+    (function(){
+      setInterval(function(){
+        fetch(location.pathname+location.search,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null})
+          .then(function(html){
+            if(!html)return;
+            var doc=new DOMParser().parseFromString(html,'text/html');
+            document.querySelectorAll('[data-live]').forEach(function(now){
+              var fresh=doc.querySelector('[data-live="'+now.getAttribute('data-live')+'"]');
+              if(fresh&&fresh.outerHTML!==now.outerHTML)now.outerHTML=fresh.outerHTML;
+            });
+          }).catch(function(){});
+      },10000);
     })();
     </script>
     """;
@@ -357,7 +456,7 @@ public static class WebUi
           .then(function(r){return r.json()})
           .then(function(j){
             fails=0;
-            if(fill)fill.style.width=j.percent+'%';
+            if(fill)fill.style.transform='scaleX('+(j.percent/100)+')';
             if(num)num.textContent=j.percent+'%';
             if(stage&&j.stage)stage.textContent=j.stage;
             if(j.state==='running'){setTimeout(tick,700);return}

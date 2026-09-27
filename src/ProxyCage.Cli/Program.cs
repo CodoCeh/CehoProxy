@@ -12,7 +12,7 @@ CehoConfig cfg0;
 try { cfg0 = CehoConfig.Load(Ceho.ConfigPath); }
 catch { cfg0 = new CehoConfig(); }
 
-Log.Init(Ceho.Root, args.Length > 0 ? args[0] : "chp");
+Log.Init(Ceho.Root, args.Length > 0 ? args[0] : "chp", !Cli.IsReadOnlyCommand(args));
 
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
@@ -36,7 +36,13 @@ TaskScheduler.UnobservedTaskException += (_, e) =>
 
 if (args.Length == 0)
 {
-    if (!Assistant.Interactive) { Cli.PrintHelp(cfg0); return 0; }
+    if (!Assistant.Interactive)
+    {
+        Assistant.PrintState(cfg0);
+        Console.WriteLine();
+        Cli.PrintMainCommands(cfg0);
+        return 0;
+    }
     return await Assistant.RunAsync();
 }
 
@@ -619,7 +625,7 @@ switch (cmd)
             var until = s.ExpiresUtc is { } when
                 ? $"{when.ToLocalTime():dd.MM.yyyy} ({SubscriptionInfo.DaysLeft(when)})"
                 : "-";
-            Console.WriteLine($"[{(s.Enabled ? "x" : " ")}] {s.Name,-16} {state,-14} {until,-18} {s.Url}");
+            Console.WriteLine($"[{(s.Enabled ? "x" : " ")}] {s.Name,-16} {state,-14} {until,-18} {WebServer.MaskUrl(s.Url)}");
             if (s.UsedBytes is { } used)
                 Console.WriteLine($"      {Cli.S(cfg, "col_traffic")}: {SubscriptionInfo.Bytes(used)}" +
                                   (s.TotalBytes is { } total ? Cli.S(cfg, "sub_of_total", SubscriptionInfo.Bytes(total)) : ""));
@@ -1442,13 +1448,33 @@ switch (cmd)
         var daemon = DaemonControl.IsRunning(Ceho.Root);
         var tunnel = NodeProbe.TunnelIsUp(cfg.TunAddress);
         var running = daemon && tunnel;
-        Console.WriteLine(running ? Cli.S(cfg, "state_on")
-            : daemon && DaemonControl.IsStarting(Ceho.Root) ? Cli.S(cfg, "state_starting")
-            : daemon ? Cli.S(cfg, "state_broken")
-            : Cli.S(cfg, "state_off"));
+        if (args.Contains("--json"))
+        {
+            var (country, ip) = running ? await Ceho.ProbeExitAsync(cfg.MixedPort) : (null, null);
+            Console.WriteLine(new System.Text.Json.Nodes.JsonObject
+            {
+                ["running"] = running,
+                ["starting"] = daemon && !running && DaemonControl.IsStarting(Ceho.Root),
+                ["daemon"] = daemon,
+                ["leakGuard"] = LeakGuard.IsActive(Ceho.Root),
+                ["apps"] = cfg.Apps.Count(a => a.Enabled),
+                ["subscriptions"] = cfg.Subscriptions.Count,
+                ["exitCountry"] = country,
+                ["exitIp"] = ip,
+                ["password"] = Auth.HasPassword(cfg),
+                ["version"] = Updater.CurrentVersion,
+            }.ToJsonString());
+            return running ? 0 : 1;
+        }
+        Console.WriteLine(running ? Cli.Paint(Cli.S(cfg, "state_on"), Preflight.Level.Ok)
+            : daemon && DaemonControl.IsStarting(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_starting"), Preflight.Level.Warning)
+            : daemon ? Cli.Paint(Cli.S(cfg, "state_broken"), Preflight.Level.Blocker)
+            : Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning));
 
         if (!daemon && tunnel)
             Console.WriteLine(Cli.S(cfg, "state_leftovers", Os.IsWindows ? "" : "sudo "));
+        if (!running && LeakGuard.IsActive(Ceho.Root))
+            Console.WriteLine(Cli.S(cfg, "state_guarded"));
         Console.WriteLine(Cli.S(cfg, "apps_isolated", cfg.Apps.Count(a => a.Enabled)));
         Console.WriteLine(Cli.S(cfg, "subs_count", cfg.Subscriptions.Count));
         Console.WriteLine(Cli.S(cfg, "countries_title") + ": " +
@@ -1582,6 +1608,8 @@ switch (cmd)
 
         if (NodeProbe.TunnelIsUp(cfg.TunAddress) || DaemonControl.RunningPid(Ceho.Root) is not null)
         {
+            if (OperatingSystem.IsWindows() && Os.IsElevated())
+                DaemonControl.StopInstalledWindowsDaemons(Ceho.Root);
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Console.WriteLine);
             TunCleanup.ReleaseOurs(
                 Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Console.WriteLine,
@@ -1698,6 +1726,7 @@ if (cmd is "daemon" or "web")
     if (cmd == "daemon" && Environment.GetEnvironmentVariable(DaemonControl.ForegroundEnv) == "1")
         Os.DetachFromControllingTerminal();
 
+    DaemonControl.ListenForStop();
     var cfg = CehoConfig.Load(Ceho.ConfigPath);
     var withTunnel = cmd == "daemon";
 
@@ -1709,6 +1738,8 @@ if (cmd is "daemon" or "web")
     string? lastError = null;
     string? exitCountry = null, exitIp = null;
     var probed = false;
+    string? boundAddress = null;
+    var tunnelMissing = 0;
 
     // Кнопку «Включить», сторож и доктор нельзя пускать в движок одновременно —
     // очередь общая на демон и «chp doctor fix» (именованный Mutex).
@@ -1760,6 +1791,7 @@ if (cmd is "daemon" or "web")
             }
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
+            LeakGuard.Apply(c, Ceho.Root);
 
             var reason = await BringEngineUp(c, report);
             for (var attempt = 1;
@@ -1789,6 +1821,7 @@ if (cmd is "daemon" or "web")
 
             lastError = null;
             probed = false;
+            boundAddress = Os.PhysicalBindAddress(c.TunAddress)?.ToString();
             report?.Stage(Strings.T(c.Language, "stage_bounce_apps"), 99);
             var bounced = IsolatedAppBounce.ResetNetwork(c, Log.Info);
             if (bounced.Killed + bounced.Connections > 0)
@@ -1898,6 +1931,15 @@ if (cmd is "daemon" or "web")
     }
 
     web.OnStart = StartTunnel;
+    web.OnAppsLive = () =>
+    {
+        var c = CehoConfig.Load(Ceho.ConfigPath);
+        return c.Apps.Where(a => a.Enabled).Select(a =>
+        {
+            var v = Ceho.VerifyApp(a, c.TunAddress, c.Language);
+            return new WebServer.AppLive(a.Folder, v.Processes, v.Tunneled, v.Direct);
+        }).ToList();
+    };
     web.OnStop = () => Task.FromResult(StopTunnel());
     web.OnRestart = RestartTunnel;
     web.OnApply = report => TunnelRuleApply.RunAsync(
@@ -2162,6 +2204,26 @@ if (cmd is "daemon" or "web")
         {
             try
             {
+                if (proc is not null
+                    && Os.PhysicalBindAddress(cfg.TunAddress)?.ToString() is { } bind
+                    && boundAddress is not null && bind != boundAddress)
+                {
+                    Log.Info($"адрес сети сменился: {boundAddress} -> {bind}, перезапускаю туннель");
+                    await RestartTunnel(null);
+                }
+
+                tunnelMissing = proc is not null && proc.IsRunning && !NodeProbe.TunnelIsUp(cfg.TunAddress)
+                    ? tunnelMissing + 1 : 0;
+                if (tunnelMissing >= 2)
+                {
+                    Log.Warn("движок работает, но туннеля в системе нет — перезапускаю туннель");
+                    tunnelMissing = 0;
+                    await RestartTunnel(null);
+                }
+
+                if (Os.IsWindows && Os.IsElevated())
+                    LeakGuard.Apply(CehoConfig.Load(Ceho.ConfigPath), Ceho.Root);
+
                 if (proc is not null)
                 {
                     var port = CehoConfig.Load(Ceho.ConfigPath).MixedPort;
@@ -2199,4 +2261,6 @@ if (cmd is "daemon" or "web")
 }
 
 Console.Error.WriteLine(Strings.T(cfg0.Language, "err_unknown_command", cmd));
+if (Cli.Suggest(cmd) is { } guess)
+    Console.Error.WriteLine(Strings.T(cfg0.Language, "err_did_you_mean", guess));
 return 1;

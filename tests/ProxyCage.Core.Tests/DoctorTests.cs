@@ -7,7 +7,11 @@ public class DoctorTests : IDisposable
     private readonly string _root = Path.Combine(
         Path.GetTempPath(), "ceho-doctor-" + Guid.NewGuid().ToString("N")[..8]);
 
-    public DoctorTests() => Directory.CreateDirectory(_root);
+    public DoctorTests()
+    {
+        Directory.CreateDirectory(_root);
+        TestEngine.Place(_root);
+    }
 
     public void Dispose()
     {

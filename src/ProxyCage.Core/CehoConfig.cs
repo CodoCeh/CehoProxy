@@ -70,6 +70,15 @@ public sealed class CehoConfig
 
     public string TunAddress { get; set; } = DefaultTunAddress;
 
+    public const string PanelModeSimple = "simple";
+
+    public const string PanelModePro = "pro";
+
+    public string? PanelMode { get; set; }
+
+    [JsonIgnore]
+    public bool SimplePanel => string.Equals(PanelMode, PanelModeSimple, StringComparison.OrdinalIgnoreCase);
+
     public List<AppEntry> Apps { get; set; } = new();
     public List<SubscriptionEntry> Subscriptions { get; set; } = new();
 
@@ -154,7 +163,10 @@ public sealed class CehoConfig
     {
         var cfg = File.Exists(path)
             ? JsonSerializer.Deserialize<CehoConfig>(File.ReadAllText(path), Json) ?? new CehoConfig()
-            : new CehoConfig();
+            : new CehoConfig { PanelMode = PanelModeSimple };
+        cfg.PanelMode = string.Equals(cfg.PanelMode, PanelModeSimple, StringComparison.OrdinalIgnoreCase)
+            ? PanelModeSimple
+            : PanelModePro;
 
         foreach (var app in cfg.Apps)
             app.AllowedNodes ??= new();

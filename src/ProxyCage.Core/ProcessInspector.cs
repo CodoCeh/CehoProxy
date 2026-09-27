@@ -32,6 +32,8 @@ public static class ProcessInspector
         return pids;
     }
 
+    public static IEnumerable<string> RunningPaths() => RunningExecutables().Select(e => e.Path);
+
     private static IEnumerable<(int Pid, string Path)> RunningExecutables() => Os.Kind switch
     {
         OsKind.Windows => WindowsExecutables(),

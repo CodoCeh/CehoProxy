@@ -80,15 +80,10 @@ public static class Os
             candidates.Add(Path.Combine(own, SingBoxFileName));
         }
 
-        candidates.AddRange(IsWindows
-            ? new[] { "" }
-            : new[] { "/usr/local/bin", "/usr/bin", "/opt/homebrew/bin", "/opt/sing-box/bin" }
-                .Select(d => Path.Combine(d, SingBoxFileName)));
-
-        foreach (var c in candidates.Where(c => c.Length > 0))
+        foreach (var c in candidates)
             if (File.Exists(c)) return c;
 
-        return FindOnPath(SingBoxFileName);
+        return null;
     }
 
     /// <summary>

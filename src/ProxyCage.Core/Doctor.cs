@@ -42,13 +42,13 @@ public static class Doctor
     }
 
     public static async Task<Result> CheckAsync(
-        CehoConfig cfg, string root, DoctorTools? tools = null, IStageReport? p = null)
+        CehoConfig cfg, string root, DoctorTools? tools = null, IStageReport? p = null, bool simple = false)
     {
         var l = cfg.Language;
-        string S(string key, params object[] a) => Strings.T(l, key, a);
+        string S(string key, params object[] a) => Strings.T(l, key, simple, a);
 
         p?.Stage(S("doc_stage_install"), 5);
-        var checks = Preflight.Run(cfg, root).ToList();
+        var checks = Preflight.Run(cfg, root, simple).ToList();
 
         var engine = Os.ResolveSingBox(root);
         if (engine is not null)
@@ -71,6 +71,7 @@ public static class Doctor
         checks.AddRange(Neighbours(cfg, l));
         checks.AddRange(StuckWintun(cfg, root, l));
         checks.AddRange(UnmanagedAiTools(cfg, l));
+        checks.AddRange(SystemFolderApps(cfg, l));
 
         var running = DaemonControl.IsRunning(root) && NodeProbe.TunnelIsUp(cfg.TunAddress);
         if (running && tools?.Exit is not null)
@@ -260,7 +261,14 @@ public static class Doctor
         var line = output.Split('\n').FirstOrDefault(s => s.Trim().Length > 0)?.Trim() ?? "";
 
         if (code == 0 && line.Length > 0)
+        {
+            var found = System.Text.RegularExpressions.Regex.Match(line, @"\d+\.\d+\.\d+");
+            if (found.Success && Version.Parse(found.Value) < Version.Parse(Installer.EngineVersion))
+                return new Preflight.Check(Preflight.Level.Warning,
+                    S("doc_engine_old", found.Value, Installer.EngineVersion), null,
+                    S("engine_update_hint", Os.IsWindows ? "" : "sudo "), Repair.Engine);
             return new Preflight.Check(Preflight.Level.Ok, S("doc_engine_runs", line), null, null);
+        }
 
         return new Preflight.Check(Preflight.Level.Blocker,
             S("doc_engine_broken"),
@@ -413,6 +421,16 @@ public static class Doctor
             S("doc_tun_stuck_detail"),
             S("doc_tun_stuck_fix"),
             Repair.Leftovers);
+    }
+
+    private static IEnumerable<Preflight.Check> SystemFolderApps(CehoConfig cfg, string l)
+    {
+        foreach (var app in cfg.Apps.Where(a => a.Enabled && AppDetector.CoversSystemFolder(a)))
+            yield return new Preflight.Check(
+                Preflight.Level.Warning,
+                Strings.T(l, "doc_app_system_folder", app.Label),
+                Strings.T(l, "doc_app_system_folder_detail", app.Folder),
+                Strings.T(l, "doc_app_system_folder_fix", app.Label));
     }
 
     private static IEnumerable<Preflight.Check> UnmanagedAiTools(CehoConfig cfg, string l)

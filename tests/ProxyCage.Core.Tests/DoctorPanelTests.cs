@@ -19,6 +19,7 @@ public class DoctorPanelTests : IDisposable
     public DoctorPanelTests()
     {
         Directory.CreateDirectory(_root);
+        TestEngine.Place(_root);
 
         var cfg = new CehoConfig
         {

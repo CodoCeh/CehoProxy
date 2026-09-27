@@ -7,6 +7,100 @@ public static class Cli
     public static string Lang(CehoConfig cfg) => cfg.Language;
     public static string S(CehoConfig cfg, string key, params object[] a) => Strings.T(cfg.Language, key, a);
 
+    private static readonly string[] Commands =
+    {
+        "status", "verify", "open", "setup", "add-app", "apps", "remove-app", "rename-app", "tunnel",
+        "sub-add", "subs", "sub-remove", "sub-on", "sub-off", "countries", "country", "node", "nodes",
+        "speed", "passwd", "lang", "set-port", "timeout", "set-proxy-port", "autostart", "daemon",
+        "restart", "stop", "off", "run", "wrap", "unwrap", "wrapped", "browser", "doctor", "engine",
+        "log", "detect", "apply", "update", "update-status", "version", "uninstall", "ping", "proxy-test",
+    };
+
+    private static readonly HashSet<string> ReadOnlyCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "help", "--help", "-h", "status", "version", "--version", "apps", "subs", "log", "update-status",
+        "countries", "nodes", "wrapped",
+    };
+
+    public static bool IsReadOnlyCommand(string[] args) => args.Length == 0 || ReadOnlyCommands.Contains(args[0]);
+
+    public static string? Suggest(string typed)
+    {
+        static int Distance(string a, string b)
+        {
+            var d = new int[a.Length + 1, b.Length + 1];
+            for (var i = 0; i <= a.Length; i++) d[i, 0] = i;
+            for (var j = 0; j <= b.Length; j++) d[0, j] = j;
+            for (var i = 1; i <= a.Length; i++)
+            for (var j = 1; j <= b.Length; j++)
+                d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
+                    d[i - 1, j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+            return d[a.Length, b.Length];
+        }
+
+        var lower = typed.ToLowerInvariant();
+        var best = Commands.Select(c => (Command: c, Score: Distance(lower, c))).MinBy(x => x.Score);
+        return best.Score <= Math.Max(1, Math.Min(2, lower.Length / 3)) ? best.Command : null;
+    }
+
+    private static bool? _color;
+
+    public static bool Color => _color ??= DetectColor();
+
+    private static bool DetectColor()
+    {
+        if (Console.IsOutputRedirected || Environment.GetEnvironmentVariable("NO_COLOR") is not null) return false;
+        if (!OperatingSystem.IsWindows()) return Environment.GetEnvironmentVariable("TERM") is not ("dumb" or null or "");
+        try
+        {
+            var handle = GetStdHandle(-11);
+            if (!GetConsoleMode(handle, out var mode)) return false;
+            return (mode & 4) != 0 || SetConsoleMode(handle, mode | 4);
+        }
+        catch { return false; }
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern IntPtr GetStdHandle(int handle);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool GetConsoleMode(IntPtr handle, out uint mode);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool SetConsoleMode(IntPtr handle, uint mode);
+
+    public static string Paint(string text, Preflight.Level level) => !Color ? text : level switch
+    {
+        Preflight.Level.Ok => $"\u001b[32m{text}\u001b[0m",
+        Preflight.Level.Warning => $"\u001b[33m{text}\u001b[0m",
+        _ => $"\u001b[31m{text}\u001b[0m",
+    };
+
+    public static void PrintMainCommands(CehoConfig cfg)
+    {
+        var sudo = Os.IsWindows ? "" : "sudo ";
+        var en = Lang(cfg) == "en";
+        (string Cmd, string What)[] rows = en
+            ? [
+                ("chp status", "state and the real exit IP"),
+                ("chp add-app", "put an app into the tunnel"),
+                ("chp sub-add", "add a subscription"),
+                (sudo + "chp daemon", "turn protection on"),
+                ("chp doctor", "check everything and say what to fix"),
+            ]
+            : [
+                ("chp status", "состояние и реальный IP выхода"),
+                ("chp add-app", "отправить программу в туннель"),
+                ("chp sub-add", "добавить подписку"),
+                (sudo + "chp daemon", "включить защиту"),
+                ("chp doctor", "проверить всё и сказать, что исправить"),
+            ];
+        Console.WriteLine("  " + (en ? "Main commands" : "Главные команды"));
+        foreach (var (c, w) in rows) Console.WriteLine($"    {c,-22} {w}");
+        Console.WriteLine();
+        Console.WriteLine("  " + (en ? "All commands: chp help all" : "Все команды: chp help all"));
+    }
+
     public static void PrintHelp(CehoConfig cfg)
     {
         var sudo = Os.IsWindows ? "" : "sudo ";
@@ -16,7 +110,7 @@ public static class Cli
         ? [
             ("Every day", [
                 ("chp", "state and what to do next"),
-                ("chp status", "state and the real exit IP"),
+                ("chp status [--json]", "state and the real exit IP"),
                 ("chp verify", "prove isolation by live connections"),
                 ("chp open", "open the panel in a browser"),
             ]),
@@ -57,7 +151,7 @@ public static class Cli
         : [
             ("Каждый день", [
                 ("chp", "состояние и что делать дальше"),
-                ("chp status", "состояние и реальный IP выхода"),
+                ("chp status [--json]", "состояние и реальный IP выхода"),
                 ("chp verify", "доказать изоляцию по живым соединениям"),
                 ("chp open", "открыть панель в браузере"),
             ]),
@@ -719,7 +813,7 @@ public static class Cli
                 Preflight.Level.Warning => "[но]   ",
                 _ => "[стоп] ",
             };
-            Console.WriteLine(mark + c.Title);
+            Console.WriteLine(Paint(mark, c.Level) + c.Title);
             if (c.Detail is not null) Console.WriteLine("       " + c.Detail);
             if (c.Fix is null) continue;
 
