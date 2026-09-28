@@ -142,9 +142,44 @@ if (cmd is "engine" or "движок")
 
     if (already is not null && !again && !Installer.MissingCronetDll(Ceho.Root))
     {
+        var have = Installer.EngineVersionOf(already);
         Console.WriteLine(Strings.T(cfg0.Language, "engine_already", already));
-        Console.WriteLine(Strings.T(cfg0.Language, "engine_update_hint", Os.IsWindows ? "" : "sudo "));
+        Console.WriteLine(have is null ? Strings.T(cfg0.Language, "engine_line_unknown")
+            : Installer.EngineOutdated(have) ? Strings.T(cfg0.Language, "engine_line_old", have, Installer.EngineVersion)
+            : Strings.T(cfg0.Language, "engine_line", have));
+        if (Installer.EngineOutdated(have))
+            Console.WriteLine(Strings.T(cfg0.Language, "engine_update_hint", Os.IsWindows ? "" : "sudo "));
         return 0;
+    }
+
+    if (already is not null && again && !Installer.MissingCronetDll(Ceho.Root))
+    {
+        if (DaemonControl.IsRunning(Ceho.Root) && Auth.ReadPanelPointer(Ceho.Root) is not null)
+            return await Cli.RunRemoteAsync(Ceho.Root, args, cfg0.Language);
+
+        var have = Installer.EngineVersionOf(already);
+        if (have is not null && !Installer.EngineOutdated(have))
+        {
+            Console.WriteLine(Strings.T(cfg0.Language, "engine_current", have));
+            return 0;
+        }
+        try
+        {
+            var fresh = await Installer.PrepareEngineUpdateAsync(
+                Ceho.Root, Ceho.RuntimeConfigPath, m => Console.WriteLine("  " + m), cfg0.Language);
+            Installer.SwapEngine(Ceho.Root, fresh);
+            Console.WriteLine(Strings.T(cfg0.Language, "engine_updated", Installer.EngineVersion));
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(Strings.T(cfg0.Language, "engine_update_failed", ex.Message));
+            return 1;
+        }
+        finally
+        {
+            Installer.DropEngineStaging(Ceho.Root);
+        }
     }
 
     if (Installer.MissingCronetDll(Ceho.Root))
@@ -2078,24 +2113,13 @@ if (cmd is "daemon" or "web")
 
         var current = Os.ResolveSingBox(Ceho.Root);
         var installed = current is null ? null : Installer.EngineVersionOf(current);
-        if (!Installer.EngineOutdated(installed)) return S("engine_current", installed ?? "?");
+        if (installed is not null && !Installer.EngineOutdated(installed)) return S("engine_current", installed);
 
         try
         {
             report.Stage(S("job_engine_update"), 10);
-            var fresh = await Installer.StageEngineAsync(Ceho.Root, m => report.Note(m), c.Language);
-
-            report.Stage(S("engine_stage_check"), 60);
-            var staged = Installer.EngineVersionOf(fresh);
-            if (staged != Installer.EngineVersion)
-                throw new InvalidOperationException(S("engine_wrong_version", staged ?? "?", Installer.EngineVersion));
-            if (File.Exists(Ceho.RuntimeConfigPath))
-            {
-                var (code, output) = Os.Run(fresh, $"check -c \"{Ceho.RuntimeConfigPath}\" -D \"{Ceho.Root}\"", 30000);
-                if (code != 0)
-                    throw new InvalidOperationException(S("engine_check_failed", staged,
-                        output.Trim().Split('\n')[0]));
-            }
+            var fresh = await Installer.PrepareEngineUpdateAsync(
+                Ceho.Root, Ceho.RuntimeConfigPath, m => report.Note(m), c.Language);
 
             report.Stage(S("engine_stage_swap"), 75);
             using (EngineMutex.Acquire(Ceho.Root))
@@ -2303,6 +2327,12 @@ if (cmd is "daemon" or "web")
     {
         if (argv.Length == 0 || !Cli.CanRunRemotely(argv[0]))
             return (false, Strings.T(cfg.Language, "remote_not_allowed", argv.Length > 0 ? argv[0] : ""));
+
+        if (argv[0] is "engine" or "движок" && argv.Skip(1).Any(a => a is "update" or "обновить" or "--force"))
+        {
+            try { return (true, await UpdateEngineAsync(new DelegateReport(Log.Info))); }
+            catch (Exception ex) { return (false, Strings.T(cfg.Language, "engine_update_failed", ex.Message)); }
+        }
 
         if (argv[0] == "update")
         {

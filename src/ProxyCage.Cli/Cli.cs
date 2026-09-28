@@ -270,13 +270,13 @@ public static class Cli
         "status", "doctor", "verify", "apps", "add-app", "remove-app", "rename-app",
         "subs", "sub-add", "sub-remove", "sub-on", "sub-off", "countries", "country", "nodes", "node",
         "browser", "proxy-test", "ping", "detect", "apply", "lang", "set-port", "autostart", "autoupdate", "speed",
-        "restart", "stop", "off", "timeout", "set-timeout", "log", "update",
+        "restart", "stop", "off", "timeout", "set-timeout", "log", "update", "engine", "движок",
     };
 
     public static bool CanRunRemotely(string command) => RemoteAllowed.Contains(command);
 
     public static TimeSpan RemoteTimeoutFor(string command) =>
-        command == "update" ? TimeSpan.FromMinutes(20) : TimeSpan.FromSeconds(60);
+        command is "update" or "engine" or "движок" ? TimeSpan.FromMinutes(20) : TimeSpan.FromSeconds(60);
 
     public static async Task<int?> EnsureRightsAsync(string[] args, CehoConfig cfg)
     {

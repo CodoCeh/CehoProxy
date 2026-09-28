@@ -676,6 +676,23 @@ public static class Installer
         }
     }
 
+    public static async Task<string> PrepareEngineUpdateAsync(
+        string root, string runtimeConfigPath, Action<string> log, string lang = "ru")
+    {
+        var fresh = await StageEngineAsync(root, log, lang);
+        var staged = EngineVersionOf(fresh);
+        if (staged != EngineVersion)
+            throw new InvalidOperationException(Strings.T(lang, "engine_wrong_version", staged ?? "?", EngineVersion));
+        if (File.Exists(runtimeConfigPath))
+        {
+            var (code, output) = Os.Run(fresh, $"check -c \"{runtimeConfigPath}\" -D \"{root}\"", 30000);
+            if (code != 0)
+                throw new InvalidOperationException(Strings.T(lang, "engine_check_failed", staged,
+                    System.Text.RegularExpressions.Regex.Replace(output.Trim().Split('\n')[0], @"\x1b\[[0-9;]*m", "")));
+        }
+        return fresh;
+    }
+
     public static void SwapEngine(string root, string fresh)
     {
         var dir = Path.GetDirectoryName(fresh)!;

@@ -1006,8 +1006,8 @@ public static class Strings
         ["engine_get"] = new("Скачать движок", "Download the engine"),
         ["job_engine"] = new("Скачиваю движок sing-box", "Downloading the sing-box engine"),
         ["engine_update_hint"] = new(
-            "Обновить его до свежей версии: {0}chp engine update",
-            "Update it to the latest version: {0}chp engine update"),
+            "Обновить его до проверенной версии: {0}chp engine update",
+            "Update it to the tested version: {0}chp engine update"),
         ["engine_cronet_missing"] = new(
             "Для NaiveProxy нужна libcronet.dll рядом с движком в {0} — скачиваю sing-box заново.",
             "NaiveProxy needs libcronet.dll next to the engine in {0} — downloading sing-box again."),
@@ -1609,12 +1609,12 @@ public static class Strings
             "address, login and password."),
         ["wiz_no_link"] = new(
             "Ссылки ещё нет? Читайте:", "No link yet? Read:"),
-        ["engine_line"] = new("Движок sing-box {0}", "sing-box engine {0}"),
+        ["engine_line"] = new("Движок {0}", "Engine {0}"),
         ["engine_line_old"] = new(
-            "Движок sing-box {0}, проверенная версия {1}", "sing-box engine {0}, tested version {1}"),
+            "Движок {0}, проверенная версия {1}", "Engine {0}, tested version {1}"),
         ["engine_line_unknown"] = new("Версию движка узнать не удалось", "Could not read the engine version"),
         ["engine_update_btn"] = new("Обновить движок", "Update the engine"),
-        ["job_engine_update"] = new("Обновляю движок sing-box", "Updating the sing-box engine"),
+        ["job_engine_update"] = new("Обновляю движок", "Updating the engine"),
         ["engine_current"] = new(
             "Движок {0} уже проверенной версии, обновлять нечего.",
             "Engine {0} is already the tested version, nothing to update."),
@@ -1628,6 +1628,7 @@ public static class Strings
         ["engine_wrong_version"] = new(
             "Скачанный движок назвал версию {0} вместо {1}, обновление отменено.",
             "The downloaded engine reported version {0} instead of {1}; the update is cancelled."),
+        ["engine_update_failed"] = new("Движок обновить не удалось: {0}", "Could not update the engine: {0}"),
         ["engine_rolled_back"] = new(
             "Новый движок не запустился, вернул прежний: {0}",
             "The new engine did not start, the old one is back: {0}"),
