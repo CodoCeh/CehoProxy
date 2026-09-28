@@ -137,6 +137,26 @@ if (cmd == "install")
 // с ключом, а это выглядит как переустановка программы.
 if (cmd is "engine" or "движок")
 {
+    if (args.Length >= 2 && args[1].ToLowerInvariant() is "auto" or "авто")
+    {
+        var engineCfg = CehoConfig.Load(Ceho.ConfigPath);
+        if (args.Length >= 3 && args[2] is "on" or "off")
+        {
+            engineCfg.EngineAutoUpdate = args[2] == "on";
+            engineCfg.Save(Ceho.ConfigPath);
+            Console.WriteLine(Strings.T(engineCfg.Language,
+                engineCfg.EngineAutoUpdate ? "engine_auto_state_on" : "engine_auto_state_off"));
+            return 0;
+        }
+        if (args.Length >= 3)
+        {
+            Console.Error.WriteLine("engine auto on | engine auto off");
+            return 1;
+        }
+        Console.WriteLine(Strings.T(engineCfg.Language, engineCfg.EngineAutoUpdate ? "engine_auto_on" : "engine_auto_off"));
+        return 0;
+    }
+
     var already = Os.ResolveSingBox(Ceho.Root);
     var again = args.Length >= 2 && args[1].ToLowerInvariant() is "update" or "обновить" or "--force";
 

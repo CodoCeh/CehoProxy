@@ -1642,8 +1642,8 @@ public static class Strings
             "When CehoProxy brings a new tested engine version, the service installs it by itself. " +
             "The new engine is checked against your settings first; protection is off for a few seconds during the swap."),
         ["engine_auto_state_off"] = new(
-            "Движок не обновляется сам: новую версию ставите вы кнопкой «Обновить движок».",
-            "The engine does not update itself: you install a new version with «Update the engine»."),
+            "Движок не обновляется сам: новую версию ставите вы кнопкой «Обновить движок» или командой chp engine update.",
+            "The engine does not update itself: you install a new version with «Update the engine» or chp engine update."),
         ["engine_auto_starting"] = new("обновляю движок до {0} сам", "updating the engine to {0} by itself"),
         ["engine_auto_failed"] = new("обновить движок самому не удалось: {0}", "could not update the engine by itself: {0}"),
         ["upd_auto_on"] = new("Обновляется само", "Updates by itself"),

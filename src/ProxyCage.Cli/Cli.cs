@@ -146,6 +146,7 @@ public static class Cli
                 ("chp apply", "rebuild the rules"),
                 ("chp update · update-status · version", "update, handoff status and version"),
                 ("chp autoupdate on|off", "look for updates and install them by itself"),
+                (sudo + "chp engine auto on|off", "update the engine to the tested version by itself"),
                 (sudo + "chp uninstall", "remove everything"),
             ]),
         ]
@@ -188,6 +189,7 @@ public static class Cli
                 ("chp apply", "пересобрать правила"),
                 ("chp update · update-status · version", "обновление, его итог и версия"),
                 ("chp autoupdate on|off", "проверять обновления и ставить их самому"),
+                (sudo + "chp engine auto on|off", "обновлять движок до проверенной версии самому"),
                 (sudo + "chp uninstall", "удалить всё"),
             ]),
         ];
