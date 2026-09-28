@@ -1333,6 +1333,8 @@ switch (cmd)
         if (args[1] == "on")
         {
             var err = Autostart.Enable(Ceho.OwnExecutablePath, Ceho.Root);
+            if (err is null && !DaemonControl.IsRunning(Ceho.Root) && File.Exists(Ceho.ConfigPath))
+                Autostart.Restart();
             Console.WriteLine(err ?? Cli.S(cfg, "autostart_state_on"));
             return err is null ? 0 : 1;
         }
