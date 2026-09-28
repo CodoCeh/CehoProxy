@@ -1,10 +1,9 @@
 using System.Net;
 using System.Net.Http;
-using ProxyCage.Core;
 
-namespace ProxyCage.Tray.Windows;
+namespace ProxyCage.Core;
 
-internal sealed class PanelLink : IDisposable
+public sealed class PanelLink : IDisposable
 {
     public enum Outcome { Ok, NeedPassword, Waiting, Unreachable }
 

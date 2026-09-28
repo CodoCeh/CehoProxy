@@ -1651,6 +1651,18 @@ public static class Strings
             "Столько просит подождать сама панель после неверных попыток",
             "The panel itself asks to wait this long after failed attempts"),
         ["tray_failed"] = new("Панель не приняла команду", "The panel did not accept the command"),
+        ["tray_installed"] = new(
+            "Значок состояния {0} поставлен.", "The status icon {0} is installed."),
+        ["tray_updated"] = new(
+            "Значок состояния обновлён до {0}.", "The status icon is updated to {0}."),
+        ["tray_update_failed"] = new(
+            "Значок состояния не обновился: {0}", "The status icon did not update: {0}"),
+        ["tray_no_desktop"] = new(
+            "Значку нужен рабочий стол: не найдена сессионная шина D-Bus.",
+            "The icon needs a desktop session: the D-Bus session bus was not found."),
+        ["tray_no_dialog"] = new(
+            "Окно для пароля не открылось: нет zenity или kdialog. Введите пароль в панели.",
+            "The password window did not open: neither zenity nor kdialog is installed. Enter the password in the panel."),
         ["rights_via_service"] = new(
             "Этой команде нужны права администратора. Рядом работает служба от администратора — передаю команду ей.",
             "This command needs administrator rights. The service is running as administrator — handing the command over to it."),
