@@ -1,0 +1,194 @@
+name: Релиз
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - 'ci/**'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Создать черновик релиза и залить ассеты'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_REPO: CodoCeh/CehoProxy
+
+jobs:
+  version:
+    name: Версия
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версия из Directory.Build.props
+        id: read
+        run: |
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n1)
+          if [ -z "$version" ]; then
+            echo "В Directory.Build.props нет <Version>." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Версия в Directory.Build.props: $version"
+
+      - name: Сверка версии с тегом
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERSION: ${{ steps.read.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "${TAG#v}" != "$VERSION" ]; then
+            echo "Тег $TAG не совпадает с версией $VERSION в Directory.Build.props." >&2
+            echo "Поправьте Directory.Build.props или перевыпустите тег." >&2
+            exit 1
+          fi
+          echo "Тег $TAG и версия $VERSION совпадают."
+
+      - name: Версия установщика Windows
+        env:
+          VERSION: ${{ steps.read.outputs.version }}
+        run: |
+          iss=$(sed -n 's:^#define AppVersion "\(.*\)":\1:p' scripts/cehoproxy.iss | head -n1)
+          if [ "$iss" != "$VERSION" ]; then
+            echo "::warning::В scripts/cehoproxy.iss версия $iss, а в Directory.Build.props $VERSION — установщик Windows соберётся со старым номером."
+          else
+            echo "scripts/cehoproxy.iss: версия $iss."
+          fi
+
+  binaries:
+    name: ${{ matrix.rid }}
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - win-x64
+          - linux-x64
+          - linux-arm64
+          - osx-arm64
+          - osx-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Сборка ${{ matrix.rid }}
+        env:
+          RID: ${{ matrix.rid }}
+        run: |
+          dotnet publish src/ProxyCage.Cli/ProxyCage.Cli.csproj -c Release -r "$RID" \
+            --self-contained true -p:PublishSingleFile=true \
+            -p:EnableCompressionInSingleFile=true -o "publish/$RID"
+
+      - name: Имя ассета
+        env:
+          RID: ${{ matrix.rid }}
+        run: |
+          mkdir -p out
+          if [ "$RID" = "win-x64" ]; then
+            cp "publish/$RID/cehoproxy.exe" "out/cehoproxy-$RID.exe"
+          else
+            cp "publish/$RID/cehoproxy" "out/cehoproxy-$RID"
+          fi
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.rid }}
+          path: out/
+          retention-days: 7
+
+  bundles:
+    name: Комплекты и проверка имён
+    needs:
+      - version
+      - binaries
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bin-*
+          path: publish
+          merge-multiple: true
+
+      - name: Библиотека NaiveProxy из прошлого релиза
+        run: |
+          if gh release download --repo "$RELEASE_REPO" --pattern libcronet.dll --dir publish; then
+            echo "libcronet.dll перенесена из прошлого релиза."
+          else
+            echo "::warning::libcronet.dll в прошлом релизе не найдена — install.ps1 и chp engine качают её по ссылке releases/latest/download/libcronet.dll, приложите файл к релизу вручную."
+          fi
+
+      - name: Архивы через scripts/make-release.py
+        run: python3 scripts/make-release.py "$VERSION" publish publish/bundles
+
+      - name: Сбор ассетов
+        run: |
+          mkdir -p release-assets
+          cp publish/cehoproxy-* release-assets/
+          cp publish/bundles/*.zip release-assets/
+          cp "scripts/Установить CehoProxy.cmd" release-assets/CehoProxy.cmd
+          if [ -f publish/libcronet.dll ]; then cp publish/libcronet.dll release-assets/; fi
+          ls -l release-assets
+
+      - name: Проверка имён ассетов
+        run: python3 .github/check-release-assets.py "$VERSION" release-assets
+
+      - name: Контрольные суммы
+        run: |
+          cd release-assets
+          sha256sum -- * > "../CehoProxy-$VERSION-SHA256SUMS.txt"
+          mv "../CehoProxy-$VERSION-SHA256SUMS.txt" .
+          cat "CehoProxy-$VERSION-SHA256SUMS.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets/
+          retention-days: 7
+
+  release:
+    name: Черновик релиза
+    needs:
+      - version
+      - bundles
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: Черновик и ассеты
+        run: |
+          tag="v$VERSION"
+          if ! gh release view "$tag" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$RELEASE_REPO" --draft \
+              --target "$GITHUB_SHA" \
+              --title "CehoProxy $VERSION" \
+              --notes "Черновик собран автоматически. Опишите изменения и снимите отметку «черновик»."
+          fi
+          gh release upload "$tag" --repo "$RELEASE_REPO" --clobber release-assets/*
+          gh release view "$tag" --repo "$RELEASE_REPO" --json assets --jq '.assets[].name'

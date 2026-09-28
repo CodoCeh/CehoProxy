@@ -1,0 +1,67 @@
+name: Сборка и тесты
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  FLAKY_ONLINE_TESTS: 'FullyQualifiedName!=ProxyCage.Core.Tests.DirectHttpTests.Resolves_github_api_host'
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            excluded_tests: ''
+          - os: macos-latest
+            excluded_tests: ''
+          - os: windows-latest
+            excluded_tests: 'FullyQualifiedName!=ProxyCage.Core.Tests.PlatformTests.Tun_options_match_the_running_system&FullyQualifiedName!=ProxyCage.Core.Tests.AppIconTests.Linux_icon_name_resolves_inside_the_theme_folders&FullyQualifiedName!=ProxyCage.Core.Tests.DoctorTests.A_failed_repair_lands_in_what_is_left_for_the_owner'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Восстановление зависимостей
+        run: dotnet restore ProxyCage.sln
+
+      - name: Сборка
+        run: dotnet build ProxyCage.sln -c Release --no-restore
+
+      - name: Тесты
+        shell: bash
+        env:
+          EXCLUDED_TESTS: ${{ matrix.excluded_tests }}
+        run: |
+          filter="$FLAKY_ONLINE_TESTS"
+          if [ -n "$EXCLUDED_TESTS" ]; then
+            filter="$filter&$EXCLUDED_TESTS"
+          fi
+          dotnet test ProxyCage.sln -c Release --no-build \
+            --filter "$filter" \
+            --logger "trx;LogFileName=tests.trx" \
+            --results-directory artifacts/tests
+
+      - name: Отчёт о тестах
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests-${{ matrix.os }}
+          path: artifacts/tests
+          if-no-files-found: warn
+          retention-days: 7

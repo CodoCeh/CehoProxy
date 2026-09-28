@@ -286,6 +286,14 @@ dotnet publish src/ProxyCage.Cli/ProxyCage.Cli.csproj -c Release \
 Платформенные различия собраны в пяти файлах и больше нигде: `Os`, `SingBoxProcess`,
 `TunCleanup`, `Autostart`, `AppDetector`.
 
+Проверка идёт и на нашей стороне: при каждом пуше и pull request GitHub Actions
+восстанавливает зависимости, собирает решение и прогоняет весь набор тестов на Linux,
+Windows и macOS — `.github/workflows/build.yml`. Релиз собирается по тегу `vX.Y.Z`:
+пять самодостаточных файлов, zip-комплекты, контрольные суммы и черновик релиза —
+`.github/workflows/release.yml`. Номер версии берётся из `Directory.Build.props` и обязан
+совпадать с тегом, иначе сборка останавливается. Установщик Windows (Inno Setup) собирается
+вручную.
+
 ## Связь
 
 Вопросы и пожелания — в [обсуждениях](../../issues) или в нашем канале:
