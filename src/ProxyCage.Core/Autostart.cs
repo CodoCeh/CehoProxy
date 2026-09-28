@@ -44,7 +44,11 @@ public static class Autostart
                 Os.Run("systemctl", $"restart {ServiceName}");
                 break;
             default:
-                Os.Run("launchctl", $"kickstart -k system/{LaunchdLabel}");
+                if (Os.Run("launchctl", $"kickstart -k system/{LaunchdLabel}").Code != 0)
+                {
+                    Os.Run("launchctl", $"bootstrap system {PlistPath}");
+                    Os.Run("launchctl", $"kickstart -k system/{LaunchdLabel}");
+                }
                 break;
         }
     }
@@ -55,7 +59,10 @@ public static class Autostart
         {
             case OsKind.Windows: Os.Run("schtasks", $"/end /tn {TaskName}"); break;
             case OsKind.Linux: Os.Run("systemctl", $"stop {ServiceName}"); break;
-            default: Os.Run("launchctl", $"bootout system/{LaunchdLabel}"); break;
+            default:
+                if (Os.Run("launchctl", $"kill SIGTERM system/{LaunchdLabel}").Code != 0)
+                    Os.Run("launchctl", $"bootout system/{LaunchdLabel}");
+                break;
         }
     }
 

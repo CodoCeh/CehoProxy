@@ -1498,6 +1498,7 @@ switch (cmd)
             return running ? 0 : 1;
         }
         Console.WriteLine(running ? Cli.Paint(Cli.S(cfg, "state_on"), Preflight.Level.Ok)
+            : LeakGuard.IsActive(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)
             : daemon && DaemonControl.IsStarting(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_starting"), Preflight.Level.Warning)
             : daemon ? Cli.Paint(Cli.S(cfg, "state_broken"), Preflight.Level.Blocker)
             : Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning));
