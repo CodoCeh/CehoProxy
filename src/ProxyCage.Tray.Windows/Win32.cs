@@ -145,7 +145,7 @@ internal static class Win32
         int x, int y, int width, int height,
         IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr DefWindowProc(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]

@@ -11,6 +11,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>cehoproxy-tray</AssemblyName>
+    <AssemblyTitle>CehoProxy</AssemblyTitle>
+    <Product>CehoProxy</Product>
     <ApplicationIcon>..\..\assets\cehoproxy.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
