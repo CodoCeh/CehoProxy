@@ -24,6 +24,8 @@ public sealed class AppEntry
 
     public bool Enabled { get; set; } = true;
 
+    public bool NoInternet { get; set; }
+
     /// <summary>
     /// Ноды, через которые ходит эта программа. Пусто — общие правила пула.
     /// Ключи те же, что у BlockedNodes: «Vless|server|443».

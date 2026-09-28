@@ -270,10 +270,11 @@ public static class SingBoxConfigGenerator
             throw new InvalidOperationException("Не добавлено ни одного приложения — изолировать нечего.");
 
         var pool = BuildPool(allNodes, cfg);
+        var offline = apps.Where(a => a.NoInternet).ToList();
         var pinned = apps.Select((a, i) => (App: a, Index: i, Nodes: ResolvePinned(a, allNodes)))
-            .Where(x => HasNodeFilter(x.App))
+            .Where(x => !x.App.NoInternet && HasNodeFilter(x.App))
             .ToList();
-        var unpinned = apps.Where(a => !HasNodeFilter(a)).ToList();
+        var unpinned = apps.Where(a => !a.NoInternet && !HasNodeFilter(a)).ToList();
 
         var countryGroups = SiteCountryGroups(allNodes, cfg);
         var engineNodes = new List<ProxyNode>();
@@ -614,6 +615,20 @@ public static class SingBoxConfigGenerator
                 ["outbound"] = DirectTag,
             });
             InsertCountryMixed(tunHijackIndex + 1);
+        }
+
+        if (offline.Count > 0)
+        {
+            var regex = new JsonArray();
+            foreach (var a in offline)
+            {
+                foreach (var rx in AppDetector.ToRegexes(a)) regex.Add(rx);
+            }
+            routeRules.Insert(1, new JsonObject
+            {
+                ["process_path_regex"] = regex,
+                ["action"] = "reject",
+            });
         }
 
         var inbounds = new JsonArray { BuildTun(cfg, tunInterfaceName), BuildMixedInbound(cfg.MixedPort, "mixed-in") };

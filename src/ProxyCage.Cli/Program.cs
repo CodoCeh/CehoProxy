@@ -93,6 +93,7 @@ if (cmd == "install")
     }
 
     await TrayInstaller.EnsureAsync(Ceho.Root, cfg0.UpdateRepo, true, m => Console.WriteLine("  " + m), cfg0.Language);
+    if (Os.IsWindows && Os.IsElevated()) TrayInstaller.StartInWindowsSessions(Ceho.Root);
 
     Console.WriteLine();
     Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_done"));
@@ -429,11 +430,39 @@ switch (cmd)
         if (cfg.Apps.Count == 0) { Console.WriteLine(Cli.S(cfg, "empty")); return 0; }
         foreach (var a in cfg.Apps)
         {
-            var how = a.AllowedNodes.Count == 0
+            var how = a.NoInternet ? Cli.S(cfg, "app_offline_tag")
+                : a.AllowedNodes.Count == 0
                 ? Cli.S(cfg, "app_tunnel_general")
                 : Cli.S(cfg, "app_tunnel_pinned", a.AllowedNodes.Count);
             Console.WriteLine($"{a.Label,-24} {a.Folder}  · {how}");
         }
+        return 0;
+    }
+
+    case "no-internet":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        var turn = args.Length >= 3 ? args[2].ToLowerInvariant() : "on";
+        if (args.Length < 2 || turn is not ("on" or "off"))
+        {
+            Console.Error.WriteLine(Cli.S(cfg, "err_offline_usage"));
+            return 1;
+        }
+
+        var which = args[1];
+        var target = Os.RealPath(which);
+        var app = int.TryParse(which, out var idx) && idx >= 1 && idx <= cfg.Apps.Count
+            ? cfg.Apps[idx - 1]
+            : cfg.Apps.FirstOrDefault(a =>
+                a.Folder.Equals(which, StringComparison.OrdinalIgnoreCase) ||
+                a.Folder.Equals(target, StringComparison.OrdinalIgnoreCase));
+        if (app is null) { Console.Error.WriteLine(Cli.S(cfg, "err_not_in_list")); return 1; }
+
+        app.NoInternet = turn == "on";
+        cfg.Save(Ceho.ConfigPath);
+        Auth.RestrictConfigAccess(Ceho.ConfigPath);
+        Console.WriteLine(Cli.S(cfg, app.NoInternet ? "app_offline_saved" : "app_offline_cleared", app.Label));
+        await Cli.RebuildQuietlyAsync(cfg);
         return 0;
     }
 
@@ -539,7 +568,8 @@ switch (cmd)
         for (var i = 0; i < cfg.Apps.Count; i++)
         {
             var a = cfg.Apps[i];
-            var how = a.AllowedNodes.Count == 0
+            var how = a.NoInternet ? Cli.S(cfg, "app_offline_tag")
+                : a.AllowedNodes.Count == 0
                 ? Cli.S(cfg, "app_tunnel_general")
                 : Cli.S(cfg, "app_tunnel_pinned", a.AllowedNodes.Count);
             Console.WriteLine($"  {i + 1,3}. {a.Label,-20} {how}");

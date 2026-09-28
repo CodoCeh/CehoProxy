@@ -396,6 +396,7 @@ public static class Installer
         if (Os.IsWindows)
         {
             Os.Run("taskkill", "/F /IM " + TrayWindowsFileName);
+            Os.Run("schtasks", $"/Delete /TN {TrayInstaller.WindowsSessionTask} /F");
             foreach (var folder in new[]
                      {
                          Environment.SpecialFolder.CommonStartup,

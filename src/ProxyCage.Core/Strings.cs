@@ -751,6 +751,18 @@ public static class Strings
             "Для «{0}» снова общие правила пула.",
             "\"{0}\" is back on the shared pool rules."),
         ["app_tunnel_back"] = new("К программам", "Back to apps"),
+        ["app_offline_tag"] = new("интернет выключен", "no internet"),
+        ["app_offline_on"] = new("Интернет у программы выключен", "The app has no internet"),
+        ["app_offline_off"] = new("Интернет у программы есть", "The app has internet"),
+        ["app_offline_add"] = new("Выключить интернет", "Turn internet off"),
+        ["app_offline_del"] = new("Вернуть интернет", "Give internet back"),
+        ["app_offline_hint"] = new(
+            "Пока работает CehoProxy, программа не выходит в интернет ни через VPN, ни напрямую. " +
+            "Ноды для неё не выбираются.",
+            "While CehoProxy runs, the app reaches the internet neither through the VPN nor directly. " +
+            "No nodes are picked for it."),
+        ["app_offline_saved"] = new("У «{0}» выключен интернет.", "\"{0}\" has no internet now."),
+        ["app_offline_cleared"] = new("У «{0}» снова есть интернет.", "\"{0}\" has internet again."),
         ["app_tunnel_missing"] = new(
             "Этой программы уже нет в списке.",
             "This app is no longer in the list."),
@@ -820,6 +832,9 @@ public static class Strings
             "chp rename-app <номер|путь> \"имя\"",
             "chp rename-app <index|path> \"name\""),
         ["err_need_name"] = new("Укажите имя.", "Enter a name."),
+        ["err_offline_usage"] = new(
+            "chp no-internet <номер|путь> [on|off]",
+            "chp no-internet <index|path> [on|off]"),
         ["btn_delete"] = new("Удалить", "Delete"),
         ["btn_save"] = new("Сохранить", "Save"),
         ["btn_on"] = new("Включить", "Turn on"),

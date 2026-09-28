@@ -54,8 +54,6 @@ Name: "{group}\Удалить CehoProxy"; Filename: "{uninstallexe}"
 Filename: "{app}\cehoproxy.exe"; Parameters: "install --no-setup --with-engine"; \
   StatusMsg: "Регистрируем программу и скачиваем движок sing-box..."; \
   Flags: runhidden waituntilterminated
-Filename: "{app}\cehoproxy-tray.exe"; \
-  Flags: nowait runasoriginaluser skipifdoesntexist
 Filename: "{cmd}"; Parameters: "/k ""{app}\cehoproxy.exe"" setup"; \
   Description: "Настроить сейчас"; Flags: postinstall skipifsilent
 

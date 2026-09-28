@@ -9,7 +9,7 @@ public static class Cli
 
     private static readonly string[] Commands =
     {
-        "status", "verify", "open", "setup", "add-app", "apps", "remove-app", "rename-app", "tunnel",
+        "status", "verify", "open", "setup", "add-app", "apps", "remove-app", "rename-app", "tunnel", "no-internet",
         "sub-add", "subs", "sub-remove", "sub-on", "sub-off", "countries", "country", "node", "nodes",
         "speed", "passwd", "lang", "set-port", "timeout", "set-proxy-port", "autostart", "daemon",
         "restart", "stop", "off", "run", "wrap", "unwrap", "wrapped", "browser", "doctor", "engine",
@@ -119,6 +119,7 @@ public static class Cli
                 ("chp add-app [path]", "isolate a program (no path — pick from a list)"),
                 ("chp apps · chp remove-app · chp rename-app", "list, remove, rename an app"),
                 ("chp tunnel", "pick nodes per app"),
+                ("chp no-internet <index|path> [on|off]", "cut an app off the internet"),
                 ("chp sub-add [name link]", "add a subscription (no arguments — I will ask)"),
                 ("chp subs · chp sub-remove", "list, expiry, traffic and removal"),
                 ("chp sub-off · sub-on <name>", "keep a subscription out of the pool without deleting it"),
@@ -162,6 +163,7 @@ public static class Cli
                 ("chp add-app [путь]", "изолировать программу (без пути — выбор из списка)"),
                 ("chp apps · chp remove-app · chp rename-app", "список, удаление, своё имя"),
                 ("chp tunnel", "ноды для программы"),
+                ("chp no-internet <номер|путь> [on|off]", "выключить программе интернет"),
                 ("chp sub-add [имя ссылка]", "добавить подписку (без аргументов — спрошу)"),
                 ("chp subs · chp sub-remove", "список, срок, трафик и удаление"),
                 ("chp sub-off · sub-on <имя>", "убрать подписку из пула, не удаляя её"),
@@ -269,7 +271,7 @@ public static class Cli
 
     private static readonly HashSet<string> RemoteAllowed = new(StringComparer.Ordinal)
     {
-        "status", "doctor", "verify", "apps", "add-app", "remove-app", "rename-app",
+        "status", "doctor", "verify", "apps", "add-app", "remove-app", "rename-app", "no-internet",
         "subs", "sub-add", "sub-remove", "sub-on", "sub-off", "countries", "country", "nodes", "node",
         "browser", "proxy-test", "ping", "detect", "apply", "lang", "set-port", "autostart", "autoupdate", "speed",
         "restart", "stop", "off", "timeout", "set-timeout", "log", "update", "engine", "движок",
@@ -337,7 +339,7 @@ public static class Cli
 
     private static readonly HashSet<string> Mutating = new(StringComparer.Ordinal)
     {
-        "add-app", "remove-app", "rename-app", "tunnel", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
+        "add-app", "remove-app", "rename-app", "tunnel", "no-internet", "sub-add", "sub-remove", "sub-on", "sub-off", "country", "node", "set-port",
         "lang", "passwd", "apply", "autostart", "autoupdate", "uninstall", "uninstal", "speed", "timeout", "set-timeout",
     };
 

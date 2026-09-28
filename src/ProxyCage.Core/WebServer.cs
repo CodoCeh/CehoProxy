@@ -619,6 +619,19 @@ public sealed class WebServer
                     return (msg, false, ApplyJob(cfg, restartIfRunning: true).Id);
                 }
 
+                case "/apps/offline":
+                {
+                    var folder = f.GetValueOrDefault("folder", "");
+                    var app = cfg.Apps.FirstOrDefault(a =>
+                        a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                    if (app is null) return (S("app_tunnel_missing"), true, null);
+
+                    app.NoInternet = f.ContainsKey("enable");
+                    Save(cfg);
+                    return (S(app.NoInternet ? "app_offline_saved" : "app_offline_cleared", app.Label),
+                        false, ApplyJob(cfg, restartIfRunning: true).Id);
+                }
+
                 case "/subs/add":
                 {
                     var name = f.GetValueOrDefault("name", "").Trim();
@@ -2019,7 +2032,8 @@ public sealed class WebServer
                 if (a.VersionAgnostic) sb.Append("<br><span class=tag>Microsoft Store</span>");
                 if (a.SingleFile) sb.Append("<br><span class=tag>").Append(E(S("col_file", []))).Append("</span>");
                 sb.Append("<br><span class=tag>")
-                  .Append(E(a.AllowedNodes.Count == 0
+                  .Append(E(a.NoInternet ? S("app_offline_tag", [])
+                      : a.AllowedNodes.Count == 0
                       ? S("app_tunnel_general", [])
                       : S("app_tunnel_pinned", new object[] { a.AllowedNodes.Count })))
                   .Append("</span>");
@@ -2086,6 +2100,21 @@ public sealed class WebServer
         sb.Append("<section><h2>").Append(E(S("app_tunnel_title", new object[] { app.Label }))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("app_tunnel_lede", []))).Append("</p>");
         sb.Append("<p><a href=\"/?tab=apps\">").Append(E(S("app_tunnel_back", []))).Append("</a></p>");
+
+        sb.Append("<div class=\"line ").Append(app.NoInternet ? "off" : "on").Append("\"><span><span class=dot></span> ")
+          .Append(E(S(app.NoInternet ? "app_offline_on" : "app_offline_off", []))).Append("</span>")
+          .Append("<form method=post action=/apps/offline><input type=hidden name=tab value=apps>")
+          .Append("<input type=hidden name=folder value=\"").Append(E(app.Folder)).Append("\">")
+          .Append(app.NoInternet ? "" : "<input type=hidden name=enable value=1>")
+          .Append("<button class=").Append(app.NoInternet ? "ghost" : "danger").Append('>')
+          .Append(E(S(app.NoInternet ? "app_offline_del" : "app_offline_add", [])))
+          .Append("</button></form></div>");
+        if (app.NoInternet)
+        {
+            sb.Append("<p class=hint>").Append(E(S("app_offline_hint", []))).Append("</p>");
+            sb.Append("</section>");
+            return;
+        }
 
         var pool = _pool;
         var loading = Jobs.Active(JobPool);

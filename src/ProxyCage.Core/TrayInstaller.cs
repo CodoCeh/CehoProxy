@@ -135,6 +135,48 @@ public static class TrayInstaller
         StartForDesktopUser(target);
     }
 
+    public const string WindowsSessionTask = "CehoProxyTray";
+
+    public static string WindowsSessionTaskXml(string exe) => $"""
+        <?xml version="1.0" encoding="UTF-16"?>
+        <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+          <RegistrationInfo><Description>CehoProxy</Description></RegistrationInfo>
+          <Principals>
+            <Principal id="Users">
+              <GroupId>S-1-5-32-545</GroupId>
+              <RunLevel>LeastPrivilege</RunLevel>
+            </Principal>
+          </Principals>
+          <Settings>
+            <MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>
+            <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+            <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+            <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+            <Priority>5</Priority>
+          </Settings>
+          <Actions Context="Users">
+            <Exec><Command>{System.Security.SecurityElement.Escape(exe)}</Command></Exec>
+          </Actions>
+        </Task>
+        """;
+
+    public static bool StartInWindowsSessions(string root)
+    {
+        var exe = TrayPath(root);
+        if (!Os.IsWindows || !File.Exists(exe)) return false;
+        var xml = Path.Combine(root, WindowsSessionTask + ".xml");
+        try
+        {
+            File.WriteAllText(xml, WindowsSessionTaskXml(exe), System.Text.Encoding.Unicode);
+            return Os.Run("schtasks", $"/Create /TN {WindowsSessionTask} /XML \"{xml}\" /F").Code == 0
+                   && Os.Run("schtasks", $"/Run /TN {WindowsSessionTask}").Code == 0;
+        }
+        finally
+        {
+            try { File.Delete(xml); } catch { }
+        }
+    }
+
     public static string LinuxAutostart(string exe) => $"""
         [Desktop Entry]
         Type=Application
