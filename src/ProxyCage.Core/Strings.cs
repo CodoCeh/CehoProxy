@@ -1655,6 +1655,9 @@ public static class Strings
             "Значок состояния {0} поставлен.", "The status icon {0} is installed."),
         ["tray_updated"] = new(
             "Значок состояния обновлён до {0}.", "The status icon is updated to {0}."),
+        ["tray_gnome_hint"] = new(
+            "GNOME покажет значок только с расширением AppIndicator: sudo apt install gnome-shell-extension-appindicator, затем выйдите из системы и войдите снова.",
+            "GNOME shows the icon only with the AppIndicator extension: sudo apt install gnome-shell-extension-appindicator, then log out and back in."),
         ["tray_update_failed"] = new(
             "Значок состояния не обновился: {0}", "The status icon did not update: {0}"),
         ["tray_no_desktop"] = new(

@@ -66,6 +66,11 @@ public static class TrayInstaller
         catch { return ""; }
     }
 
+    public static bool GnomeWithoutIndicators(string extensions = "/usr/share/gnome-shell/extensions") =>
+        File.Exists("/usr/bin/gnome-shell")
+        && !new[] { "appindicatorsupport@rgcjonas.gmail.com", "ubuntu-appindicators@ubuntu.com" }
+            .Any(name => Directory.Exists(Path.Combine(extensions, name)));
+
     public static bool HasDesktop() =>
         new[] { "/usr/share/xsessions", "/usr/share/wayland-sessions" }
             .Any(dir => Directory.Exists(dir) && Directory.EnumerateFiles(dir, "*.desktop").Any());
@@ -95,6 +100,7 @@ public static class TrayInstaller
                 default: PlaceLinux(root, download); break;
             }
             log(Strings.T(lang, installed is null ? "tray_installed" : "tray_updated", version));
+            if (Os.IsLinux && GnomeWithoutIndicators()) log(Strings.T(lang, "tray_gnome_hint"));
         }
         catch (Exception ex)
         {
