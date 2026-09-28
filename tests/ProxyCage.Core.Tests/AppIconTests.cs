@@ -106,6 +106,57 @@ public sealed class AppIconTests
     }
 
     [Fact]
+    public void App_icon_comes_from_the_program_the_catalog_knows_inside_its_folder()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "ceho-src-" + Guid.NewGuid().ToString("N"));
+        var exe = Path.Combine(folder, "tool.exe");
+        var app = new AppEntry { Name = "Tool", Folder = folder };
+        InstalledAppCatalog.Entry[] catalog = [new("Other", "/elsewhere/other.exe", "test"), new("Tool", exe, "test")];
+
+        Assert.Equal(exe, AppIcons.Source(app, catalog));
+    }
+
+    [Fact]
+    public void App_icon_falls_back_to_the_launch_file_and_then_the_folder()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "ceho-src-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var launch = Path.Combine(folder, "run.bin");
+        File.WriteAllBytes(launch, [1]);
+        try
+        {
+            Assert.Equal(launch, AppIcons.Source(new AppEntry { Name = "Run", Folder = folder, Launch = launch }, []));
+            Assert.Equal(folder, AppIcons.Source(new AppEntry { Name = "Run", Folder = folder }, []));
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
+    public void Store_package_logo_is_found_through_its_scaled_file()
+    {
+        var package = Path.Combine(Path.GetTempPath(), "ceho-msix-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(package, "Assets"));
+        File.WriteAllText(Path.Combine(package, "AppxManifest.xml"),
+            "<Package><Properties><Logo>Assets\\StoreLogo.png</Logo></Properties>" +
+            "<uap:VisualElements Square44x44Logo=\"Assets\\App.png\" /></Package>");
+        File.WriteAllBytes(Path.Combine(package, "Assets", "StoreLogo.scale-200.png"), Png(100, 90));
+        File.WriteAllBytes(Path.Combine(package, "Assets", "App.targetsize-256.png"), Png(256, 80));
+        File.WriteAllBytes(Path.Combine(package, "Assets", "App.targetsize-96_altform-unplated.png"), Png(96, 40));
+        File.WriteAllBytes(Path.Combine(package, "Assets", "App.targetsize-256_altform-unplated.png"), Png(256, 70));
+        File.WriteAllBytes(Path.Combine(package, "Assets", "App.targetsize-256_altform-lightunplated.png"), Png(256, 64));
+        try
+        {
+            Assert.Equal(Path.Combine(package, "Assets", "App.targetsize-256_altform-lightunplated.png"),
+                AppIcons.PackageLogo(package));
+
+            var icon = AppIcons.FromExecutable(package);
+            Assert.NotNull(icon);
+            Assert.Equal(Png(256, 64), icon.Bytes);
+        }
+        finally { Directory.Delete(package, recursive: true); }
+    }
+
+    [Fact]
     public void Windows_executable_gives_back_its_largest_icon()
     {
         var wanted = Png(128, 64);

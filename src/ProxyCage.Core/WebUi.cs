@@ -115,6 +115,7 @@ public static class WebUi
     ul.live-apps .detail{margin-left:auto;color:var(--muted);font-size:var(--fs-s)}
     ul.live-apps li.bad .detail{color:var(--danger-ink)}
     ul.live-apps li.warn .detail{color:var(--warn-ink)}
+    ul.live-apps .ico{margin-right:0}
     ul.findings{margin-top:10px}
     details.more-findings > summary{margin-top:10px;cursor:pointer;color:var(--subtext);font-size:var(--fs-s)}
     .lines{display:flex;flex-direction:column;gap:8px}

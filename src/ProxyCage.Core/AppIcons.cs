@@ -126,8 +126,53 @@ public static class AppIcons
     private static int BigEndian(byte[] data, int offset) =>
         (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
 
+    public static string Source(AppEntry app, IReadOnlyList<InstalledAppCatalog.Entry> catalog)
+    {
+        var how = Os.IsLinux ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var folder = app.Folder.TrimEnd('\\', '/');
+        if (app.VersionAgnostic) return AppDetector.CurrentPackage(folder) ?? app.Folder;
+
+        var launch = app.Launch is { Length: > 0 } ? app.Launch : null;
+        var known = catalog.FirstOrDefault(e => launch is not null && e.Path.Equals(launch, how))
+                    ?? catalog.FirstOrDefault(e => Within(e.Path, folder, how) || Within(Os.RealPath(e.Path), folder, how));
+        if (known is not null) return known.Path;
+        if (launch is not null && File.Exists(launch)) return launch;
+        return InstalledAppCatalog.FindLikelyExecutable(folder, app.Name) ?? app.Folder;
+    }
+
+    private static bool Within(string path, string folder, StringComparison how) =>
+        path.Equals(folder, how)
+        || (path.StartsWith(folder, how) && path.Length > folder.Length && path[folder.Length] is '\\' or '/');
+
+    internal static string? PackageLogo(string package)
+    {
+        var manifest = Path.Combine(package, "AppxManifest.xml");
+        if (!File.Exists(manifest)) return null;
+        var text = File.ReadAllText(manifest);
+        foreach (var match in new[]
+                 {
+                     Regex.Match(text, "Square44x44Logo=\"(?<path>[^\"]+)\""),
+                     Regex.Match(text, "<Logo>(?<path>[^<]+)</Logo>"),
+                 })
+        {
+            if (!match.Success) continue;
+            var logo = Path.Combine(package, match.Groups["path"].Value.Trim().Replace('\\', Path.DirectorySeparatorChar));
+            var dir = Path.GetDirectoryName(logo);
+            if (dir is null || !Directory.Exists(dir)) continue;
+            var best = Directory.EnumerateFiles(dir, Path.GetFileNameWithoutExtension(logo) + "*" + Path.GetExtension(logo))
+                .OrderByDescending(f => f.Contains("_altform-lightunplated", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(f => f.Contains("_altform-unplated", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(f => new FileInfo(f).Length)
+                .FirstOrDefault();
+            if (best is not null) return best;
+        }
+        return null;
+    }
+
     internal static Icon? FromExecutable(string path)
     {
+        if (Directory.Exists(path))
+            return PackageLogo(path) is { } logo ? new Icon(File.ReadAllBytes(logo), "image/png") : null;
         if (!File.Exists(path)) return null;
         if (Path.GetExtension(path).Equals(".ico", StringComparison.OrdinalIgnoreCase))
             return new Icon(File.ReadAllBytes(path), "image/x-icon");

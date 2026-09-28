@@ -130,7 +130,7 @@ public static class InstalledAppCatalog
         return exe < 0 ? null : text[..(exe + 4)].Trim().Trim('"');
     }
 
-    private static string? FindLikelyExecutable(string? folder, string displayName)
+    internal static string? FindLikelyExecutable(string? folder, string displayName)
     {
         if (string.IsNullOrWhiteSpace(folder) || !IsLocalFixedPath(folder) || !Directory.Exists(folder)) return null;
         try

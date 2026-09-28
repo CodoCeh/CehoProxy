@@ -185,6 +185,24 @@ public static class AppDetector
     private static bool IsHexHash(string s) =>
         s.Length >= 8 && s.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
 
+    internal static string? CurrentPackage(string folder)
+    {
+        if (MsixVersioned.Match(folder) is not { Success: true } m) return null;
+        var prefix = m.Groups["prefix"].Value;
+        var suffix = m.Groups["suffix"].Value;
+        var parent = Path.GetDirectoryName(prefix);
+        if (parent is null || !Directory.Exists(parent)) return null;
+        try
+        {
+            return Directory.EnumerateDirectories(parent, Path.GetFileName(prefix) + "_*" + suffix)
+                .Where(d => MsixVersioned.Match(d) is { Success: true } other
+                            && other.Groups["prefix"].Value.Equals(prefix, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(d => Directory.GetLastWriteTimeUtc(d))
+                .FirstOrDefault();
+        }
+        catch { return null; }
+    }
+
     public static string ToRegex(AppEntry app) => ToRegexes(app)[0];
 
     public static IReadOnlyList<string> ToRegexes(AppEntry app)

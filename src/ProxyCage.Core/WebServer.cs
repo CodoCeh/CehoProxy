@@ -1133,7 +1133,12 @@ public sealed class WebServer
     {
         var how = Os.IsLinux ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         if (cfg.Apps.Any(a => a.Folder.Equals(path, how))) return true;
-        try { return InstalledAppCatalog.Detect(cfg.Language).Any(e => e.Path.Equals(path, how)); }
+        try
+        {
+            var catalog = InstalledAppCatalog.Detect(cfg.Language);
+            return catalog.Any(e => e.Path.Equals(path, how))
+                   || cfg.Apps.Any(a => AppIcons.Source(a, catalog).Equals(path, how));
+        }
         catch { return false; }
     }
 
@@ -1580,6 +1585,9 @@ public sealed class WebServer
         }
 
         var live = st.Running ? AppsLive() : null;
+        IReadOnlyList<InstalledAppCatalog.Entry> catalog;
+        try { catalog = InstalledAppCatalog.Detect(cfg.Language); }
+        catch { catalog = Array.Empty<InstalledAppCatalog.Entry>(); }
         sb.Append("<ul class=live-apps>");
         foreach (var app in apps)
         {
@@ -1591,8 +1599,9 @@ public sealed class WebServer
                 : info.Direct > 0 ? ("bad", S("app_leak", [info.Direct]))
                 : info.Tunneled > 0 ? ("on", S("app_tunnel", [info.Tunneled]))
                 : ("on", S("app_quiet", []));
-            sb.Append("<li class=").Append(cls).Append("><span class=dot></span><b>").Append(E(app.Label))
-              .Append("</b><span class=detail>").Append(E(text)).Append("</span></li>");
+            sb.Append("<li class=").Append(cls).Append("><span class=dot></span>");
+            AppIcon(sb, AppIcons.Source(app, catalog), app.Label);
+            sb.Append("<b>").Append(E(app.Label)).Append("</b><span class=detail>").Append(E(text)).Append("</span></li>");
         }
         sb.Append("</ul></section>");
     }
@@ -1937,6 +1946,10 @@ public sealed class WebServer
               .Append("<button>").Append(E(S("btn_bounce_network", []))).Append("</button></form></div>");
         }
 
+        IReadOnlyList<InstalledAppCatalog.Entry> installed;
+        try { installed = InstalledAppCatalog.Detect(cfg.Language); }
+        catch { installed = Array.Empty<InstalledAppCatalog.Entry>(); }
+
         if (cfg.Apps.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("apps_empty", []))).Append("</p>");
         else
@@ -1946,7 +1959,7 @@ public sealed class WebServer
             foreach (var a in cfg.Apps)
             {
                 sb.Append("<tr><td class=named>");
-                AppIcon(sb, a.Folder, a.Label);
+                AppIcon(sb, AppIcons.Source(a, installed), a.Label);
                 sb.Append("<span title=\"").Append(E(a.Folder)).Append("\">")
                   .Append(E(a.Label)).Append("</span>");
                 if (a.VersionAgnostic) sb.Append("<br><span class=tag>Microsoft Store</span>");
@@ -1973,10 +1986,6 @@ public sealed class WebServer
             }
             sb.Append("</table></div>");
         }
-
-        IReadOnlyList<InstalledAppCatalog.Entry> installed;
-        try { installed = InstalledAppCatalog.Detect(cfg.Language); }
-        catch { installed = Array.Empty<InstalledAppCatalog.Entry>(); }
 
         sb.Append("<div class=app-entry-grid><div class=app-entry><h3>")
           .Append(E(S("apps_installed_title", []))).Append("</h3>")
