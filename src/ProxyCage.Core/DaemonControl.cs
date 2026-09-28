@@ -35,8 +35,11 @@ public static class DaemonControl
             if (!int.TryParse(File.ReadAllText(path).Trim(), out var pid)) return null;
 
             using var p = Process.GetProcessById(pid);
+            var name = p.ProcessName;
+            if (name.Length == 0 && !OperatingSystem.IsWindows())
+                name = Path.GetFileName(Os.Run("ps", $"-o comm= -p {pid}").Output.Trim());
 
-            return OurProcessNames.Any(n => p.ProcessName.Equals(n, StringComparison.OrdinalIgnoreCase))
+            return OurProcessNames.Any(n => name.Equals(n, StringComparison.OrdinalIgnoreCase))
                 ? pid : null;
         }
         catch
