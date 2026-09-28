@@ -135,6 +135,34 @@ jobs:
           path: out/
           retention-days: 7
 
+  tray-linux:
+    name: значок Linux
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Сборка значка
+        run: |
+          mkdir -p out
+          for rid in linux-x64 linux-arm64; do
+            dotnet publish src/ProxyCage.Tray.Linux/ProxyCage.Tray.Linux.csproj -c Release -r "$rid" \
+              --self-contained true -p:PublishSingleFile=true \
+              -p:EnableCompressionInSingleFile=true -o "publish/tray-$rid"
+            cp "publish/tray-$rid/cehoproxy-tray" "out/cehoproxy-tray-$rid"
+          done
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-tray-linux
+          path: out/
+          retention-days: 7
+
   tray-mac:
     name: значок macOS ${{ matrix.arch }}
     needs: version
@@ -156,11 +184,15 @@ jobs:
           scripts/build-tray-mac.sh "$ARCH" "out/$ARCH"
           file "out/$ARCH/CehoProxy Tray.app/Contents/MacOS/CehoProxyTray"
           tar -C "out/$ARCH" -cf "tray-$ARCH.tar" "CehoProxy Tray.app"
+          CPU=$([ "$ARCH" = arm64 ] && echo arm64 || echo x64)
+          ditto -c -k --keepParent "out/$ARCH/CehoProxy Tray.app" "cehoproxy-tray-osx-$CPU.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: tray-mac-${{ matrix.arch }}
-          path: tray-${{ matrix.arch }}.tar
+          path: |
+            tray-${{ matrix.arch }}.tar
+            cehoproxy-tray-osx-*.zip
           retention-days: 7
 
   bundles:
@@ -169,6 +201,7 @@ jobs:
       - version
       - binaries
       - tray-windows
+      - tray-linux
       - tray-mac
     runs-on: ubuntu-latest
     env:
@@ -215,6 +248,7 @@ jobs:
           mkdir -p release-assets
           cp publish/cehoproxy-* release-assets/
           mv release-assets/cehoproxy-tray.exe release-assets/cehoproxy-tray-win-x64.exe
+          cp tray/cehoproxy-tray-osx-*.zip release-assets/
           cp publish/bundles/*.zip release-assets/
           cp "publish-intel/bundles/CehoProxy-$VERSION-macos-intel.zip" release-assets/
           cp "scripts/Установить CehoProxy.cmd" release-assets/CehoProxy.cmd

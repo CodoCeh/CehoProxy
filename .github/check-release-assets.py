@@ -12,6 +12,10 @@ BARE = [
     "cehoproxy-linux-x64",
     "cehoproxy-linux-arm64",
     "cehoproxy-tray-win-x64.exe",
+    "cehoproxy-tray-linux-x64",
+    "cehoproxy-tray-linux-arm64",
+    "cehoproxy-tray-osx-arm64.zip",
+    "cehoproxy-tray-osx-x64.zip",
 ]
 ZIPS = [f"CehoProxy-{VERSION}-{s}.zip"
         for s in ("windows", "macos-apple", "macos-intel", "linux-x64", "linux-arm64")]
@@ -39,6 +43,10 @@ SOURCES = [
      "Installer.cs больше не качает libcronet.dll"),
     ("scripts/install.ps1", r'releases/latest/download/cehoproxy-tray-win-x64\.exe',
      "install.ps1 качает значок Windows под другим именем"),
+    ("src/ProxyCage.Core/TrayInstaller.cs", r'cehoproxy-tray-linux-\{cpu\}',
+     "TrayInstaller.cs качает значок Linux под другим именем"),
+    ("src/ProxyCage.Core/TrayInstaller.cs", r'cehoproxy-tray-osx-\{cpu\}\.zip',
+     "TrayInstaller.cs качает значок macOS под другим именем"),
     ("src/ProxyCage.Core/Installer.cs", r'TrayWindowsFileName = "cehoproxy-tray\.exe"',
      "Installer.cs ждёт другое имя значка Windows"),
     ("scripts/install.sh", r'install-tray-mac\.sh',
@@ -81,7 +89,7 @@ def sources():
 def packer():
     text = open(os.path.join(ROOT, "scripts", "make-release.py"), encoding="utf-8").read()
     packed = set(re.findall(r'"(cehoproxy-[a-z0-9-]+(?:\.exe)?)"', text))
-    missing = sorted((set(BARE) - {"cehoproxy-tray-win-x64.exe"}) - packed)
+    missing = sorted({name for name in BARE if not name.startswith("cehoproxy-tray-")} - packed)
     problems = [f"scripts/make-release.py больше не упаковывает: {', '.join(missing)}"] if missing else []
     for name in PACKED:
         if name not in text:
@@ -96,7 +104,8 @@ def files():
             problems.append(f"не собран ассет {name}")
             continue
         size = os.path.getsize(path)
-        limit = 10 * 1024 * 1024 if name in BARE + ZIPS else 512
+        limit = (50 * 1024 if name.startswith("cehoproxy-tray-osx-")
+                 else 10 * 1024 * 1024 if name in BARE + ZIPS else 512)
         if size < limit:
             problems.append(f"{name}: размер {size} Б меньше ожидаемого {limit} Б")
     return problems
@@ -124,8 +133,24 @@ def inside():
                         f"{name}: {entry} собран под {found or 'неизвестно что'}, а нужен {arch}")
     return problems
 
+def tray_zips():
+    problems = []
+    for name, arch in (("cehoproxy-tray-osx-arm64.zip", "arm64"), ("cehoproxy-tray-osx-x64.zip", "x86_64")):
+        path = os.path.join(DIR, name)
+        if not os.path.exists(path):
+            continue
+        entry = "CehoProxy Tray.app/Contents/MacOS/CehoProxyTray"
+        with zipfile.ZipFile(path) as z:
+            if entry not in z.namelist():
+                problems.append(f"{name}: в архиве нет {entry}")
+                continue
+            found = arch_of(z.read(entry)[:4096])
+            if arch not in found:
+                problems.append(f"{name}: значок собран под {found or 'неизвестно что'}, а нужен {arch}")
+    return problems
+
 def main():
-    problems = sources() + packer() + files() + inside()
+    problems = sources() + packer() + files() + inside() + tray_zips()
     if problems:
         fail(problems)
     print(f"Ассеты версии {VERSION}:")
