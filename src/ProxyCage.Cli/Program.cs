@@ -2375,6 +2375,14 @@ if (cmd is "daemon" or "web")
 
     web.OnApiCommand = async argv =>
     {
+        if (argv is [Cli.ReloadCommand])
+        {
+            var language = CehoConfig.Load(Ceho.ConfigPath).Language;
+            if (proc is null) return (true, "");
+            var error = await RestartTunnel(new DelegateReport(Log.Info));
+            return error is null ? (true, Strings.T(language, "rules_applied")) : (false, error);
+        }
+
         if (argv.Length == 0 || !Cli.CanRunRemotely(argv[0]))
             return (false, Strings.T(cfg.Language, "remote_not_allowed", argv.Length > 0 ? argv[0] : ""));
 

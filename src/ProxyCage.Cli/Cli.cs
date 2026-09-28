@@ -807,11 +807,16 @@ public static class Cli
             File.WriteAllText(Ceho.RestartRequestPath, "");
             return;
         }
+        if (Auth.ReadPanelPointer(Ceho.Root) is not null
+            && await RunRemoteAsync(Ceho.Root, [ReloadCommand], cfg.Language) == 0)
+            return;
         if (!Os.IsElevated()) { Console.WriteLine(S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo ")); return; }
 
         Autostart.Restart();
         Console.WriteLine(S(cfg, "rules_applied"));
     }
+
+    public const string ReloadCommand = "reload-rules";
 
     public static void Stuck(CehoConfig cfg, string message)
     {
