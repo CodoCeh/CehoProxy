@@ -280,7 +280,9 @@ public static class Cli
     public static bool CanRunRemotely(string command) => RemoteAllowed.Contains(command);
 
     public static TimeSpan RemoteTimeoutFor(string command) =>
-        command is "update" or "engine" or "движок" ? TimeSpan.FromMinutes(20) : TimeSpan.FromSeconds(60);
+        command is "update" or "engine" or "движок" ? TimeSpan.FromMinutes(20)
+        : command == ReloadCommand || ChangesSettings(command) ? TimeSpan.FromMinutes(5)
+        : TimeSpan.FromSeconds(60);
 
     public static async Task<int?> EnsureRightsAsync(string[] args, CehoConfig cfg)
     {
@@ -807,9 +809,11 @@ public static class Cli
             File.WriteAllText(Ceho.RestartRequestPath, "");
             return;
         }
-        if (Auth.ReadPanelPointer(Ceho.Root) is not null
-            && await RunRemoteAsync(Ceho.Root, [ReloadCommand], cfg.Language) == 0)
+        if (Auth.ReadPanelPointer(Ceho.Root) is not null)
+        {
+            await RunRemoteAsync(Ceho.Root, [ReloadCommand], cfg.Language);
             return;
+        }
         if (!Os.IsElevated()) { Console.WriteLine(S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo ")); return; }
 
         Autostart.Restart();
