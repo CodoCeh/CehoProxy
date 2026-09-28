@@ -370,11 +370,20 @@ public static class DaemonControl
         WriteWindowsUpdateRelaunchScript(script, WindowsUpdateRelaunchScript(
             Environment.ProcessId, exe, downloaded, root, Autostart.IsEnabled(), expectedVersion, jobId,
             UpdateHandoff.PathFor(root)));
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SSH_CONNECTION"))
+            && RunOutsideSession($"powershell -NoProfile -ExecutionPolicy Bypass -File \\\"{script}\\\""))
+            return;
         using var helper = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
         {
             UseShellExecute = false, CreateNoWindow = !inheritConsole, WorkingDirectory = root,
         }) ?? throw new InvalidOperationException("Не удалось запустить помощник обновления Windows.");
     }
+
+    public const string UpdateHelperTask = "CehoProxyUpdate";
+
+    private static bool RunOutsideSession(string command) =>
+        Os.Run("schtasks", $"/Create /TN {UpdateHelperTask} /TR \"{command}\" /SC ONCE /ST 23:59 /RU SYSTEM /F").Code == 0
+        && Os.Run("schtasks", $"/Run /TN {UpdateHelperTask}").Code == 0;
 
     public static bool RestartAfterUpdate(string exe, string root, bool autostart, int timeoutMs = 30000)
     {

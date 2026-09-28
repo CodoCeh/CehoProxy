@@ -450,6 +450,7 @@ public static class Installer
         {
             LeakGuard.Remove(root);
             AppPathPicker.CleanupForUninstall();
+            Os.Run("schtasks", $"/Delete /TN {DaemonControl.UpdateHelperTask} /F");
             try
             {
                 foreach (var leftover in Directory.GetFiles(root, "unins*.*"))
