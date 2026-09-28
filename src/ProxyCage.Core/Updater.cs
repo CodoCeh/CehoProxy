@@ -170,8 +170,11 @@ public static class Updater
         return first?.Trim();
     }
 
+    private const int VersionAttempts = 4;
+
     public static Applied ApplyDownloaded(
-        string downloaded, string targetPath, string expectedVersion, Action<string>? log = null)
+        string downloaded, string targetPath, string expectedVersion, Action<string>? log = null,
+        TimeSpan? retryDelay = null)
     {
         var backup = targetPath + ".old";
         ReplaceDownloadedFile(downloaded, targetPath, backup);
@@ -182,8 +185,15 @@ public static class Updater
                 UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                 UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
 
-        var installed = ReadVersion(targetPath);
-        if (installed == expectedVersion) return new Applied(true, expectedVersion, installed);
+        string? installed = null;
+        for (var attempt = 1; attempt <= VersionAttempts; attempt++)
+        {
+            var (code, output) = Os.Run(targetPath, "version", 30000);
+            installed = code == 0 ? output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() : null;
+            if (installed == expectedVersion) return new Applied(true, expectedVersion, installed);
+            log?.Invoke($"новая версия не ответила ({attempt}/{VersionAttempts}): код {code}, {output.Trim().Split('\n')[0]}");
+            if (attempt < VersionAttempts) Thread.Sleep(retryDelay ?? TimeSpan.FromSeconds(3));
+        }
 
         log?.Invoke($"подмена не подтвердилась, возвращаю прежний файл: {backup}");
         try
