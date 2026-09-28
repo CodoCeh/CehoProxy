@@ -109,11 +109,67 @@ jobs:
           path: out/
           retention-days: 7
 
+  tray-windows:
+    name: значок Windows
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Сборка значка
+        run: |
+          dotnet publish src/ProxyCage.Tray.Windows/ProxyCage.Tray.Windows.csproj -c Release -r win-x64 \
+            --self-contained true -p:PublishSingleFile=true \
+            -p:EnableCompressionInSingleFile=true -o publish/tray-win-x64
+          mkdir -p out
+          cp publish/tray-win-x64/cehoproxy-tray.exe out/cehoproxy-tray.exe
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-tray-win
+          path: out/
+          retention-days: 7
+
+  tray-mac:
+    name: значок macOS ${{ matrix.arch }}
+    needs: version
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - arm64
+          - x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сборка значка
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p "out/$ARCH"
+          scripts/build-tray-mac.sh "$ARCH" "out/$ARCH"
+          file "out/$ARCH/CehoProxy Tray.app/Contents/MacOS/CehoProxyTray"
+          tar -C "out/$ARCH" -cf "tray-$ARCH.tar" "CehoProxy Tray.app"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tray-mac-${{ matrix.arch }}
+          path: tray-${{ matrix.arch }}.tar
+          retention-days: 7
+
   bundles:
     name: Комплекты и проверка имён
     needs:
       - version
       - binaries
+      - tray-windows
+      - tray-mac
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -127,6 +183,20 @@ jobs:
           path: publish
           merge-multiple: true
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tray-mac-*
+          path: tray
+          merge-multiple: true
+
+      - name: Значок macOS по архитектурам
+        run: |
+          mkdir -p publish-intel
+          tar -xf tray/tray-arm64.tar -C publish
+          tar -xf tray/tray-x86_64.tar -C publish-intel
+          cp publish/cehoproxy-* publish-intel/
+          ls -l publish publish-intel
+
       - name: Библиотека NaiveProxy из прошлого релиза
         run: |
           if gh release download --repo "$RELEASE_REPO" --pattern libcronet.dll --dir publish; then
@@ -136,13 +206,17 @@ jobs:
           fi
 
       - name: Архивы через scripts/make-release.py
-        run: python3 scripts/make-release.py "$VERSION" publish publish/bundles
+        run: |
+          python3 scripts/make-release.py "$VERSION" publish publish/bundles
+          python3 scripts/make-release.py "$VERSION" publish-intel publish-intel/bundles
 
       - name: Сбор ассетов
         run: |
           mkdir -p release-assets
           cp publish/cehoproxy-* release-assets/
+          mv release-assets/cehoproxy-tray.exe release-assets/cehoproxy-tray-win-x64.exe
           cp publish/bundles/*.zip release-assets/
+          cp "publish-intel/bundles/CehoProxy-$VERSION-macos-intel.zip" release-assets/
           cp "scripts/Установить CehoProxy.cmd" release-assets/CehoProxy.cmd
           if [ -f publish/libcronet.dll ]; then cp publish/libcronet.dll release-assets/; fi
           ls -l release-assets
