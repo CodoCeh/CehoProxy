@@ -1609,6 +1609,42 @@ public static class Strings
             "address, login and password."),
         ["wiz_no_link"] = new(
             "Ссылки ещё нет? Читайте:", "No link yet? Read:"),
+        ["engine_line"] = new("Движок sing-box {0}", "sing-box engine {0}"),
+        ["engine_line_old"] = new(
+            "Движок sing-box {0}, проверенная версия {1}", "sing-box engine {0}, tested version {1}"),
+        ["engine_line_unknown"] = new("Версию движка узнать не удалось", "Could not read the engine version"),
+        ["engine_update_btn"] = new("Обновить движок", "Update the engine"),
+        ["job_engine_update"] = new("Обновляю движок sing-box", "Updating the sing-box engine"),
+        ["engine_current"] = new(
+            "Движок {0} уже проверенной версии, обновлять нечего.",
+            "Engine {0} is already the tested version, nothing to update."),
+        ["engine_stage_check"] = new(
+            "Проверяю новый движок на текущих настройках", "Checking the new engine against the current settings"),
+        ["engine_stage_swap"] = new("Меняю движок", "Replacing the engine"),
+        ["engine_updated"] = new("Движок обновлён до {0}.", "The engine is updated to {0}."),
+        ["engine_check_failed"] = new(
+            "Новый движок {0} не принял текущие настройки, обновление отменено, работает прежний: {1}",
+            "The new engine {0} rejected the current settings; the update is cancelled and the old one keeps running: {1}"),
+        ["engine_wrong_version"] = new(
+            "Скачанный движок назвал версию {0} вместо {1}, обновление отменено.",
+            "The downloaded engine reported version {0} instead of {1}; the update is cancelled."),
+        ["engine_rolled_back"] = new(
+            "Новый движок не запустился, вернул прежний: {0}",
+            "The new engine did not start, the old one is back: {0}"),
+        ["engine_auto_on"] = new("Движок обновляется сам до проверенной версии", "The engine updates itself to the tested version"),
+        ["engine_auto_off"] = new("Движок обновляется только вручную", "The engine updates by hand only"),
+        ["engine_auto_add"] = new("Обновлять движок само", "Update the engine by itself"),
+        ["engine_auto_del"] = new("Обновлять движок вручную", "Update the engine by hand"),
+        ["engine_auto_state_on"] = new(
+            "Когда вместе с CehoProxy приходит новая проверенная версия движка, служба поставит её сама. " +
+            "Перед заменой новый движок проверяется на ваших настройках; защита на время замены выключается на несколько секунд.",
+            "When CehoProxy brings a new tested engine version, the service installs it by itself. " +
+            "The new engine is checked against your settings first; protection is off for a few seconds during the swap."),
+        ["engine_auto_state_off"] = new(
+            "Движок не обновляется сам: новую версию ставите вы кнопкой «Обновить движок».",
+            "The engine does not update itself: you install a new version with «Update the engine»."),
+        ["engine_auto_starting"] = new("обновляю движок до {0} сам", "updating the engine to {0} by itself"),
+        ["engine_auto_failed"] = new("обновить движок самому не удалось: {0}", "could not update the engine by itself: {0}"),
         ["upd_auto_on"] = new("Обновляется само", "Updates by itself"),
         ["upd_auto_off"] = new("Обновление только вручную", "Updates by hand only"),
         ["upd_auto_add"] = new("Обновлять само", "Update by itself"),

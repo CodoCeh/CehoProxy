@@ -49,6 +49,8 @@ public sealed class WebServer
 
     public Func<bool, IStageReport, Task<string>>? OnUpdate { get; set; }
 
+    public Func<IStageReport, Task<string>>? OnEngineUpdate { get; set; }
+
     public Func<IStageReport, Task<string>>? OnCheckSubs { get; set; }
     public Func<Task<string>>? OnUninstall { get; set; }
 
@@ -947,6 +949,24 @@ public sealed class WebServer
                     return (null, false, job.Id);
                 }
 
+                case "/engine/update":
+                {
+                    if (OnEngineUpdate is null) return ("no control", true, null);
+                    var job = Jobs.Start(JobEngine, S("job_engine_update"), async p =>
+                    {
+                        try { return await OnEngineUpdate(p); }
+                        finally { ForgetEngineVersion(); }
+                    });
+                    return (null, false, job.Id);
+                }
+
+                case "/engine/autoupdate":
+                {
+                    cfg.EngineAutoUpdate = f.ContainsKey("enable");
+                    Save(cfg);
+                    return (S(cfg.EngineAutoUpdate ? "engine_auto_state_on" : "engine_auto_state_off"), false, null);
+                }
+
                 case "/tray-controls":
                 {
                     cfg.TrayControls = f.ContainsKey("enable");
@@ -1466,6 +1486,7 @@ public sealed class WebServer
 
         var auto = Autostart.IsEnabled();
         sb.Append("<section><h2>").Append(E(S("service_title", []))).Append("</h2><div class=lines>");
+        var engineHere = Os.ResolveSingBox(Root) is not null;
         sb.Append("<div class=line><span>").Append(E(S("upd_current", new object[] { Updater.CurrentVersion }))).Append("</span>")
           .Append("<form method=post action=/update><input type=hidden name=tab value=state>")
           .Append("<button class=ghost>").Append(E(S("upd_check", []))).Append("</button></form>")
@@ -1484,6 +1505,25 @@ public sealed class WebServer
                   cfg.AutoUpdatedVersion, since.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
               })))
               .Append("</span></div>");
+        if (engineHere)
+        {
+            var engineVersion = EngineVersion();
+            sb.Append("<div class=line><span>")
+              .Append(E(engineVersion is null ? S("engine_line_unknown", [])
+                  : Installer.EngineOutdated(engineVersion) ? S("engine_line_old", [engineVersion, Installer.EngineVersion])
+                  : S("engine_line", [engineVersion])))
+              .Append("</span>");
+            if (Installer.EngineOutdated(engineVersion))
+                sb.Append("<form method=post action=/engine/update><input type=hidden name=tab value=state>")
+                  .Append("<button class=ghost>").Append(E(S("engine_update_btn", []))).Append("</button></form>");
+            sb.Append("</div>");
+            sb.Append("<div class=\"line ").Append(cfg.EngineAutoUpdate ? "on" : "off").Append("\"><span><span class=dot></span> ")
+              .Append(E(cfg.EngineAutoUpdate ? S("engine_auto_on", []) : S("engine_auto_off", []))).Append("</span>")
+              .Append("<form method=post action=/engine/autoupdate><input type=hidden name=tab value=state>")
+              .Append(cfg.EngineAutoUpdate ? "" : "<input type=hidden name=enable value=1>")
+              .Append("<button class=ghost>").Append(E(cfg.EngineAutoUpdate ? S("engine_auto_del", []) : S("engine_auto_add", [])))
+              .Append("</button></form></div>");
+        }
         sb.Append("<div class=\"line ").Append(auto ? "on" : "off").Append("\"><span><span class=dot></span> ")
           .Append(E(auto ? S("autostart_on", []) : S("autostart_off", []))).Append("</span>")
           .Append("<form method=post action=/autostart><input type=hidden name=tab value=state>")
@@ -1560,6 +1600,20 @@ public sealed class WebServer
 
     private IReadOnlyList<AppLive>? _appsLive;
     private DateTime _appsLiveAtUtc;
+    private string? _engineVersion;
+    private DateTime _engineVersionAtUtc;
+
+    private string? EngineVersion()
+    {
+        if (_engineVersion is null || DateTime.UtcNow - _engineVersionAtUtc > TimeSpan.FromMinutes(10))
+        {
+            _engineVersion = Os.ResolveSingBox(Root) is { } engine ? Installer.EngineVersionOf(engine) : null;
+            _engineVersionAtUtc = DateTime.UtcNow;
+        }
+        return _engineVersion;
+    }
+
+    private void ForgetEngineVersion() => _engineVersion = null;
 
     private IReadOnlyList<AppLive>? AppsLive()
     {

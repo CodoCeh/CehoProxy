@@ -625,6 +625,87 @@ public static class Installer
 
     public static async Task<string> DownloadEngineAsync(string root, Action<string> log, string lang = "ru")
     {
+        var archive = await FetchEngineArchiveAsync(root, log, lang);
+        var engine = Path.Combine(root, Os.EngineFileName);
+        Extract(archive, root, engine);
+        try { File.Delete(archive); } catch { }
+
+        if (!File.Exists(engine))
+            throw new InvalidOperationException("движок скачался, но распаковать его не удалось");
+
+        if (MissingCronetDll(root))
+            throw new InvalidOperationException(Strings.T(lang, "engine_cronet_still_missing", root));
+
+        Os.AdoptOwnEngine(root);
+
+        if (!Os.IsWindows) Os.Run("chmod", $"755 {engine}", 5000);
+        log(Strings.T(lang, "inst_engine_at", engine));
+        return engine;
+    }
+
+    public static string? EngineVersionOf(string engine)
+    {
+        var (code, output) = Os.Run(engine, "version", 10000);
+        if (code != 0) return null;
+        var found = System.Text.RegularExpressions.Regex.Match(output, @"\d+\.\d+\.\d+");
+        return found.Success ? found.Value : null;
+    }
+
+    public static bool EngineOutdated(string? installed) =>
+        installed is not null && Version.Parse(installed) < Version.Parse(EngineVersion);
+
+    public static string EngineStagingDir(string root) => Path.Combine(root, "engine-new");
+
+    public static async Task<string> StageEngineAsync(string root, Action<string> log, string lang = "ru")
+    {
+        var archive = await FetchEngineArchiveAsync(root, log, lang);
+        var staging = EngineStagingDir(root);
+        try { if (Directory.Exists(staging)) Directory.Delete(staging, true); } catch { }
+        Directory.CreateDirectory(staging);
+        try
+        {
+            var dir = Unpack(archive, staging)
+                      ?? throw new InvalidOperationException("движок скачался, но распаковать его не удалось");
+            var fresh = Path.Combine(dir, Os.SingBoxFileName);
+            if (!Os.IsWindows) Os.Run("chmod", $"755 \"{fresh}\"", 5000);
+            return fresh;
+        }
+        finally
+        {
+            try { File.Delete(archive); } catch { }
+        }
+    }
+
+    public static void SwapEngine(string root, string fresh)
+    {
+        var dir = Path.GetDirectoryName(fresh)!;
+        foreach (var dll in Directory.EnumerateFiles(dir, "libcronet.*", SearchOption.TopDirectoryOnly))
+        {
+            var dest = Path.Combine(root, Path.GetFileName(dll));
+            if (File.Exists(dest)) File.Copy(dest, dest + ".old", overwrite: true);
+            File.Copy(dll, dest, overwrite: true);
+        }
+
+        var engine = Path.Combine(root, Os.EngineFileName);
+        if (File.Exists(engine)) File.Move(engine, engine + ".old", overwrite: true);
+        File.Move(fresh, engine);
+    }
+
+    public static void RestoreEngine(string root)
+    {
+        var engine = Path.Combine(root, Os.EngineFileName);
+        if (File.Exists(engine + ".old")) File.Move(engine + ".old", engine, overwrite: true);
+        foreach (var old in Directory.EnumerateFiles(root, "libcronet.*.old", SearchOption.TopDirectoryOnly))
+            File.Copy(old, old[..^4], overwrite: true);
+    }
+
+    public static void DropEngineStaging(string root)
+    {
+        try { if (Directory.Exists(EngineStagingDir(root))) Directory.Delete(EngineStagingDir(root), true); } catch { }
+    }
+
+    private static async Task<string> FetchEngineArchiveAsync(string root, Action<string> log, string lang)
+    {
         var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
             == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "amd64";
         var os = Os.Kind switch { OsKind.Windows => "windows", OsKind.Mac => "darwin", _ => "linux" };
@@ -651,22 +732,19 @@ public static class Installer
         await using (var stream = await http.GetStreamAsync(url))
         await using (var file = File.Create(archive))
             await stream.CopyToAsync(file);
+        return archive;
+    }
 
-        var engine = Path.Combine(root, Os.EngineFileName);
-        Extract(archive, root, engine);
-        try { File.Delete(archive); } catch { }
+    private static string? Unpack(string archive, string into)
+    {
+        if (archive.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            System.IO.Compression.ZipFile.ExtractToDirectory(archive, into, overwriteFiles: true);
+        else
+            Os.Run("tar", $"-xzf \"{archive}\" -C \"{into}\"", 120000);
 
-        if (!File.Exists(engine))
-            throw new InvalidOperationException("движок скачался, но распаковать его не удалось");
-
-        if (MissingCronetDll(root))
-            throw new InvalidOperationException(Strings.T(lang, "engine_cronet_still_missing", root));
-
-        Os.AdoptOwnEngine(root);
-
-        if (!Os.IsWindows) Os.Run("chmod", $"755 {engine}", 5000);
-        log(Strings.T(lang, "inst_engine_at", engine));
-        return engine;
+        return Directory.EnumerateFiles(into, Os.SingBoxFileName, SearchOption.AllDirectories)
+            .Select(Path.GetDirectoryName)
+            .FirstOrDefault(d => d is not null);
     }
 
     private static void Extract(string archive, string root, string engine)
@@ -675,14 +753,7 @@ public static class Installer
         try { if (Directory.Exists(temp)) Directory.Delete(temp, true); } catch { }
         Directory.CreateDirectory(temp);
 
-        if (archive.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            System.IO.Compression.ZipFile.ExtractToDirectory(archive, temp, overwriteFiles: true);
-        else
-            Os.Run("tar", $"-xzf \"{archive}\" -C \"{temp}\"", 120000);
-
-        var engineDir = Directory.EnumerateFiles(temp, Os.SingBoxFileName, SearchOption.AllDirectories)
-            .Select(Path.GetDirectoryName)
-            .FirstOrDefault(d => d is not null);
+        var engineDir = Unpack(archive, temp);
         var found = engineDir is null
             ? null
             : Path.Combine(engineDir, Os.SingBoxFileName);

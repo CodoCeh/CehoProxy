@@ -2071,6 +2071,55 @@ if (cmd is "daemon" or "web")
         return Strings.T(c.Language, "sub_checked_nodes", nodes.Count);
     };
 
+    async Task<string> UpdateEngineAsync(IStageReport report)
+    {
+        var c = CehoConfig.Load(Ceho.ConfigPath);
+        string S(string key, params object[] a) => Strings.T(c.Language, key, a);
+
+        var current = Os.ResolveSingBox(Ceho.Root);
+        var installed = current is null ? null : Installer.EngineVersionOf(current);
+        if (!Installer.EngineOutdated(installed)) return S("engine_current", installed ?? "?");
+
+        try
+        {
+            report.Stage(S("job_engine_update"), 10);
+            var fresh = await Installer.StageEngineAsync(Ceho.Root, m => report.Note(m), c.Language);
+
+            report.Stage(S("engine_stage_check"), 60);
+            var staged = Installer.EngineVersionOf(fresh);
+            if (staged != Installer.EngineVersion)
+                throw new InvalidOperationException(S("engine_wrong_version", staged ?? "?", Installer.EngineVersion));
+            if (File.Exists(Ceho.RuntimeConfigPath))
+            {
+                var (code, output) = Os.Run(fresh, $"check -c \"{Ceho.RuntimeConfigPath}\" -D \"{Ceho.Root}\"", 30000);
+                if (code != 0)
+                    throw new InvalidOperationException(S("engine_check_failed", staged,
+                        output.Trim().Split('\n')[0]));
+            }
+
+            report.Stage(S("engine_stage_swap"), 75);
+            using (EngineMutex.Acquire(Ceho.Root))
+            {
+                var wasRunning = proc is not null;
+                if (wasRunning) StopTunnelLocked();
+                Installer.SwapEngine(Ceho.Root, fresh);
+                if (wasRunning && await StartTunnelLocked(report) is { } error)
+                {
+                    Installer.RestoreEngine(Ceho.Root);
+                    await StartTunnelLocked(report);
+                    throw new InvalidOperationException(S("engine_rolled_back", error));
+                }
+            }
+            return S("engine_updated", Installer.EngineVersion);
+        }
+        finally
+        {
+            Installer.DropEngineStaging(Ceho.Root);
+        }
+    }
+
+    web.OnEngineUpdate = UpdateEngineAsync;
+
     async Task<string> UpdateAsync(bool install, IStageReport report)
     {
         var c = CehoConfig.Load(Ceho.ConfigPath);
@@ -2474,6 +2523,19 @@ if (cmd is "daemon" or "web")
             first = false;
 
             var c = CehoConfig.Load(Ceho.ConfigPath);
+            if (c.EngineAutoUpdate && Os.ResolveSingBox(Ceho.Root) is { } engine
+                && Installer.EngineOutdated(Installer.EngineVersionOf(engine)))
+            {
+                try
+                {
+                    Log.Warn(Strings.T(c.Language, "engine_auto_starting", Installer.EngineVersion));
+                    Log.Warn(await UpdateEngineAsync(new DelegateReport(Log.Info)));
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(Strings.T(c.Language, "engine_auto_failed", ex.Message));
+                }
+            }
             if (!c.AutoUpdate) continue;
 
             try

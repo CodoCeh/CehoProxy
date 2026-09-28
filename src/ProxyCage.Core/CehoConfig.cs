@@ -150,6 +150,8 @@ public sealed class CehoConfig
 
     public bool TrayControls { get; set; }
 
+    public bool EngineAutoUpdate { get; set; } = true;
+
     public string? AutoUpdatedVersion { get; set; }
 
     public DateTime? AutoUpdatedAtUtc { get; set; }
