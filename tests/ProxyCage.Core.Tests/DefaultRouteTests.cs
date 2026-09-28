@@ -1,5 +1,9 @@
 namespace ProxyCage.Core.Tests;
 
+[CollectionDefinition("ipv6 switch", DisableParallelization = true)]
+public class Ipv6SwitchCollection;
+
+[Collection("ipv6 switch")]
 public class DefaultRouteTests
 {
     [Fact]
