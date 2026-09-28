@@ -142,28 +142,28 @@ public static class Auth
         }
     }
 
-    private static readonly Dictionary<string, DateTime> Sessions = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, (DateTime Until, string? Hash)> Sessions = new(StringComparer.Ordinal);
     private static readonly object Gate = new();
     private static readonly TimeSpan SessionLife = TimeSpan.FromHours(12);
 
-    public static string IssueSession()
+    public static string IssueSession(CehoConfig cfg)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         lock (Gate)
         {
             Sweep();
-            Sessions[token] = DateTime.UtcNow + SessionLife;
+            Sessions[token] = (DateTime.UtcNow + SessionLife, cfg.PasswordHash);
         }
         return token;
     }
 
-    public static bool ValidSession(string? token)
+    public static bool ValidSession(CehoConfig cfg, string? token)
     {
         if (string.IsNullOrEmpty(token)) return false;
         lock (Gate)
         {
             Sweep();
-            return Sessions.ContainsKey(token);
+            return Sessions.TryGetValue(token, out var session) && session.Hash == cfg.PasswordHash;
         }
     }
 
@@ -175,7 +175,7 @@ public static class Auth
     private static void Sweep()
     {
         var now = DateTime.UtcNow;
-        foreach (var dead in Sessions.Where(s => s.Value < now).Select(s => s.Key).ToList())
+        foreach (var dead in Sessions.Where(s => s.Value.Until < now).Select(s => s.Key).ToList())
             Sessions.Remove(dead);
     }
 

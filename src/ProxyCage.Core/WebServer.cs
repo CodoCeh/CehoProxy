@@ -216,7 +216,7 @@ public sealed class WebServer
     {
         if (!Auth.HasPassword(cfg)) return true;
         var cookie = ctx.Request.Cookies[CookieName]?.Value;
-        return Auth.ValidSession(cookie);
+        return Auth.ValidSession(cfg, cookie);
     }
 
     private async Task HandleGateAsync(HttpListenerContext ctx, CehoConfig cfg, string path)
@@ -229,7 +229,7 @@ public sealed class WebServer
             var check = Auth.Check(cfg, form.GetValueOrDefault("password", ""));
             if (check.Ok)
             {
-                var token = Auth.IssueSession();
+                var token = Auth.IssueSession(cfg);
 
                 ctx.Response.Headers.Add("Set-Cookie",
                     $"{CookieName}={token}; Path=/; HttpOnly; SameSite=Strict");
