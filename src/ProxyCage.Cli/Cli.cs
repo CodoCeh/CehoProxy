@@ -802,6 +802,11 @@ public static class Cli
         catch (Exception ex) { Stuck(cfg, ex.Message); return; }
 
         if (!DaemonControl.IsRunning(Ceho.Root)) return;
+        if (Environment.GetEnvironmentVariable(Ceho.ViaDaemonVariable) == "1")
+        {
+            File.WriteAllText(Ceho.RestartRequestPath, "");
+            return;
+        }
         if (!Os.IsElevated()) { Console.WriteLine(S(cfg, "rules_restart_needed", Os.IsWindows ? "" : "sudo ")); return; }
 
         Autostart.Restart();

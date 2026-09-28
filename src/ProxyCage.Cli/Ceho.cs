@@ -20,6 +20,10 @@ public static class Ceho
         Environment.GetEnvironmentVariable("CEHOPROXY_HOME") ?? Os.DefaultRoot;
 
     public static string ConfigPath => Path.Combine(Root, "config.json");
+
+    public const string ViaDaemonVariable = "CEHOPROXY_VIA_DAEMON";
+
+    public static string RestartRequestPath => Path.Combine(Root, "restart.request");
     public static string RuntimeConfigPath => Path.Combine(Root, "singbox.json");
 
     public static async Task DisposeCountryDatabaseAsync()

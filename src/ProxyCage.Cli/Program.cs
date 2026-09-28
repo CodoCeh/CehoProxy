@@ -2400,7 +2400,8 @@ if (cmd is "daemon" or "web")
             }
         }
 
-        return await Task.Run(() =>
+        try { File.Delete(Ceho.RestartRequestPath); } catch { }
+        var (ok, output) = await Task.Run(() =>
         {
             var psi = new System.Diagnostics.ProcessStartInfo(Ceho.OwnExecutablePath)
             {
@@ -2408,6 +2409,7 @@ if (cmd is "daemon" or "web")
                 RedirectStandardError = true, CreateNoWindow = true,
             };
             foreach (var a in argv) psi.ArgumentList.Add(a);
+            psi.Environment[Ceho.ViaDaemonVariable] = "1";
 
             using var p = System.Diagnostics.Process.Start(psi);
             if (p is null) return (false, "cannot start");
@@ -2416,6 +2418,15 @@ if (cmd is "daemon" or "web")
             p.WaitForExit(60000);
             return (p.ExitCode == 0, (stdout + stderr).Trim());
         });
+
+        if (!File.Exists(Ceho.RestartRequestPath)) return (ok, output);
+        try { File.Delete(Ceho.RestartRequestPath); } catch { }
+        if (proc is null) return (ok, output);
+        var lang = CehoConfig.Load(Ceho.ConfigPath).Language;
+        var restartError = await RestartTunnel(new DelegateReport(Log.Info));
+        return restartError is null
+            ? (ok, output + "\n" + Strings.T(lang, "rules_applied"))
+            : (false, output + "\n" + restartError);
     };
 
     if (withTunnel && Os.IsElevated())
