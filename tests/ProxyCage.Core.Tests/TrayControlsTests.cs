@@ -53,6 +53,17 @@ public class TrayControlsTests : IDisposable
         Assert.False(CehoConfig.Load(ConfigPath).TrayControls);
     }
 
+    private async Task Toggle(bool on)
+    {
+        var form = new Dictionary<string, string> { ["tab"] = "state" };
+        if (on) form["enable"] = "1";
+        using var reply = await _http.PostAsync("/tray-controls", new FormUrlEncodedContent(form));
+        Assert.Equal(HttpStatusCode.SeeOther, reply.StatusCode);
+    }
+}
+
+public class TrayControlsStateTests
+{
     [Fact]
     public void The_icon_shows_buttons_only_when_the_service_allows_them()
     {
@@ -62,13 +73,5 @@ public class TrayControlsTests : IDisposable
         Assert.True(TrayState.ShowsControls(TrayState.Parse(allowed)));
         Assert.False(TrayState.ShowsControls(TrayState.Parse(silent)));
         Assert.False(TrayState.ShowsControls(null));
-    }
-
-    private async Task Toggle(bool on)
-    {
-        var form = new Dictionary<string, string> { ["tab"] = "state" };
-        if (on) form["enable"] = "1";
-        using var reply = await _http.PostAsync("/tray-controls", new FormUrlEncodedContent(form));
-        Assert.Equal(HttpStatusCode.SeeOther, reply.StatusCode);
     }
 }
