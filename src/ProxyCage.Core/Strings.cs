@@ -137,16 +137,6 @@ public static class Strings
             "Движок sing-box есть, но рядом с ним в {0} нет libcronet.dll — без неё naive не стартует.",
             "The sing-box engine is present, but libcronet.dll is missing next to it in {0}, so naive cannot start."),
         ["pf_curl_ok"] = new("Проверка выхода доступна", "Exit check available"),
-        ["pf_curl_missing"] = new("Не найден curl", "curl not found"),
-        ["pf_curl_detail"] = new(
-            "Через него проверяется реальный IP выхода и живость подписки.",
-            "It is used to check the real exit IP and whether the subscription works."),
-        ["pf_curl_fix_win"] = new(
-            "Он есть в Windows 10 сборки 1803 и новее. Изоляция будет работать, но реальный IP выхода показан не будет.",
-            "It ships with Windows 10 build 1803 and newer. Isolation will work, but the real exit IP will not be shown."),
-        ["pf_curl_fix_unix"] = new(
-            "Поставьте curl пакетным менеджером. Изоляция будет работать, но реальный IP выхода показан не будет и автопереключение нод работать не сможет.",
-            "Install curl with your package manager. Isolation will work, but the real exit IP will not be shown and automatic node switching will not work."),
         ["pf_tun_missing"] = new("В системе нет /dev/net/tun", "/dev/net/tun is missing"),
         ["pf_tun_detail"] = new(
             "Без этого устройства туннель не поднимется.",

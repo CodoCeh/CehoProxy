@@ -491,14 +491,24 @@ public static class Ceho
         catch (OperationCanceledException) { return ((string?)null, (string?)null); }
         try
         {
-            var curl = Os.ResolveCurl();
-            if (curl is null) return ((string?)null, (string?)null);
-
-            var (code, output) = Os.Run(curl,
-                $"-s --max-time 15 -x socks5h://127.0.0.1:{mixedPort} https://api.ipify.org", 20000);
-            if (code != 0 || CountryRefreshCancellation.IsCancellationRequested)
-                return ((string?)null, (string?)null);
-            var ipText = output.Trim();
+            string ipText;
+            if (Os.ResolveCurl() is { } curl)
+            {
+                var (code, output) = Os.Run(curl,
+                    $"-s --max-time 15 -x socks5h://127.0.0.1:{mixedPort} https://api.ipify.org", 20000);
+                if (code != 0) return ((string?)null, (string?)null);
+                ipText = output.Trim();
+            }
+            else
+            {
+                try
+                {
+                    using var http = MakeClient($"http://127.0.0.1:{mixedPort}", SubscriptionFetchPersona.Client, 15);
+                    ipText = (await http.GetStringAsync("https://api.ipify.org", CountryRefreshCancellation.Token)).Trim();
+                }
+                catch { return ((string?)null, (string?)null); }
+            }
+            if (CountryRefreshCancellation.IsCancellationRequested) return ((string?)null, (string?)null);
             if (!IPAddress.TryParse(ipText, out var address)) return ((string?)null, (string?)null);
 
             await CountryDatabaseGate.WaitAsync(CountryRefreshCancellation.Token);
@@ -717,10 +727,10 @@ public static class Ceho
         return lastDot > 0 ? ip[..(lastDot + 1)] : ip;
     }
 
-    public static Task<bool> CheckSubscriptionLiveAsync(int mixedPort, string checkUrl) => Task.Run(() =>
+    public static Task<bool> CheckSubscriptionLiveAsync(int mixedPort, string checkUrl) => Task.Run(async () =>
     {
         var curl = Os.ResolveCurl();
-        if (curl is null) return false;
+        if (curl is null) return await CheckSubscriptionLiveAsync(mixedPort, checkUrl, 15);
 
         var devNull = Os.IsWindows ? "NUL" : "/dev/null";
         var (exit, output) = Os.Run(curl,

@@ -18,11 +18,12 @@ public static class ProxyProbe
     public static MixedTestResult TestMixed(int mixedPort, string? expectedIp = null)
     {
         var curl = Os.ResolveCurl();
-        if (curl is null)
-            return new MixedTestResult(null, null, false, false, false);
-
-        var httpIp = CurlIp(curl, $"--proxy http://127.0.0.1:{mixedPort}");
-        var socksIp = CurlIp(curl, $"--proxy socks5h://127.0.0.1:{mixedPort}");
+        var httpIp = curl is null
+            ? ClientIp($"http://127.0.0.1:{mixedPort}")
+            : CurlIp(curl, $"--proxy http://127.0.0.1:{mixedPort}");
+        var socksIp = curl is null
+            ? ClientIp($"socks5://127.0.0.1:{mixedPort}")
+            : CurlIp(curl, $"--proxy socks5h://127.0.0.1:{mixedPort}");
 
         var httpOk = IpMatches(httpIp, expectedIp);
         var socksOk = IpMatches(socksIp, expectedIp);
@@ -67,6 +68,18 @@ public static class ProxyProbe
         if (code != 0) return null;
         var ip = output.Trim();
         return ip.Length is >= 7 and <= 45 ? ip : null;
+    }
+
+    private static string? ClientIp(string proxy)
+    {
+        try
+        {
+            using var handler = new HttpClientHandler { Proxy = new System.Net.WebProxy(proxy), UseProxy = true };
+            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+            var ip = http.GetStringAsync("https://api.ipify.org").GetAwaiter().GetResult().Trim();
+            return ip.Length is >= 7 and <= 45 ? ip : null;
+        }
+        catch { return null; }
     }
 
     private static bool IpMatches(string? actual, string? expected) =>

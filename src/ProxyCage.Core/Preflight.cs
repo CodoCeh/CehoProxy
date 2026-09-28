@@ -47,10 +47,6 @@ public static class Preflight
 
         if (Os.ResolveCurl() is not null)
             checks.Add(new Check(Level.Ok, S("pf_curl_ok"), null, null));
-        else
-            checks.Add(new Check(Level.Warning,
-                S("pf_curl_missing"), S("pf_curl_detail"),
-                S(Os.IsWindows ? "pf_curl_fix_win" : "pf_curl_fix_unix")));
 
         if (Os.IsLinux && !File.Exists("/dev/net/tun"))
             checks.Add(new Check(Level.Blocker, S("pf_tun_missing"), S("pf_tun_detail"), S("pf_tun_fix")));
