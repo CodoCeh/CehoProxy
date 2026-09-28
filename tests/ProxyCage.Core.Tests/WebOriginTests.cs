@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 
 namespace ProxyCage.Core.Tests;
 
@@ -17,14 +16,10 @@ public sealed class WebOriginTests
         Directory.CreateDirectory(root);
         var config = Path.Combine(root, "config.json");
         new CehoConfig().Save(config);
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
         var calls = 0;
         var server = new WebServer(config, () => new(false, null, null, null, false), _ => { });
         server.OnApiCommand = _ => { calls++; return Task.FromResult((true, "ok")); };
-        server.Start(port);
+        var port = TestPanel.Start(server);
         try
         {
             using var http = new HttpClient();

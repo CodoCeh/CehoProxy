@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 
 namespace ProxyCage.Core.Tests;
 
@@ -25,20 +24,15 @@ public class PasswordHeaderTests
         Auth.SetPassword(cfg, "секрет123");
         cfg.Save(configPath);
 
-        using var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-
         var web = new WebServer(configPath,
             () => new WebServer.ControlState(false, null, null, null, false), _ => { })
         {
             OnApiCommand = args => Task.FromResult((true, string.Join(" ", args))),
         };
+        var port = TestPanel.Start(web);
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
         try
         {
-            web.Start(port);
 
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api")
             {

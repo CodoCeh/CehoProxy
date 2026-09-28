@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 using System.Text.Json;
 
 namespace ProxyCage.Core.Tests;
@@ -31,17 +30,13 @@ public sealed class CountryRefreshPanelTests
             OnCountries = _ => Task.FromResult<IReadOnlyList<NodeProbe.CountryRow>>(
                 NodeCountryService.Group(new[] { fresh })),
         };
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
+        var port = TestPanel.Start(web);
         using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
         {
             BaseAddress = new Uri($"http://127.0.0.1:{port}"),
         };
         try
         {
-            web.Start(port);
             for (var i = 0; i < 30; i++)
             {
                 var page = await http.GetStringAsync("/?tab=exit");

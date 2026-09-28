@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 using ProxyCage.Core;
 
 namespace ProxyCage.Core.Tests;
@@ -16,12 +15,8 @@ public class AutoUpdateToggleTests : IDisposable
         Directory.CreateDirectory(_root);
         new CehoConfig { PanelMode = CehoConfig.PanelModeSimple }.Save(ConfigPath);
 
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
         _web = new WebServer(ConfigPath, () => new WebServer.ControlState(false, null, null, null, false), _ => { });
-        _web.Start(port);
+        var port = TestPanel.Start(_web);
         _http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
         {
             BaseAddress = new Uri($"http://127.0.0.1:{port}"),

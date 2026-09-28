@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using ProxyCage.Core;
 
@@ -30,12 +29,8 @@ public class PanelModeTests : IDisposable
             },
         }.Save(ConfigPath);
 
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
         _web = new WebServer(ConfigPath, () => new WebServer.ControlState(false, null, null, null, false), _ => { });
-        _web.Start(port);
+        var port = TestPanel.Start(_web);
         _http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
         {
             BaseAddress = new Uri($"http://127.0.0.1:{port}"),
@@ -123,15 +118,11 @@ public class ExitSaveTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         new CehoConfig { ExcludedCountries = { "RU" }, BlockedNodes = { "Vless|old|443" } }.Save(ConfigPath);
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
         _web = new WebServer(ConfigPath, () => new WebServer.ControlState(false, null, null, null, false), _ => { })
         {
             OnApply = _ => Task.FromResult("ok"),
         };
-        _web.Start(port);
+        var port = TestPanel.Start(_web);
         _http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
         {
             BaseAddress = new Uri($"http://127.0.0.1:{port}"),

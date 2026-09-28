@@ -31,7 +31,6 @@ public class PanelLayoutTests : IDisposable
         };
         cfg.Save(Path.Combine(_root, "config.json"));
 
-        var port = FreePort();
         _web = new WebServer(
             Path.Combine(_root, "config.json"),
             () => new WebServer.ControlState(false, null, null, null, false),
@@ -43,7 +42,7 @@ public class PanelLayoutTests : IDisposable
                 return Nodes();
             },
         };
-        _web.Start(port);
+        var port = TestPanel.Start(_web);
 
         _http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
         {
@@ -63,12 +62,6 @@ public class PanelLayoutTests : IDisposable
         SubscriptionParser.Parse(
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "sub-example.txt")));
 
-    private static int FreePort()
-    {
-        using var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        return ((IPEndPoint)probe.LocalEndpoint).Port;
-    }
 
     [Fact]
     public async Task Every_table_has_the_column_widths_written_for_it()

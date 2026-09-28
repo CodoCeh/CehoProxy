@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 using System.Text.Json;
 
 namespace ProxyCage.Core.Tests;
@@ -17,10 +16,6 @@ public sealed class AppRemovalPanelTests
         cfg.Apps.Add(new AppEntry { Name = "test", Folder = folder });
         cfg.Save(configPath);
         var stopped = 0;
-        using var portProbe = new TcpListener(IPAddress.Loopback, 0);
-        portProbe.Start();
-        var port = ((IPEndPoint)portProbe.LocalEndpoint).Port;
-        portProbe.Stop();
         var web = new WebServer(configPath,
             () => new WebServer.ControlState(Volatile.Read(ref stopped) == 0, null, null, null, false),
             _ => { })
@@ -31,13 +26,13 @@ public sealed class AppRemovalPanelTests
                 return Task.FromResult<string?>(null);
             },
         };
+        var port = TestPanel.Start(web);
         using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
         {
             BaseAddress = new Uri($"http://127.0.0.1:{port}"),
         };
         try
         {
-            web.Start(port);
             using var reply = await http.PostAsync("/apps/remove", new FormUrlEncodedContent(
                 new Dictionary<string, string> { ["tab"] = "apps", ["folder"] = folder }));
             Assert.Equal(HttpStatusCode.SeeOther, reply.StatusCode);

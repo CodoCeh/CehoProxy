@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 
 namespace ProxyCage.Core.Tests;
 
@@ -79,17 +78,12 @@ public sealed class AppIconTests
         var configPath = Path.Combine(root, "config.json");
         new CehoConfig().Save(configPath);
 
-        using var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-
         var web = new WebServer(configPath,
             () => new WebServer.ControlState(false, null, null, null, false), _ => { });
+        var port = TestPanel.Start(web);
         using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
         try
         {
-            web.Start(port);
             var html = await http.GetStringAsync("/?tab=apps");
 
             var installed = InstalledAppCatalog.Detect();
