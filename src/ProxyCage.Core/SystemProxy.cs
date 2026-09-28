@@ -67,6 +67,7 @@ public static class SystemProxy
                 if (nic.OperationalStatus != OperationalStatus.Up) continue;
                 if (nic.Name.StartsWith(TunCleanup.InterfaceName, StringComparison.OrdinalIgnoreCase)) continue;
                 if (string.Equals(nic.Name, ourInterface, StringComparison.OrdinalIgnoreCase)) continue;
+                if (IsWindowsTransitionAdapter(nic.Description)) continue;
 
                 var isVpn = nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel
                     || IsVpnAdapter(nic.Description)
@@ -79,6 +80,10 @@ public static class SystemProxy
         catch { }
         return found;
     }
+
+    internal static bool IsWindowsTransitionAdapter(string description) =>
+        new[] { "Teredo", "ISATAP", "6to4", "IP-HTTPS" }
+            .Any(name => description.Contains(name, StringComparison.OrdinalIgnoreCase));
 
     private static bool IsVpnAdapter(string text) =>
         text.Contains("tun", StringComparison.OrdinalIgnoreCase)
