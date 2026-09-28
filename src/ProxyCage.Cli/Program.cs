@@ -2378,6 +2378,9 @@ if (cmd is "daemon" or "web")
         if (argv is [Cli.ReloadCommand])
         {
             var language = CehoConfig.Load(Ceho.ConfigPath).Language;
+            if (proc is null)
+                try { await Task.Run(() => EngineMutex.Acquire(Ceho.Root).Dispose()); }
+                catch (TimeoutException) { }
             if (proc is null) return (true, "");
             var error = await RestartTunnel(new DelegateReport(Log.Info));
             return error is null ? (true, Strings.T(language, "rules_applied")) : (false, error);
@@ -2429,6 +2432,9 @@ if (cmd is "daemon" or "web")
 
         if (!File.Exists(Ceho.RestartRequestPath)) return (ok, output);
         try { File.Delete(Ceho.RestartRequestPath); } catch { }
+        if (proc is null)
+            try { await Task.Run(() => EngineMutex.Acquire(Ceho.Root).Dispose()); }
+            catch (TimeoutException) { }
         if (proc is null) return (ok, output);
         var lang = CehoConfig.Load(Ceho.ConfigPath).Language;
         var restartError = await RestartTunnel(new DelegateReport(Log.Info));
