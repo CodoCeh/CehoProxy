@@ -410,6 +410,14 @@ public static class Installer
             return;
         }
 
+        if (Os.IsLinux)
+        {
+            Os.Run("pkill", "-x " + TrayInstaller.LinuxFileName);
+            try { File.Delete(TrayInstaller.LinuxAutostartPath); } catch { }
+            try { File.Delete(Path.Combine(root, TrayInstaller.LinuxFileName)); } catch { }
+            return;
+        }
+
         if (!Os.IsMac) return;
 
         var user = Environment.GetEnvironmentVariable("SUDO_USER");

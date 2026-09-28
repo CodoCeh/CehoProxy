@@ -28,6 +28,8 @@ internal sealed class TrayWindow : IDisposable
     private DateTime _resumeAtUtc = DateTime.MinValue;
     private string? _balloon;
     private int _working;
+    private readonly string? _exe = Environment.ProcessPath;
+    private readonly DateTime _built = Environment.ProcessPath is { } exe ? File.GetLastWriteTimeUtc(exe) : default;
 
     public TrayWindow(string root)
     {
@@ -90,10 +92,23 @@ internal sealed class TrayWindow : IDisposable
                 continue;
             }
 
+            if (Replaced())
+            {
+                try { System.Diagnostics.Process.Start(_exe!, "--restart"); } catch { }
+                Win32.PostMessage(_window, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                return;
+            }
+
             await ReadAsync();
             try { await Task.Delay(TimeSpan.FromSeconds(TrayState.PollSeconds), _stop.Token); }
             catch (TaskCanceledException) { return; }
         }
+    }
+
+    private bool Replaced()
+    {
+        try { return _exe is not null && File.Exists(_exe) && File.GetLastWriteTimeUtc(_exe) != _built; }
+        catch { return false; }
     }
 
     private async Task ReadAsync()
@@ -216,9 +231,10 @@ internal sealed class TrayWindow : IDisposable
                     IdSignIn, Strings.T(_lang, "tray_sign_in"));
             else
             {
-                Win32.AppendMenu(menu, Win32.MF_STRING | (TrayState.CanTurnOn(_look) ? 0 : Win32.MF_GRAYED),
+                var busy = Volatile.Read(ref _working) == 1;
+                Win32.AppendMenu(menu, Win32.MF_STRING | (!busy && TrayState.CanTurnOn(_look) ? 0 : Win32.MF_GRAYED),
                     IdOn, Strings.T(_lang, "btn_on"));
-                Win32.AppendMenu(menu, Win32.MF_STRING | (TrayState.CanTurnOff(_look) ? 0 : Win32.MF_GRAYED),
+                Win32.AppendMenu(menu, Win32.MF_STRING | (!busy && TrayState.CanTurnOff(_look) ? 0 : Win32.MF_GRAYED),
                     IdOff, Strings.T(_lang, "btn_off"));
             }
 

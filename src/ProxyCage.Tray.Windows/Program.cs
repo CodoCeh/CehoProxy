@@ -7,10 +7,13 @@ namespace ProxyCage.Tray.Windows;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
-        using var single = new Mutex(true, @"Local\CehoProxyTray", out var first);
-        if (!first) return;
+        using var single = new Mutex(false, @"Local\CehoProxyTray");
+        bool owned;
+        try { owned = single.WaitOne(args.Contains("--restart") ? TimeSpan.FromSeconds(20) : TimeSpan.Zero); }
+        catch (AbandonedMutexException) { owned = true; }
+        if (!owned) return;
 
         using var tray = new TrayWindow(
             Environment.GetEnvironmentVariable("CEHOPROXY_HOME") ?? Os.DefaultRoot);

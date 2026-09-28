@@ -92,6 +92,8 @@ if (cmd == "install")
         }
     }
 
+    await TrayInstaller.EnsureAsync(Ceho.Root, cfg0.UpdateRepo, true, m => Console.WriteLine("  " + m), cfg0.Language);
+
     Console.WriteLine();
     Console.WriteLine("  " + Strings.T(cfg0.Language, "inst_done"));
     Console.WriteLine("  " + Strings.T(cfg0.Language, "product_page_at", Brand.RepoUrl(cfg0.UpdateRepo)));
@@ -2289,6 +2291,9 @@ if (cmd is "daemon" or "web")
     if (withTunnel && Os.IsElevated())
         try { Installer.AdoptSystemEngine(Ceho.Root, Log.Info, cfg.Language); }
         catch (Exception ex) { Log.Error("движок из системы перенести не удалось", ex); }
+
+    if (withTunnel && Os.IsElevated())
+        _ = Task.Run(() => TrayInstaller.EnsureAsync(Ceho.Root, cfg.UpdateRepo, true, Log.Info, cfg.Language));
 
     if (withTunnel && !Os.IsWindows && cfg.TunIpv6)
     {
