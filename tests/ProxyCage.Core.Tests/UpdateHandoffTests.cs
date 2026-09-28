@@ -82,11 +82,12 @@ public sealed class UpdateHandoffTests
             statusPath: @"C:\ProgramData\CehoProxy\update-status.json");
 
         var missingDownloadCheck = script.IndexOf("if (-not (Test-Path -LiteralPath $downloaded))", StringComparison.Ordinal);
-        var staleBackupDelete = script.IndexOf("if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup", StringComparison.Ordinal);
+        var staleBackupDelete = script.IndexOf("Remove-Item -LiteralPath $backup -Force -ErrorAction Stop", StringComparison.Ordinal);
         Assert.True(missingDownloadCheck >= 0 && missingDownloadCheck < staleBackupDelete);
         Assert.Contains("$movedCurrentToBackup = $false", script);
         Assert.Contains("$movedCurrentToBackup = $true", script);
         Assert.Contains("if ($movedCurrentToBackup -and (Test-Path -LiteralPath $backup))", script);
+        Assert.Contains("'.busy-'", script);
     }
 
     [Fact]

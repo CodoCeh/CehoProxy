@@ -308,7 +308,10 @@ public static class DaemonControl
                 $oldVersionOutput = & $exe version 2>&1
                 if ($LASTEXITCODE -eq 0) { $previousVersion = ([string]$oldVersionOutput[0]).Trim() }
               }
-              if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
+              if (Test-Path -LiteralPath $backup) {
+                try { Remove-Item -LiteralPath $backup -Force -ErrorAction Stop }
+                catch { Move-Item -LiteralPath $backup -Destination ($exe + '.busy-' + (Get-Date -Format yyyyMMddHHmmss) + '.old') -Force }
+              }
               if (Test-Path -LiteralPath $exe) {
                 Move-Item -LiteralPath $exe -Destination $backup -Force
                 $movedCurrentToBackup = $true
