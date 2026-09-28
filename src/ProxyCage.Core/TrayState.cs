@@ -20,7 +20,7 @@ public static class TrayState
 
     public sealed record Snapshot(
         bool Running, bool Starting, bool Daemon, int Apps,
-        string? ExitCountry, string? ExitIp, bool ExitProbed);
+        string? ExitCountry, string? ExitIp, bool ExitProbed, bool TrayControls = false);
 
     public static string? Unwrap(string? apiBody)
     {
@@ -46,7 +46,8 @@ public static class TrayState
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("daemon", out _)) return null;
             return new Snapshot(
                 Flag(root, "running"), Flag(root, "starting"), Flag(root, "daemon"),
-                Count(root, "apps"), Text(root, "exitCountry"), Text(root, "exitIp"), exitProbed);
+                Count(root, "apps"), Text(root, "exitCountry"), Text(root, "exitIp"), exitProbed,
+                Flag(root, "trayControls"));
         }
         catch { return null; }
     }
@@ -88,6 +89,8 @@ public static class TrayState
         TrayLook.Stopped => TrayBadge.Square,
         _ => TrayBadge.Lock,
     };
+
+    public static bool ShowsControls(Snapshot? snapshot) => snapshot is { TrayControls: true };
 
     public static bool CanTurnOn(TrayLook look) => look == TrayLook.Off;
 

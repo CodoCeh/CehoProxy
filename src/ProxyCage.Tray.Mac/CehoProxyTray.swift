@@ -19,6 +19,7 @@ struct Snapshot {
     var exitCountry: String?
     var exitIp: String?
     var exitProbed: Bool
+    var trayControls: Bool
 }
 
 struct Reading {
@@ -205,7 +206,8 @@ final class PanelLink {
             daemon: daemon,
             exitCountry: state["exitCountry"] as? String,
             exitIp: state["exitIp"] as? String,
-            exitProbed: probed)
+            exitProbed: probed,
+            trayControls: state["trayControls"] as? Bool ?? false)
     }
 }
 
@@ -484,7 +486,7 @@ final class Tray: NSObject, NSMenuDelegate {
             sign.target = self
             sign.isEnabled = waitSeconds == 0
             menu.addItem(sign)
-        } else {
+        } else if snapshot?.trayControls == true {
             let on = NSMenuItem(title: say(lang, "btn_on"), action: #selector(turnOn), keyEquivalent: "")
             on.target = self
             on.isEnabled = look == .off && !working
@@ -496,7 +498,9 @@ final class Tray: NSObject, NSMenuDelegate {
             menu.addItem(off)
         }
 
-        menu.addItem(NSMenuItem.separator())
+        if look == .locked || snapshot?.trayControls == true {
+            menu.addItem(NSMenuItem.separator())
+        }
 
         let panel = NSMenuItem(
             title: say(lang, "tray_panel"), action: #selector(openPanel), keyEquivalent: "")

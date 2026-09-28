@@ -196,7 +196,7 @@ internal sealed class TrayItem : IDisposable
     private void Changed()
     {
         string key;
-        lock (_gate) key = $"{_look}|{_lang}|{Tooltip()}|{Volatile.Read(ref _working)}";
+        lock (_gate) key = $"{_look}|{_lang}|{Tooltip()}|{Volatile.Read(ref _working)}|{TrayState.ShowsControls(_snapshot)}";
         if (key == _shown) return;
         _shown = key;
 
@@ -377,12 +377,12 @@ internal sealed class TrayItem : IDisposable
             list.Add(new(3, null, true, true));
             if (_look == TrayLook.Locked)
                 list.Add(new(IdSignIn, Strings.T(_lang, "tray_sign_in"), wait == 0));
-            else
+            else if (TrayState.ShowsControls(_snapshot))
             {
                 list.Add(new(IdOn, Strings.T(_lang, "btn_on"), !busy && TrayState.CanTurnOn(_look)));
                 list.Add(new(IdOff, Strings.T(_lang, "btn_off"), !busy && TrayState.CanTurnOff(_look)));
             }
-            list.Add(new(7, null, true, true));
+            if (_look == TrayLook.Locked || TrayState.ShowsControls(_snapshot)) list.Add(new(7, null, true, true));
             list.Add(new(IdPanel, Strings.T(_lang, "tray_panel"), _link.Url is not null));
             list.Add(new(9, null, true, true));
             list.Add(new(IdQuit, Strings.T(_lang, "tray_quit"), true));
@@ -600,8 +600,8 @@ internal sealed class TrayItem : IDisposable
     {
         switch (id)
         {
-            case IdOn: Command(_link.TurnOnAsync); break;
-            case IdOff: Command(_link.TurnOffAsync); break;
+            case IdOn when TrayState.ShowsControls(_snapshot): Command(_link.TurnOnAsync); break;
+            case IdOff when TrayState.ShowsControls(_snapshot): Command(_link.TurnOffAsync); break;
             case IdSignIn: _ = Task.Run(SignInAsync); break;
             case IdPanel:
                 if (_link.Url is { } url) Os.OpenInBrowser(url);

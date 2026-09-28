@@ -229,7 +229,7 @@ internal sealed class TrayWindow : IDisposable
             if (_look == TrayLook.Locked)
                 Win32.AppendMenu(menu, Win32.MF_STRING | (wait > 0 ? Win32.MF_GRAYED : 0),
                     IdSignIn, Strings.T(_lang, "tray_sign_in"));
-            else
+            else if (TrayState.ShowsControls(_snapshot))
             {
                 var busy = Volatile.Read(ref _working) == 1;
                 Win32.AppendMenu(menu, Win32.MF_STRING | (!busy && TrayState.CanTurnOn(_look) ? 0 : Win32.MF_GRAYED),
@@ -238,7 +238,8 @@ internal sealed class TrayWindow : IDisposable
                     IdOff, Strings.T(_lang, "btn_off"));
             }
 
-            Win32.AppendMenu(menu, Win32.MF_SEPARATOR, 0, null);
+            if (_look == TrayLook.Locked || TrayState.ShowsControls(_snapshot))
+                Win32.AppendMenu(menu, Win32.MF_SEPARATOR, 0, null);
             Win32.AppendMenu(menu, Win32.MF_STRING | (_link.Url is null ? Win32.MF_GRAYED : 0),
                 IdPanel, Strings.T(_lang, "tray_panel"));
             Win32.AppendMenu(menu, Win32.MF_SEPARATOR, 0, null);

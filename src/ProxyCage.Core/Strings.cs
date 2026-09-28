@@ -1651,6 +1651,17 @@ public static class Strings
             "Столько просит подождать сама панель после неверных попыток",
             "The panel itself asks to wait this long after failed attempts"),
         ["tray_failed"] = new("Панель не приняла команду", "The panel did not accept the command"),
+        ["tray_controls_on"] = new(
+            "Значок в трее умеет включать и выключать защиту",
+            "The tray icon can turn protection on and off"),
+        ["tray_controls_off"] = new(
+            "Значок в трее только показывает состояние и открывает панель",
+            "The tray icon only shows the state and opens the panel"),
+        ["tray_controls_add"] = new("Разрешить кнопки в значке", "Allow buttons in the icon"),
+        ["tray_controls_del"] = new("Убрать кнопки из значка", "Remove buttons from the icon"),
+        ["tray_controls_open"] = new(
+            "Пароль не задан: включать и выключать защиту из значка сможет любой, кто вошёл на этот компьютер.",
+            "No password is set: anyone signed in to this computer can turn protection on and off from the icon."),
         ["tray_installed"] = new(
             "Значок состояния {0} поставлен.", "The status icon {0} is installed."),
         ["tray_updated"] = new(

@@ -1497,6 +1497,7 @@ switch (cmd)
                 ["exitCountry"] = country,
                 ["exitIp"] = ip,
                 ["password"] = Auth.HasPassword(cfg),
+                ["trayControls"] = cfg.TrayControls,
                 ["version"] = Updater.CurrentVersion,
             }.ToJsonString());
             return running ? 0 : 1;

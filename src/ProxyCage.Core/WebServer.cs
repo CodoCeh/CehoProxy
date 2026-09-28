@@ -947,6 +947,13 @@ public sealed class WebServer
                     return (null, false, job.Id);
                 }
 
+                case "/tray-controls":
+                {
+                    cfg.TrayControls = f.ContainsKey("enable");
+                    Save(cfg);
+                    return (S(cfg.TrayControls ? "tray_controls_on" : "tray_controls_off"), false, null);
+                }
+
                 case "/autoupdate":
                 {
                     cfg.AutoUpdate = f.ContainsKey("enable");
@@ -1477,7 +1484,16 @@ public sealed class WebServer
           .Append("<form method=post action=/autostart><input type=hidden name=tab value=state>")
           .Append(auto ? "" : "<input type=hidden name=enable value=1>")
           .Append("<button class=ghost>").Append(E(auto ? S("autostart_del", []) : S("autostart_add", [])))
-          .Append("</button></form></div></div></section>");
+          .Append("</button></form></div>");
+        sb.Append("<div class=\"line ").Append(cfg.TrayControls ? "on" : "off").Append("\"><span><span class=dot></span> ")
+          .Append(E(cfg.TrayControls ? S("tray_controls_on", []) : S("tray_controls_off", []))).Append("</span>")
+          .Append("<form method=post action=/tray-controls><input type=hidden name=tab value=state>")
+          .Append(cfg.TrayControls ? "" : "<input type=hidden name=enable value=1>")
+          .Append("<button class=ghost>").Append(E(cfg.TrayControls ? S("tray_controls_del", []) : S("tray_controls_add", [])))
+          .Append("</button></form></div>");
+        if (cfg.TrayControls && !Auth.HasPassword(cfg))
+            sb.Append("<div class=line><span>").Append(E(S("tray_controls_open", []))).Append("</span></div>");
+        sb.Append("</div></section>");
 
         if (cfg.SimplePanel)
         {
