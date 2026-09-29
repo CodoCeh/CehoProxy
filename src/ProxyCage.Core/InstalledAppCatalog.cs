@@ -158,14 +158,30 @@ public static class InstalledAppCatalog
         catch { return false; }
     }
 
+    private static IEnumerable<string> UserHomes(string usersRoot) =>
+        UserHomes(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Os.IsElevated(), usersRoot);
+
+    internal static IEnumerable<string> UserHomes(string currentHome, bool elevated, string usersRoot)
+    {
+        var homes = new List<string>();
+        if (currentHome.Length > 0) homes.Add(currentHome);
+        if (elevated && Directory.Exists(usersRoot))
+        {
+            try
+            {
+                homes.AddRange(Directory.EnumerateDirectories(usersRoot)
+                    .Where(d => !Path.GetFileName(d).Equals("Shared", StringComparison.OrdinalIgnoreCase)
+                        && !Path.GetFileName(d).StartsWith('.')));
+            }
+            catch { }
+        }
+        return homes.Distinct(StringComparer.Ordinal);
+    }
+
     private static IEnumerable<Entry> DetectMac()
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        foreach (var root in new[]
-        {
-            "/Applications", "/System/Applications", "/System/Applications/Utilities",
-            Path.Combine(home, "Applications"),
-        })
+        foreach (var root in new[] { "/Applications", "/System/Applications", "/System/Applications/Utilities" }
+            .Concat(UserHomes("/Users").Select(h => Path.Combine(h, "Applications"))))
         {
             if (!Directory.Exists(root)) continue;
             IEnumerable<string> bundles;
@@ -178,14 +194,15 @@ public static class InstalledAppCatalog
 
     private static IEnumerable<Entry> DetectLinux(string lang)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         foreach (var root in new[]
         {
             "/usr/share/applications", "/usr/local/share/applications",
-            Path.Combine(home, ".local/share/applications"),
             "/var/lib/flatpak/exports/share/applications",
-            Path.Combine(home, ".local/share/flatpak/exports/share/applications"),
-        })
+        }.Concat(UserHomes("/home").SelectMany(h => new[]
+        {
+            Path.Combine(h, ".local/share/applications"),
+            Path.Combine(h, ".local/share/flatpak/exports/share/applications"),
+        })))
         {
             if (!Directory.Exists(root)) continue;
             IEnumerable<string> files;

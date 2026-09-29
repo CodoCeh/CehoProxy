@@ -478,6 +478,8 @@ switch (cmd)
             if (i < 0) return 0;
             which = cfg.Apps[i].Folder;
         }
+        else if (int.TryParse(which, out var idx) && idx >= 1 && idx <= cfg.Apps.Count)
+            which = cfg.Apps[idx - 1].Folder;
 
         var target = Os.RealPath(which);
         var n = cfg.Apps.RemoveAll(a =>

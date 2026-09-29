@@ -57,4 +57,21 @@ public class InstalledAppCatalogTests
     [InlineData("C:\\Tools\\tool.exe --background", "C:\\Tools\\tool.exe")]
     public void Windows_display_icon_extracts_executable(string value, string expected) =>
         Assert.Equal(expected, InstalledAppCatalog.CleanWindowsExecutable(value));
+
+    [Fact]
+    public void Service_sees_apps_of_every_user()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            foreach (var d in new[] { "alice", "bob", "Shared", ".hidden" }) Directory.CreateDirectory(Path.Combine(root, d));
+
+            var asRoot = InstalledAppCatalog.UserHomes("/var/root", elevated: true, root).Select(Path.GetFileName).Order().ToList();
+            Assert.Equal(new[] { "alice", "bob", "root" }, asRoot);
+
+            var asUser = InstalledAppCatalog.UserHomes("/Users/alice", elevated: false, root).ToList();
+            Assert.Equal(new[] { "/Users/alice" }, asUser);
+        }
+        finally { Directory.Delete(root, true); }
+    }
 }
