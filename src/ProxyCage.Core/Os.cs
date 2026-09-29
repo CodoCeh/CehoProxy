@@ -434,7 +434,7 @@ public static class Os
         var filter = exeName.Replace("'", "''");
         var (code, output) = Run("powershell", "-NoProfile -Command " +
             $"\"Get-CimInstance Win32_Process -Filter \\\"name='{filter}'\\\" | " +
-            "ForEach-Object { Write-Output ($_.ProcessId.ToString() + [char]9 + ($_.CommandLine ?? '')) }\"",
+            "ForEach-Object { Write-Output ($_.ProcessId.ToString() + [char]9 + ([string]$_.CommandLine)) }\"",
             15000);
         if (code != 0) return list;
 
@@ -465,7 +465,7 @@ public static class Os
         var (code, output) = Run("powershell", "-NoProfile -Command " +
             $"\"Get-CimInstance Win32_Process -Filter \\\"name='{filter}'\\\" | ForEach-Object {{ " +
             "$u=''; try { $o=Invoke-CimMethod -InputObject $_ -MethodName GetOwner; if($o){ $u=[string]$o.User } } catch {}; " +
-            "Write-Output ($_.ProcessId.ToString() + [char]9 + $u + [char]9 + ($_.CommandLine ?? '')) }\"",
+            "Write-Output ($_.ProcessId.ToString() + [char]9 + $u + [char]9 + ([string]$_.CommandLine)) }\"",
             20000);
         if (code != 0) return list;
 

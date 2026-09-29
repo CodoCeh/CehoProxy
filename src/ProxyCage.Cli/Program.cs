@@ -1756,6 +1756,14 @@ switch (cmd)
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
 
+        if (Environment.GetEnvironmentVariable(Ceho.ViaDaemonVariable) != "1"
+            && Os.IsElevated()
+            && DaemonControl.IsRunning(Ceho.Root)
+            && Auth.ReadPanelPointer(Ceho.Root) is not null
+            && NodeProbe.TunnelIsUp(cfg.TunAddress)
+            && await Cli.RunRemoteAsync(Ceho.Root, [Cli.ReloadCommand], cfg.Language) == 0)
+            return 0;
+
         try { await Ceho.ApplyAsync(); }
         catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
 
