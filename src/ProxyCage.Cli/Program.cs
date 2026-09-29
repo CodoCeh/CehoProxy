@@ -1932,7 +1932,8 @@ if (cmd is "daemon" or "web")
     bool EngineAdapterStuck(string reason) =>
         reason.Contains("already exists", StringComparison.OrdinalIgnoreCase)
         || reason.Contains("not ready", StringComparison.OrdinalIgnoreCase)
-        || reason.Contains("device is not ready", StringComparison.OrdinalIgnoreCase);
+        || reason.Contains("device is not ready", StringComparison.OrdinalIgnoreCase)
+        || reason.Contains("not functioning", StringComparison.OrdinalIgnoreCase);
 
     long cleanedAt = 0;
     IReadOnlyList<string>? cleanedDevices = null;
@@ -2134,6 +2135,7 @@ if (cmd is "daemon" or "web")
         {
             Log.Warn("движок не завершился по-хорошему, снимаю следы");
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+            Thread.Sleep(800);
         }
 
         TunCleanup.ReleaseOurs(
