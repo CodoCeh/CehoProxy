@@ -153,4 +153,18 @@ public class InstalledAppCatalogTests
     [InlineData(null, false)]
     public void Parts_of_windows_itself_are_not_offered(string? product, bool component) =>
         Assert.Equal(component, InstalledAppCatalog.IsWindowsComponent(product));
+
+    [Fact]
+    public void Cehoproxy_itself_is_not_offered()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "CehoProxy");
+        var self = Path.Combine(home, "cehoproxy.exe");
+        var bundle = Path.Combine(Path.GetTempPath(), "Apps", "CehoProxy.app");
+
+        Assert.True(InstalledAppCatalog.IsOwn(Path.Combine(home, "cehoproxy-tray.exe"), self, windows: true));
+        Assert.False(InstalledAppCatalog.IsOwn(Path.Combine(home, "cehoproxy-tray.exe"), self, windows: false));
+        Assert.True(InstalledAppCatalog.IsOwn(bundle, Path.Combine(bundle, "Contents", "MacOS", "cehoproxy"), windows: false));
+        Assert.False(InstalledAppCatalog.IsOwn(Path.Combine(Path.GetTempPath(), "Other", "app.exe"), self, windows: true));
+        Assert.False(InstalledAppCatalog.IsOwn(self, null, windows: true));
+    }
 }

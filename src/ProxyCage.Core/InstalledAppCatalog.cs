@@ -26,8 +26,9 @@ public static class InstalledAppCatalog
             _ => DetectLinux(lang),
         };
 
+        var self = Environment.ProcessPath;
         var detected = entries
-            .Where(e => e.Name.Length > 0 && e.Path.Length > 0)
+            .Where(e => e.Name.Length > 0 && e.Path.Length > 0 && !IsOwn(e.Path, self, Os.IsWindows))
             .GroupBy(e => NormalizePath(e.Path), Os.IsLinux
                 ? StringComparer.Ordinal
                 : StringComparer.OrdinalIgnoreCase)
@@ -151,6 +152,13 @@ public static class InstalledAppCatalog
         return seen.Any(p => Path.GetFileName(p).Equals(name, StringComparison.OrdinalIgnoreCase)
             && (NormalizePath(p).Equals(NormalizePath(path), StringComparison.OrdinalIgnoreCase)
                 || IsUnder(p, dir) || IsUnder(path, Path.GetDirectoryName(p) ?? "")));
+    }
+
+    internal static bool IsOwn(string path, string? self, bool windows)
+    {
+        if (string.IsNullOrEmpty(self)) return false;
+        if (NormalizePath(path).Equals(NormalizePath(self), StringComparison.OrdinalIgnoreCase) || IsUnder(self, path)) return true;
+        return windows && IsUnder(path, Path.GetDirectoryName(self) ?? "");
     }
 
     internal static bool IsUnder(string path, string folder) =>
