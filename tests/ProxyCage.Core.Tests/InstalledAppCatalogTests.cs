@@ -144,4 +144,13 @@ public class InstalledAppCatalogTests
         Assert.False(InstalledAppCatalog.SameProgramSeen(seen, Path.Combine(app, "other.exe")));
         Assert.False(InstalledAppCatalog.SameProgramSeen(seen, Path.Combine(Path.GetTempPath(), "Elsewhere", "msedge.exe")));
     }
+
+    [Theory]
+    [InlineData("Microsoft® Windows® Operating System", true)]
+    [InlineData("Internet Explorer", true)]
+    [InlineData("Microsoft Edge", false)]
+    [InlineData("Opera Internet Browser", false)]
+    [InlineData(null, false)]
+    public void Parts_of_windows_itself_are_not_offered(string? product, bool component) =>
+        Assert.Equal(component, InstalledAppCatalog.IsWindowsComponent(product));
 }

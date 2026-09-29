@@ -50,6 +50,24 @@ public class JobsTests
     }
 
     [Fact]
+    public async Task Network_failure_is_an_error_not_a_crash()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            Log.Init(root, "test", announce: false);
+            var kind = "test-net-" + Guid.NewGuid().ToString("N")[..6];
+
+            var job = await Finished(Jobs.Start(kind, "проверяю", _ =>
+                throw new HttpRequestException("Connection reset by peer (api.github.com:443)")));
+
+            Assert.Equal(JobState.Failed, job.State);
+            Assert.DoesNotContain(Log.Crashes(), c => c.Context.Contains(kind));
+        }
+        finally { try { Directory.Delete(root, true); } catch { } }
+    }
+
+    [Fact]
     public async Task Second_click_joins_the_running_job_instead_of_doubling_it()
     {
         var release = new TaskCompletionSource();

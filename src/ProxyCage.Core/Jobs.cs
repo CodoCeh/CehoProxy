@@ -167,7 +167,7 @@ public static class Jobs
                 job.Stage = ex.Message;
                 job.AddStep(ex.Message);
                 Log.Error($"[{kind}] не удалось", ex);
-                if (ex is not InvalidOperationException) Log.Crash($"фоновое действие {kind}", ex);
+                if (ex is not (InvalidOperationException or HttpRequestException or OperationCanceledException or IOException)) Log.Crash($"фоновое действие {kind}", ex);
             }
             finally
             {

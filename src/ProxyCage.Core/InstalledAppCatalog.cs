@@ -94,7 +94,8 @@ public static class InstalledAppCatalog
             {
                 using var app = paths.OpenSubKey(id);
                 var path = CleanWindowsExecutable(app?.GetValue(null) as string);
-                if (path is not null && File.Exists(path) && !IsUnder(path, windowsDir) && !SameProgramSeen(seen, path) && seen.Add(NormalizePath(path)))
+                if (path is not null && File.Exists(path) && !IsUnder(path, windowsDir) && !IsWindowsComponent(ProductOf(path))
+                    && !SameProgramSeen(seen, path) && seen.Add(NormalizePath(path)))
                     yield return new(Path.GetFileNameWithoutExtension(id), path, "Windows");
             }
         }
@@ -131,6 +132,17 @@ public static class InstalledAppCatalog
         var cut = Regex.Replace(name, @"\s+v?\d+(\.\d+){1,3}$", "", RegexOptions.IgnoreCase).Trim();
         return cut.Length > 0 ? cut : name;
     }
+
+    private static string? ProductOf(string path)
+    {
+        try { return System.Diagnostics.FileVersionInfo.GetVersionInfo(path).ProductName; }
+        catch { return null; }
+    }
+
+    internal static bool IsWindowsComponent(string? product) =>
+        product is not null
+        && (product.Trim().Equals("Internet Explorer", StringComparison.OrdinalIgnoreCase)
+            || Regex.IsMatch(product, @"^Microsoft\W*Windows\W*Operating System$", RegexOptions.IgnoreCase));
 
     internal static bool SameProgramSeen(IEnumerable<string> seen, string path)
     {
