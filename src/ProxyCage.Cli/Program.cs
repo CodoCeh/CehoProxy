@@ -1933,7 +1933,8 @@ if (cmd is "daemon" or "web")
         reason.Contains("already exists", StringComparison.OrdinalIgnoreCase)
         || reason.Contains("not ready", StringComparison.OrdinalIgnoreCase)
         || reason.Contains("device is not ready", StringComparison.OrdinalIgnoreCase)
-        || reason.Contains("not functioning", StringComparison.OrdinalIgnoreCase);
+        || reason.Contains("not functioning", StringComparison.OrdinalIgnoreCase)
+        || (Os.IsWindows && reason.Contains("configure tun interface", StringComparison.OrdinalIgnoreCase));
 
     long cleanedAt = 0;
     IReadOnlyList<string>? cleanedDevices = null;
