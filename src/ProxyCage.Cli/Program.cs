@@ -1759,6 +1759,13 @@ switch (cmd)
         try { await Ceho.ApplyAsync(); }
         catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
 
+        if (Environment.GetEnvironmentVariable(Ceho.ViaDaemonVariable) == "1")
+        {
+            File.WriteAllText(Ceho.RestartRequestPath, "");
+            Console.WriteLine(Cli.S(cfg, "rules_applied"));
+            return 0;
+        }
+
         if (Autostart.IsEnabled())
         {
             if (!Os.IsElevated())

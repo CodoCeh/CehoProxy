@@ -192,6 +192,17 @@ public sealed class WebServer
         var flashErr = ctx.Request.QueryString["e"] == "1";
         var current = ctx.Request.QueryString["tab"] ?? "state";
         var job = Jobs.Find(ctx.Request.QueryString["job"]);
+        if (job is { State: JobState.Done, IsError: false })
+        {
+            var q = ctx.Request.QueryString;
+            var message = string.Join(" ", new[] { flash, job.Result }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            var parts = q.AllKeys
+                .Where(k => k is not null and not "job" and not "m" and not "e")
+                .Select(k => $"{Uri.EscapeDataString(k!)}={Uri.EscapeDataString(q[k] ?? "")}")
+                .Append("m=" + Uri.EscapeDataString(message)).Append("e=0");
+            Redirect(ctx, "/?" + string.Join("&", parts));
+            return;
+        }
         var view = ViewFromQuery(ctx.Request.QueryString["view"]);
         var tunnel = ctx.Request.QueryString["tunnel"];
         var st = _state();
@@ -879,7 +890,8 @@ public sealed class WebServer
                         var fresh = CehoConfig.Load(_configPath);
                         foreach (var m in items)
                             if (m.LatencyMs is { } ms) fresh.NodeLatency[m.Node.Key] = ms;
-                        Save(fresh);
+                        if (fresh.MaxLatencyMs is null) fresh.SaveSubscriptionStatus(_configPath);
+                        else Save(fresh);
 
                         _countries = rows;
                         var byKey = items.GroupBy(m => m.Node.Key, StringComparer.Ordinal)
@@ -929,7 +941,7 @@ public sealed class WebServer
                 case "/lang":
                 {
                     cfg.Language = Strings.Normalize(f.GetValueOrDefault("lang", "ru"));
-                    Save(cfg);
+                    cfg.SaveSubscriptionStatus(_configPath);
                     return (Strings.T(cfg.Language, "lang_set", cfg.Language), false, null);
                 }
 
@@ -976,21 +988,21 @@ public sealed class WebServer
                 case "/engine/autoupdate":
                 {
                     cfg.EngineAutoUpdate = f.ContainsKey("enable");
-                    Save(cfg);
+                    cfg.SaveSubscriptionStatus(_configPath);
                     return (S(cfg.EngineAutoUpdate ? "engine_auto_state_on" : "engine_auto_state_off"), false, null);
                 }
 
                 case "/tray-controls":
                 {
                     cfg.TrayControls = f.ContainsKey("enable");
-                    Save(cfg);
+                    cfg.SaveSubscriptionStatus(_configPath);
                     return (S(cfg.TrayControls ? "tray_controls_on" : "tray_controls_off"), false, null);
                 }
 
                 case "/autoupdate":
                 {
                     cfg.AutoUpdate = f.ContainsKey("enable");
-                    Save(cfg);
+                    cfg.SaveSubscriptionStatus(_configPath);
                     return (S(cfg.AutoUpdate ? "upd_auto_state_on" : "upd_auto_state_off"), false, null);
                 }
 
@@ -1145,12 +1157,12 @@ public sealed class WebServer
     private async Task HandleIconAsync(HttpListenerContext ctx, CehoConfig cfg)
     {
         var wanted = ctx.Request.QueryString["path"];
-        var icon = wanted is { Length: > 0 } && IconAllowed(cfg, wanted)
-            ? AppIcons.Load(wanted, cfg.Language)
-            : null;
+        var allowed = wanted is { Length: > 0 } && IconAllowed(cfg, wanted);
+        var icon = allowed ? AppIcons.Load(wanted!, cfg.Language) : null;
         if (icon is null)
         {
-            ctx.Response.StatusCode = 404;
+            ctx.Response.StatusCode = allowed ? 204 : 404;
+            ctx.Response.Headers["Cache-Control"] = "private, max-age=600";
             ctx.Response.Close();
             return;
         }

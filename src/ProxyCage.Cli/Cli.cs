@@ -281,7 +281,7 @@ public static class Cli
 
     public static TimeSpan RemoteTimeoutFor(string command) =>
         command is "update" or "engine" or "движок" ? TimeSpan.FromMinutes(20)
-        : command == ReloadCommand || ChangesSettings(command) ? TimeSpan.FromMinutes(5)
+        : command == ReloadCommand || command == "restart" || ChangesSettings(command) ? TimeSpan.FromMinutes(5)
         : TimeSpan.FromSeconds(60);
 
     public static async Task<int?> EnsureRightsAsync(string[] args, CehoConfig cfg)

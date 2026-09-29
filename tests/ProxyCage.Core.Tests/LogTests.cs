@@ -45,6 +45,18 @@ public class LogTests : IDisposable
     }
 
     [Fact]
+    public void Old_colored_lines_read_back_clean()
+    {
+        var mark = Mark();
+        File.AppendAllText(Path.Combine(_root, "cehoproxy.log"),
+            $"2026-09-28 23:12:30 warn  engine \u001b[33mWARN\u001b[0m[0342] [\u001b[38;5;70m1143990070\u001b[0m 5m10s] {mark}\n");
+
+        var line = Assert.Single(Log.Tail(50, LogView.Engine), l => l.Contains(mark));
+        Assert.DoesNotContain('\u001b', line);
+        Assert.Contains("WARN[0342] [1143990070 5m10s]", line);
+    }
+
+    [Fact]
     public void Engine_lines_are_told_apart_from_ours()
     {
         var ours = Mark();

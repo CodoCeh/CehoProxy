@@ -312,7 +312,7 @@ public static class Log
                 if (!DateTime.TryParse(m.Groups["t"].Value, out var when)) continue;
 
                 yield return new LogEntry(
-                    when, m.Groups["lvl"].Value, m.Groups["cmp"].Value, m.Groups["msg"].Value);
+                    when, m.Groups["lvl"].Value, m.Groups["cmp"].Value, AnsiStrip.Replace(m.Groups["msg"].Value, ""));
             }
         }
     }
