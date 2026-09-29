@@ -133,4 +133,15 @@ public class InstalledAppCatalogTests
     [InlineData("1.2.3", "1.2.3")]
     public void Trailing_version_is_dropped_from_the_name(string raw, string expected) =>
         Assert.Equal(expected, InstalledAppCatalog.WithoutTrailingVersion(raw));
+
+    [Fact]
+    public void Launcher_next_to_a_versioned_copy_is_the_same_program()
+    {
+        var app = Path.Combine(Path.GetTempPath(), "Edge", "Application");
+        var seen = new[] { Path.Combine(app, "154.0.4258.37", "msedge.exe") };
+
+        Assert.True(InstalledAppCatalog.SameProgramSeen(seen, Path.Combine(app, "msedge.exe")));
+        Assert.False(InstalledAppCatalog.SameProgramSeen(seen, Path.Combine(app, "other.exe")));
+        Assert.False(InstalledAppCatalog.SameProgramSeen(seen, Path.Combine(Path.GetTempPath(), "Elsewhere", "msedge.exe")));
+    }
 }

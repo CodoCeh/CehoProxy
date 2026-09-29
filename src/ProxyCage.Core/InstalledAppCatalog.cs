@@ -94,7 +94,7 @@ public static class InstalledAppCatalog
             {
                 using var app = paths.OpenSubKey(id);
                 var path = CleanWindowsExecutable(app?.GetValue(null) as string);
-                if (path is not null && File.Exists(path) && !IsUnder(path, windowsDir) && seen.Add(NormalizePath(path)))
+                if (path is not null && File.Exists(path) && !IsUnder(path, windowsDir) && !SameProgramSeen(seen, path) && seen.Add(NormalizePath(path)))
                     yield return new(Path.GetFileNameWithoutExtension(id), path, "Windows");
             }
         }
@@ -130,6 +130,15 @@ public static class InstalledAppCatalog
         if (name is null) return null;
         var cut = Regex.Replace(name, @"\s+v?\d+(\.\d+){1,3}$", "", RegexOptions.IgnoreCase).Trim();
         return cut.Length > 0 ? cut : name;
+    }
+
+    internal static bool SameProgramSeen(IEnumerable<string> seen, string path)
+    {
+        var name = Path.GetFileName(path);
+        var dir = Path.GetDirectoryName(path) ?? "";
+        return seen.Any(p => Path.GetFileName(p).Equals(name, StringComparison.OrdinalIgnoreCase)
+            && (NormalizePath(p).Equals(NormalizePath(path), StringComparison.OrdinalIgnoreCase)
+                || IsUnder(p, dir) || IsUnder(path, Path.GetDirectoryName(p) ?? "")));
     }
 
     internal static bool IsUnder(string path, string folder) =>
