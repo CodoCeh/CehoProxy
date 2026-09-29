@@ -2108,7 +2108,7 @@ if (cmd is "daemon" or "web")
     {
         if (proc is null) return Strings.T(cfg.Language, "already_off");
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        var clean = proc.Stop(8000);
+        var clean = proc.Stop(Os.IsWindows ? 2000 : 8000);
         Log.Info($"этап: остановка движка {watch.Elapsed.TotalSeconds:F1} с");
         watch.Restart();
         proc.Dispose();
