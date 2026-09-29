@@ -648,15 +648,15 @@ public static class Strings
         ["sites_mode_except"] = new("Все, кроме списка", "All except the list"),
         ["sites_mode_only"] = new("Только список", "Only the list"),
         ["sites_lede_except"] = new(
-            "Через туннель идёт весь трафик выбранных программ. Сайт из списка и его поддомены выходят напрямую. " +
-            "Если у сайта выбрана страна, он идёт через ноды этой страны.",
-            "Chosen apps send all their traffic through the tunnel. A listed site and its subdomains go direct. " +
-            "A site with a country uses nodes from that country."),
+            "Список действует только на браузеры в изоляции и на локальный прокси. Остальные программы идут через туннель целиком. " +
+            "Сайт из списка и его поддомены выходят напрямую. Если у сайта выбрана страна, он идёт через ноды этой страны.",
+            "The list applies only to isolated browsers and to the local proxy. Other apps go through the tunnel entirely. " +
+            "A listed site and its subdomains go direct. A site with a country uses nodes from that country."),
         ["sites_lede_only"] = new(
-            "Через туннель идут только сайты из списка. Остальное у выбранных программ и у браузера на локальном прокси выходит напрямую. " +
-            "Страна у сайта оставляет только ноды этой страны.",
-            "Only listed sites go through the tunnel. Everything else from chosen apps and from a browser on the local proxy goes direct. " +
-            "A country on a site keeps only nodes from that country."),
+            "Список действует только на браузеры в изоляции и на локальный прокси. Остальные программы идут через туннель целиком. " +
+            "У браузеров и на прокси через туннель идут только сайты из списка, остальное выходит напрямую. Страна у сайта оставляет только ноды этой страны.",
+            "The list applies only to isolated browsers and to the local proxy. Other apps go through the tunnel entirely. " +
+            "For browsers and the proxy only listed sites go through the tunnel, the rest goes direct. A country on a site keeps only nodes from that country."),
         ["sites_exit"] = new("Выход", "Exit"),
         ["sites_exit_direct"] = new("Напрямую", "Direct"),
         ["sites_exit_pool"] = new("Общий выход", "Shared exit"),

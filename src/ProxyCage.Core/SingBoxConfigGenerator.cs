@@ -352,6 +352,11 @@ public static class SingBoxConfigGenerator
             if (!groupedSuffixes.Contains(suffix)) siteSuffixes.Add(suffix);
         }
         var sitesOnly = cfg.SitesOnly;
+        var browserRegexes = new JsonArray();
+        foreach (var a in apps.Where(a => !a.NoInternet && AppDetector.IsBrowser(a)))
+        {
+            foreach (var rx in AppDetector.ToRegexes(a)) browserRegexes.Add(rx);
+        }
 
         void RouteCountry(JsonArray regex)
         {
@@ -380,10 +385,10 @@ public static class SingBoxConfigGenerator
             }
         }
 
-        void RouteApp(JsonArray regex, string outbound, string dnsServer, bool whole = false)
+        void RouteApp(JsonArray regex, string outbound, string dnsServer, bool browser)
         {
-            RouteCountry(regex);
-            if (sitesOnly && !whole)
+            if (browser) RouteCountry(regex);
+            if (sitesOnly && browser)
             {
                 if (siteSuffixes.Count > 0)
                 {
@@ -482,10 +487,10 @@ public static class SingBoxConfigGenerator
                 ["detour"] = AppOutboundTag(item.Index),
             });
             hijack.Add(regex.DeepClone());
-            RouteApp(regex, AppOutboundTag(item.Index), dnsTag, AppDetector.IsTelegram(item.App));
+            RouteApp(regex, AppOutboundTag(item.Index), dnsTag, AppDetector.IsBrowser(item.App));
         }
 
-        foreach (var group in unpinned.GroupBy(a => sitesOnly && AppDetector.IsTelegram(a)).OrderBy(g => g.Key))
+        foreach (var group in unpinned.GroupBy(AppDetector.IsBrowser).OrderBy(g => g.Key))
         {
             var regexes = new JsonArray();
             foreach (var a in group)
@@ -569,16 +574,17 @@ public static class SingBoxConfigGenerator
             // До правил программ и локального прокси: иначе сайт из списка всё равно уйдёт в туннель.
             if (siteSuffixes.Count > 0)
             {
-                dnsRules.Insert(0, new JsonObject
+                foreach (var who in SiteRuleScopes(browserRegexes))
                 {
-                    ["domain_suffix"] = siteSuffixes.DeepClone(),
-                    ["server"] = "dns-direct",
-                });
-                routeRules.Insert(tunHijackIndex + 1, new JsonObject
-                {
-                    ["domain_suffix"] = siteSuffixes,
-                    ["outbound"] = DirectTag,
-                });
+                    var dns = (JsonObject)who.DeepClone();
+                    dns["domain_suffix"] = siteSuffixes.DeepClone();
+                    dns["server"] = "dns-direct";
+                    dnsRules.Insert(0, dns);
+                    var route = (JsonObject)who.DeepClone();
+                    route["domain_suffix"] = siteSuffixes.DeepClone();
+                    route["outbound"] = DirectTag;
+                    routeRules.Insert(tunHijackIndex + 1, route);
+                }
             }
 
             InsertCountryMixed(tunHijackIndex + 1);
@@ -916,6 +922,13 @@ public static class SingBoxConfigGenerator
             ["final"] = "dns-direct",
             ["strategy"] = "ipv4_only",
         };
+    }
+
+    private static IEnumerable<JsonObject> SiteRuleScopes(JsonArray browserRegexes)
+    {
+        yield return new JsonObject { ["inbound"] = new JsonArray { "mixed-in" } };
+        if (browserRegexes.Count > 0)
+            yield return new JsonObject { ["process_path_regex"] = browserRegexes.DeepClone() };
     }
 
     private static JsonArray DnsServersWithDirect(string tunAddress, bool engineOnly = false)

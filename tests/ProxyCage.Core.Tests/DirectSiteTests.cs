@@ -83,7 +83,7 @@ public class DirectSiteTests
         var cfg = new CehoConfig
         {
             SiteMode = CehoConfig.SiteModeOnly,
-            Apps = { new AppEntry { Name = "app", Folder = "/tmp/ceho-site-app" } },
+            Apps = { new AppEntry { Name = "Chrome", Folder = "/tmp/ceho-site-app" } },
             DirectSites = { "ya.ru" },
         };
 
@@ -133,7 +133,7 @@ public class DirectSiteTests
         var cfg = new CehoConfig
         {
             SiteMode = CehoConfig.SiteModeOnly,
-            Apps = { new AppEntry { Name = "app", Folder = "/tmp/pinned-app", AllowedNodes = { pinned.Key } } },
+            Apps = { new AppEntry { Name = "Chrome", Folder = "/tmp/pinned-app", AllowedNodes = { pinned.Key } } },
             DirectSites = { "ya.ru" },
         };
 
@@ -215,6 +215,7 @@ public class DirectSiteTests
     {
         var nodes = Nodes();
         var cfg = App();
+        cfg.Apps[0].Name = "Chrome";
         cfg.Apps[0].AllowedNodes.Add(nodes.First(n => n.CountryCode == "NL").Key);
         cfg.DirectSites.Add("ya.ru");
         cfg.SiteCountries["ya.ru"] = "RU";

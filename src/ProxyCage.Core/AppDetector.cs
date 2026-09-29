@@ -381,6 +381,17 @@ public static class AppDetector
                || folder.Contains("/TelegramDesktop", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static bool IsBrowser(AppEntry app)
+    {
+        if (IsChromiumFamily(app)) return true;
+        var text = (app.Name ?? "") + "|" + app.Folder;
+        return new[]
+        {
+            "Firefox", "Yandex", "Vivaldi", "Safari", "Tor Browser", "LibreWolf", "Waterfox",
+            "Floorp", "Arc.app", "Zen Browser", "Thorium", "Browser",
+        }.Any(k => text.Contains(k, StringComparison.OrdinalIgnoreCase));
+    }
+
     internal static bool IsChromiumFamily(AppEntry app) =>
         IsChrome(app) || IsEdge(app) || IsBrave(app) || IsOpera(app);
 
