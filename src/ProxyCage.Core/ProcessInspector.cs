@@ -108,14 +108,36 @@ public static class ProcessInspector
         }
     }
 
-    public static IEnumerable<string> LocalAddressesOf(IReadOnlySet<int> pids) => Os.Kind switch
+    public static IEnumerable<(string Local, string Remote)> ConnectionsOf(IReadOnlySet<int> pids) => Os.Kind switch
     {
-        OsKind.Windows => WindowsLocalAddresses(pids),
-        OsKind.Linux => LinuxLocalAddresses(pids),
-        _ => MacLocalAddresses(pids),
+        OsKind.Windows => WindowsConnections(pids),
+        OsKind.Linux => LinuxConnections(pids),
+        _ => MacConnections(pids),
     };
 
-    private static IEnumerable<string> WindowsLocalAddresses(IReadOnlySet<int> pids)
+    public static bool IsPrivateEndpoint(string endpoint)
+    {
+        var host = StripPort(endpoint).Trim('[', ']');
+        var zone = host.IndexOf('%');
+        if (zone > 0) host = host[..zone];
+        if (!System.Net.IPAddress.TryParse(host, out var ip)) return false;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        if (System.Net.IPAddress.IsLoopback(ip)) return true;
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            var b6 = ip.GetAddressBytes();
+            return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6Multicast || (b6[0] & 0xFE) == 0xFC;
+        }
+        var b = ip.GetAddressBytes();
+        return b[0] == 10
+               || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+               || (b[0] == 192 && b[1] == 168)
+               || (b[0] == 169 && b[1] == 254)
+               || (b[0] == 100 && b[1] >= 64 && b[1] <= 127)
+               || b[0] >= 224;
+    }
+
+    private static IEnumerable<(string, string)> WindowsConnections(IReadOnlySet<int> pids)
     {
         var (_, text) = Os.Run("netstat", "-ano -p TCP", 15000);
         foreach (var line in text.Split('\n'))
@@ -127,11 +149,11 @@ public static class ProcessInspector
 
             if (!parts[3].Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase)) continue;
 
-            yield return StripPort(parts[1]);
+            yield return (StripPort(parts[1]), parts[2]);
         }
     }
 
-    private static IEnumerable<string> MacLocalAddresses(IReadOnlySet<int> pids)
+    private static IEnumerable<(string, string)> MacConnections(IReadOnlySet<int> pids)
     {
         if (pids.Count == 0) yield break;
         var (code, output) = Os.Run("lsof",
@@ -144,11 +166,12 @@ public static class ProcessInspector
             if (arrow < 0) continue;
             var lastSpace = line.LastIndexOf(' ', arrow);
             if (lastSpace < 0) continue;
-            yield return StripPort(line[(lastSpace + 1)..arrow]);
+            var end = line.IndexOf(' ', arrow);
+            yield return (StripPort(line[(lastSpace + 1)..arrow]), end < 0 ? line[(arrow + 2)..] : line[(arrow + 2)..end]);
         }
     }
 
-    private static IEnumerable<string> LinuxLocalAddresses(IReadOnlySet<int> pids)
+    private static IEnumerable<(string, string)> LinuxConnections(IReadOnlySet<int> pids)
     {
         var inodes = SocketInodesOf(pids);
         if (inodes.Count == 0) yield break;
@@ -165,7 +188,8 @@ public static class ProcessInspector
                 if (f.Length < 10) continue;
                 if (f[3] != "01") continue;
                 if (!inodes.Contains(f[9])) continue;
-                if (ParseHexAddress(f[1]) is { } addr) yield return addr;
+                if (ParseHexAddress(f[1]) is { } addr)
+                    yield return (addr, ParseHexAddress(f[2]) is { } remote ? $"{remote}:{ParsePort(f[2])}" : f[2]);
             }
         }
     }
@@ -208,6 +232,12 @@ public static class ProcessInspector
 
         try { return new System.Net.IPAddress(bytes).ToString(); }
         catch { return null; }
+    }
+
+    private static int ParsePort(string field)
+    {
+        var colon = field.IndexOf(':');
+        return colon > 0 && int.TryParse(field[(colon + 1)..], NumberStyles.HexNumber, null, out var port) ? port : 0;
     }
 
     private static string StripPort(string endpoint)

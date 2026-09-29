@@ -1608,7 +1608,7 @@ public sealed class WebServer
         sb.Append("</section>");
     }
 
-    public sealed record AppLive(string Folder, int Processes, int Tunneled, int Direct);
+    public sealed record AppLive(string Folder, int Processes, int Tunneled, int Direct, int EngineVpn = 0, int EngineDirect = 0);
 
     public Func<IReadOnlyList<AppLive>>? OnAppsLive { get; set; }
 
@@ -1665,6 +1665,7 @@ public sealed class WebServer
                 : info is null ? ("off", S("app_unknown", []))
                 : info.Processes == 0 ? ("off", S("app_idle", []))
                 : info.Direct > 0 ? ("bad", S("app_leak", [info.Direct]))
+                : info.EngineDirect > 0 ? ("warn", S("app_engine_direct", [info.EngineVpn, info.EngineDirect]))
                 : info.Tunneled > 0 ? ("on", S("app_tunnel", [info.Tunneled]))
                 : ("on", S("app_quiet", []));
             sb.Append("<li class=").Append(cls).Append("><span class=dot></span>");

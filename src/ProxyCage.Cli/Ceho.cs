@@ -706,18 +706,37 @@ public static class Ceho
             return new VerifyResult(null, 0, 0, 0, Strings.T(lang, "verify_not_running"));
 
         int tunneled = 0, direct = 0, local = 0;
-        foreach (var localAddr in ProcessInspector.LocalAddressesOf(pids))
+        var directTo = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var (localAddr, remote) in ProcessInspector.ConnectionsOf(pids))
         {
             if (localAddr.StartsWith(tunPrefix, StringComparison.Ordinal)) tunneled++;
 
-            else if (IsLoopback(localAddr)) local++;
-            else direct++;
+            else if (IsLoopback(localAddr) || ProcessInspector.IsPrivateEndpoint(remote)) local++;
+            else
+            {
+                direct++;
+                directTo.Add(remote);
+            }
         }
+        NoteDirect(app, directTo);
 
         if (tunneled + direct + local == 0)
             return new VerifyResult(null, pids.Count, 0, 0, Strings.T(lang, "verify_no_conn"));
 
         return new VerifyResult(direct == 0, pids.Count, tunneled, direct, null);
+    }
+
+    private static readonly Dictionary<string, string> LastDirect = new(StringComparer.OrdinalIgnoreCase);
+
+    private static void NoteDirect(AppEntry app, IReadOnlyCollection<string> directTo)
+    {
+        var text = string.Join(", ", directTo);
+        lock (LastDirect)
+        {
+            if (LastDirect.TryGetValue(app.Folder, out var last) && last == text) return;
+            LastDirect[app.Folder] = text;
+        }
+        if (text.Length > 0) Log.Warn($"{app.Label}: соединения мимо VPN — {text}");
     }
 
     private static bool IsLoopback(string address) =>

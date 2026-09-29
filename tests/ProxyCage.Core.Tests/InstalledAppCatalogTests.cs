@@ -74,4 +74,38 @@ public class InstalledAppCatalogTests
         }
         finally { Directory.Delete(root, true); }
     }
+
+    [Fact]
+    public void Store_packages_are_listed_by_latest_version_without_frameworks()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            void Package(string dir, string manifest, string? exe = null)
+            {
+                var full = Path.Combine(root, dir);
+                Directory.CreateDirectory(full);
+                File.WriteAllText(Path.Combine(full, "AppxManifest.xml"), manifest);
+                if (exe is not null) File.WriteAllText(Path.Combine(full, exe), "");
+            }
+            const string ns = "xmlns=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10\" xmlns:uap=\"http://schemas.microsoft.com/appx/manifest/uap/windows10\"";
+            string App(string display, string exe) =>
+                $"<Package {ns}><Properties><DisplayName>{display}</DisplayName></Properties>" +
+                $"<Applications><Application Id=\"App\" Executable=\"{exe}\"><uap:VisualElements DisplayName=\"{display}\"/></Application></Applications></Package>";
+
+            Package("TelegramMessengerLLP.TelegramDesktop_5.1.0.0_x64__t4vj0pshhgkwm", App("Telegram Desktop", "Telegram.exe"), "Telegram.exe");
+            Package("TelegramMessengerLLP.TelegramDesktop_5.10.2.0_x64__t4vj0pshhgkwm", App("Telegram Desktop", "Telegram.exe"), "Telegram.exe");
+            Package("Vendor.Tool_1.0.0.0_x64__abc", App("ms-resource:AppName", "Tool.exe"), "Tool.exe");
+            Package("Microsoft.VCLibs.140.00_14.0.0.0_x64__8wekyb3d8bbwe",
+                $"<Package {ns}><Properties><DisplayName>VCLibs</DisplayName><Framework>true</Framework></Properties></Package>");
+            Package("Vendor.Tool_1.0.0.0_neutral_split.scale-100_abc", $"<Package {ns}><Properties><DisplayName>x</DisplayName></Properties></Package>");
+
+            var found = InstalledAppCatalog.DetectWindowsStore(root).OrderBy(e => e.Name).ToList();
+
+            Assert.Equal(new[] { "Telegram Desktop", "Tool" }, found.Select(e => e.Name));
+            Assert.Contains("_5.10.2.0_", found[0].Path);
+            Assert.All(found, e => Assert.Equal("Microsoft Store", e.Source));
+        }
+        finally { Directory.Delete(root, true); }
+    }
 }

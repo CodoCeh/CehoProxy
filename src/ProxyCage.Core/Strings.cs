@@ -630,6 +630,7 @@ public static class Strings
         ["app_idle"] = new("не запущена", "not running"),
         ["app_leak"] = new("соединений мимо VPN: {0}", "connections bypassing the VPN: {0}"),
         ["app_tunnel"] = new("через VPN · соединений: {0}", "through the VPN · connections: {0}"),
+        ["app_engine_direct"] = new("через VPN: {0} · напрямую по правилам: {1}", "through the VPN: {0} · direct by the rules: {1}"),
         ["app_quiet"] = new("запущена, соединений нет", "running, no connections"),
         ["selfcheck_title"] = new("Самопроверка", "Self-check"),
         ["check_more"] = new("Ещё замечаний: {0}", "More findings: {0}"),

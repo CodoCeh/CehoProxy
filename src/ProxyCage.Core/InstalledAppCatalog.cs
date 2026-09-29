@@ -95,6 +95,60 @@ public static class InstalledAppCatalog
                     yield return new(Path.GetFileNameWithoutExtension(id), path, "Windows");
             }
         }
+
+        foreach (var entry in DetectWindowsStore(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsApps")))
+            yield return entry;
+    }
+
+    internal static IEnumerable<Entry> DetectWindowsStore(string root)
+    {
+        List<string> packages;
+        try { packages = Directory.EnumerateDirectories(root).ToList(); }
+        catch { yield break; }
+
+        var groups = packages
+            .Select(dir => (Dir: dir, Parts: Path.GetFileName(dir).Split('_')))
+            .Where(p => p.Parts.Length >= 2)
+            .GroupBy(p => p.Parts[0], StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in groups)
+        {
+            var entry = group
+                .OrderByDescending(p => Version.TryParse(p.Parts[1], out var v) ? v : new Version())
+                .Select(p => ReadStoreManifest(p.Dir, p.Parts[0]))
+                .FirstOrDefault(e => e is not null);
+            if (entry is not null) yield return entry;
+        }
+    }
+
+    internal static Entry? ReadStoreManifest(string dir, string packageName)
+    {
+        System.Xml.Linq.XDocument doc;
+        try { doc = System.Xml.Linq.XDocument.Load(Path.Combine(dir, "AppxManifest.xml")); }
+        catch { return null; }
+
+        var all = doc.Descendants().ToList();
+        if (all.Any(e => e.Name.LocalName == "Framework" && e.Value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase)))
+            return null;
+
+        var app = all.FirstOrDefault(e => e.Name.LocalName == "Application"
+            && ((string?)e.Attribute("Executable"))?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
+        if (app is null) return null;
+
+        var exe = Path.Combine(dir, ((string)app.Attribute("Executable")!).Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(exe)) return null;
+
+        var name = new[]
+            {
+                all.FirstOrDefault(e => e.Name.LocalName == "DisplayName" && e.Parent?.Name.LocalName == "Properties")?.Value,
+                (string?)app.Descendants().FirstOrDefault(e => e.Name.LocalName == "VisualElements")?.Attribute("DisplayName"),
+            }
+            .Select(n => n?.Trim())
+            .FirstOrDefault(n => !string.IsNullOrEmpty(n) && !n.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase))
+            ?? packageName[(packageName.LastIndexOf('.') + 1)..];
+
+        return new(name, exe, "Microsoft Store");
     }
 
     [SupportedOSPlatform("windows")]

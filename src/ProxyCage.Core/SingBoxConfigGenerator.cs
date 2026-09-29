@@ -380,10 +380,10 @@ public static class SingBoxConfigGenerator
             }
         }
 
-        void RouteApp(JsonArray regex, string outbound, string dnsServer)
+        void RouteApp(JsonArray regex, string outbound, string dnsServer, bool whole = false)
         {
             RouteCountry(regex);
-            if (sitesOnly)
+            if (sitesOnly && !whole)
             {
                 if (siteSuffixes.Count > 0)
                 {
@@ -482,18 +482,18 @@ public static class SingBoxConfigGenerator
                 ["detour"] = AppOutboundTag(item.Index),
             });
             hijack.Add(regex.DeepClone());
-            RouteApp(regex, AppOutboundTag(item.Index), dnsTag);
+            RouteApp(regex, AppOutboundTag(item.Index), dnsTag, AppDetector.IsTelegram(item.App));
         }
 
-        if (unpinned.Count > 0)
+        foreach (var group in unpinned.GroupBy(a => sitesOnly && AppDetector.IsTelegram(a)).OrderBy(g => g.Key))
         {
             var regexes = new JsonArray();
-            foreach (var a in unpinned)
+            foreach (var a in group)
             {
                 foreach (var rx in AppDetector.ToRegexes(a)) regexes.Add(rx);
             }
             hijack.Add(regexes.DeepClone());
-            RouteApp(regexes, ProxyTag, "dns-proxy");
+            RouteApp(regexes, ProxyTag, "dns-proxy", group.Key);
         }
 
         // Перехватываем только запросы имён от выбранных программ. Запросы остальной

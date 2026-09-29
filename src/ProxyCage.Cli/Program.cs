@@ -2147,10 +2147,12 @@ if (cmd is "daemon" or "web")
     web.OnAppsLive = () =>
     {
         var c = CehoConfig.Load(Ceho.ConfigPath);
+        var engine = EngineConnections.Fetch(c.ClashApiPort);
         return c.Apps.Where(a => a.Enabled).Select(a =>
         {
             var v = Ceho.VerifyApp(a, c.TunAddress, c.Language);
-            return new WebServer.AppLive(a.Folder, v.Processes, v.Tunneled, v.Direct);
+            var (vpn, direct) = EngineConnections.CountFor(a, engine);
+            return new WebServer.AppLive(a.Folder, v.Processes, v.Tunneled, v.Direct, vpn, direct);
         }).ToList();
     };
     web.OnStop = () => Task.FromResult(StopTunnel());
