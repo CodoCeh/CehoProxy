@@ -499,7 +499,7 @@ public static class Ceho
             if (Os.ResolveCurl() is { } curl)
             {
                 var (code, output) = Os.Run(curl,
-                    $"-s --max-time 15 -x socks5h://127.0.0.1:{mixedPort} https://api.ipify.org", 20000);
+                    $"-s --max-time 15 -x socks5h://127.0.0.1:{mixedPort} https://{SingBoxConfigGenerator.ExitProbeHost}", 20000);
                 if (code != 0) return ((string?)null, (string?)null);
                 ipText = output.Trim();
             }
@@ -508,7 +508,7 @@ public static class Ceho
                 try
                 {
                     using var http = MakeClient($"http://127.0.0.1:{mixedPort}", SubscriptionFetchPersona.Client, 15);
-                    ipText = (await http.GetStringAsync("https://api.ipify.org", CountryRefreshCancellation.Token)).Trim();
+                    ipText = (await http.GetStringAsync($"https://{SingBoxConfigGenerator.ExitProbeHost}", CountryRefreshCancellation.Token)).Trim();
                 }
                 catch { return ((string?)null, (string?)null); }
             }

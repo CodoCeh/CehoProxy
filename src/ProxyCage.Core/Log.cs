@@ -102,7 +102,7 @@ public static class Log
     {
         if (string.IsNullOrWhiteSpace(line)) return;
         if (IsEngineNoise(line)) return;
-        Write(EngineLevel(line), EngineComponent, line.Trim());
+        Write(EngineLevel(line), EngineComponent, AnsiStrip.Replace(line, "").Trim());
     }
 
     /// <summary>

@@ -233,7 +233,7 @@ public sealed class SingBoxProcess : IDisposable
         si.hStdOutput = write;
         si.hStdError = write;
 
-        var cmdLine = $"\"{exePath}\" run -c \"{configPath}\"";
+        var cmdLine = $"\"{exePath}\" run --disable-color -c \"{configPath}\"";
 
         var started = CreateProcess(
             null, cmdLine, IntPtr.Zero, IntPtr.Zero, true,
@@ -285,6 +285,7 @@ public sealed class SingBoxProcess : IDisposable
             RedirectStandardOutput = true,
         };
         psi.ArgumentList.Add("run");
+        psi.ArgumentList.Add("--disable-color");
         psi.ArgumentList.Add("-c");
         psi.ArgumentList.Add(configPath);
 

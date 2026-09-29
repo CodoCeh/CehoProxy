@@ -14,6 +14,7 @@ public static class SingBoxConfigGenerator
 {
     private const string ProxyTag = "proxy";
     private const string DirectTag = "direct";
+    public const string ExitProbeHost = "api.ipify.org";
 
     internal static JsonArray OwnProcessRegexes() => new()
     {
@@ -616,6 +617,13 @@ public static class SingBoxConfigGenerator
             });
             InsertCountryMixed(tunHijackIndex + 1);
         }
+
+        routeRules.Insert(tunHijackIndex + 1, new JsonObject
+        {
+            ["inbound"] = new JsonArray { "mixed-in" },
+            ["domain"] = new JsonArray { ExitProbeHost },
+            ["outbound"] = ProxyTag,
+        });
 
         if (offline.Count > 0)
         {
