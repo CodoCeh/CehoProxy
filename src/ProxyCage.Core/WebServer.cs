@@ -599,7 +599,7 @@ public sealed class WebServer
 
                     var displayName = f.GetValueOrDefault("displayName", "").Trim();
                     app.DisplayName = displayName.Length > 0 ? displayName : null;
-                    Save(cfg);
+                    cfg.SaveSubscriptionStatus(_configPath);
                     return (S("app_renamed", app.Label), false, null);
                 }
 

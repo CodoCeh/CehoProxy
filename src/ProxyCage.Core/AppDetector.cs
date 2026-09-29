@@ -143,8 +143,11 @@ public static class AppDetector
         return entry.Length > 0 ? entry : leaf;
     }
 
-    private static bool LooksLikeVersion(string name) =>
-        name.Length > 0 && char.IsDigit(name[0]) && name.All(c => char.IsDigit(c) || c is '.' or '-' or '_');
+    private static bool LooksLikeVersion(string name)
+    {
+        if (name.Length > 1 && name[0] is 'v' or 'V') name = name[1..];
+        return name.Length > 0 && char.IsDigit(name[0]) && name.All(c => char.IsDigit(c) || c is '.' or '-' or '_');
+    }
 
     private static string? BundleRoot(string path)
     {

@@ -261,6 +261,7 @@ public static class Strings
         ["doc_left_title"] = new("Осталось вам", "Left for you"),
         ["doc_left_n"] = new("Осталось вам: {0}", "Left for you: {0}"),
         ["doc_warnings"] = new("Замечаний: {0}", "Warnings: {0}"),
+        ["doc_works_but"] = new("Работает, но есть что поправить.", "Working, with something to fix."),
         ["doc_can_fix"] = new("Это доктор чинит сам.", "The doctor fixes this himself."),
         ["doc_what_to_do"] = new("Что делать: {0}", "What to do: {0}"),
         ["doc_nothing_to_fix"] = new(
@@ -565,16 +566,16 @@ public static class Strings
             "После отсева медленнее {0} мс в пуле не осталось ни одной ноды. Поднимите порог или выключите отсев: chp speed off",
             "No node is left in the pool after dropping everything slower than {0} ms. Raise the threshold or turn the filter off: chp speed off"),
         ["speed_unmeasured_note"] = new(
-            "Ноды hysteria2 и tuic порог не отсеивает — по причине выше.",
-            "The threshold never drops hysteria2 and tuic nodes, for the reason above."),
+            "Ноду без замера порог не отсеивает.",
+            "The threshold never drops a node that has no measurement."),
         ["speed_usage"] = new(
             "Нужно: chp speed <мс> · chp speed off",
             "Usage: chp speed <ms> · chp speed off"),
         ["udp_not_measured"] = new(
-            "«Не измерено» у hysteria2 и tuic — это норма: они работают поверх UDP, " +
-            "а замер идёт TCP-рукопожатием, и он бы соврал.",
-            "\"Not measured\" for hysteria2 and tuic is expected: they run over UDP, while the probe " +
-            "is a TCP handshake, which would lie."),
+            "Ноды hysteria2 и tuic работают поверх UDP: их задержку видно, только когда защита включена. " +
+            "При выключенной защите у них «не измерено», это норма.",
+            "hysteria2 and tuic nodes run over UDP: their latency shows only while protection is on. " +
+            "With protection off they read \"not measured\", which is expected."),
         ["nav_state"] = new("Состояние", "Status"),
         ["nav_apps"] = new("Программы", "Apps"),
         ["nav_sites"] = new("Сайты", "Sites"),
@@ -802,7 +803,7 @@ public static class Strings
         ["naive_password_keep"] = new("Пусто — пароль не менять", "Leave blank to keep the password"),
         ["subs_kind_label"] = new("Тип подключения", "Connection type"),
         ["subs_kind_sub"] = new("Подписка", "Subscription"),
-        ["subs_kind_naive"] = new("NaiveProxy", "NaiveProxy"),
+        ["subs_kind_naive"] = new("Свой сервер (NaiveProxy)", "Own server (NaiveProxy)"),
         ["subs_name_placeholder"] = new("Моя подписка", "My subscription"),
         ["subs_url_placeholder"] = new("https://…", "https://…"),
         ["subs_kind_sub_hint"] = new(

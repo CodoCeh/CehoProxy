@@ -151,7 +151,7 @@ public static class Doctor
         string S(string key, params object[] a) => Strings.T(l, key, a);
 
         if (!r.Healthy) return S("pf_blockers", r.Blockers);
-        return r.Warnings > 0 ? $"{S("doc_all_ok")} · {S("doc_warnings", r.Warnings)}" : S("doc_all_ok");
+        return r.Warnings > 0 ? $"{S("doc_works_but")} {S("doc_warnings", r.Warnings)}" : S("doc_all_ok");
     }
 
     /// <summary>Итог починки одной фразой: её показывают и панель, и терминал.</summary>

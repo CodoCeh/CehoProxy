@@ -550,7 +550,7 @@ switch (cmd)
         if (app is null) { Console.Error.WriteLine(Cli.S(cfg, "err_not_in_list")); return 1; }
 
         app.DisplayName = label;
-        cfg.Save(Ceho.ConfigPath);
+        cfg.SaveSubscriptionStatus(Ceho.ConfigPath);
         Console.WriteLine(Cli.S(cfg, "app_renamed", app.Label));
         return 0;
     }

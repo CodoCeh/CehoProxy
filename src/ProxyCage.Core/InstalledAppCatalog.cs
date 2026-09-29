@@ -62,12 +62,13 @@ public static class InstalledAppCatalog
             (RegistryHive.CurrentUser, RegistryView.Registry32),
         };
 
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (hive, view) in roots)
         {
             using var baseKey = RegistryKey.OpenBaseKey(hive, view);
             using var uninstall = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
             if (uninstall is null) continue;
-            foreach (var entry in ReadWindowsUninstall(uninstall)) yield return entry;
+            foreach (var entry in ReadWindowsUninstall(uninstall)) { seen.Add(NormalizePath(entry.Path)); yield return entry; }
         }
 
         foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
@@ -78,9 +79,11 @@ public static class InstalledAppCatalog
                 using var uninstall = users.OpenSubKey(
                     $@"{sid}\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
                 if (uninstall is null) continue;
-                foreach (var entry in ReadWindowsUninstall(uninstall)) yield return entry;
+                foreach (var entry in ReadWindowsUninstall(uninstall)) { seen.Add(NormalizePath(entry.Path)); yield return entry; }
             }
         }
+
+        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
 
         foreach (var (hive, view) in roots)
         {
@@ -91,7 +94,7 @@ public static class InstalledAppCatalog
             {
                 using var app = paths.OpenSubKey(id);
                 var path = CleanWindowsExecutable(app?.GetValue(null) as string);
-                if (path is not null && File.Exists(path))
+                if (path is not null && File.Exists(path) && !IsUnder(path, windowsDir) && seen.Add(NormalizePath(path)))
                     yield return new(Path.GetFileNameWithoutExtension(id), path, "Windows");
             }
         }
@@ -122,6 +125,16 @@ public static class InstalledAppCatalog
         }
     }
 
+    internal static string? WithoutTrailingVersion(string? name)
+    {
+        if (name is null) return null;
+        var cut = Regex.Replace(name, @"\s+v?\d+(\.\d+){1,3}$", "", RegexOptions.IgnoreCase).Trim();
+        return cut.Length > 0 ? cut : name;
+    }
+
+    internal static bool IsUnder(string path, string folder) =>
+        folder.Length > 0 && NormalizePath(path).StartsWith(NormalizePath(folder) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
     internal static Entry? ReadStoreManifest(string dir, string packageName)
     {
         System.Xml.Linq.XDocument doc;
@@ -133,7 +146,8 @@ public static class InstalledAppCatalog
             return null;
 
         var app = all.FirstOrDefault(e => e.Name.LocalName == "Application"
-            && ((string?)e.Attribute("Executable"))?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
+            && ((string?)e.Attribute("Executable"))?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true
+            && !string.Equals((string?)e.Descendants().FirstOrDefault(v => v.Name.LocalName == "VisualElements")?.Attribute("AppListEntry"), "none", StringComparison.OrdinalIgnoreCase));
         if (app is null) return null;
 
         var exe = Path.Combine(dir, ((string)app.Attribute("Executable")!).Replace('/', Path.DirectorySeparatorChar));
@@ -145,8 +159,13 @@ public static class InstalledAppCatalog
                 (string?)app.Descendants().FirstOrDefault(e => e.Name.LocalName == "VisualElements")?.Attribute("DisplayName"),
             }
             .Select(n => n?.Trim())
-            .FirstOrDefault(n => !string.IsNullOrEmpty(n) && !n.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase))
-            ?? packageName[(packageName.LastIndexOf('.') + 1)..];
+            .FirstOrDefault(n => !string.IsNullOrEmpty(n) && !n.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase));
+        if (name is null)
+        {
+            var publisher = (string?)all.FirstOrDefault(e => e.Name.LocalName == "Identity")?.Attribute("Publisher") ?? "";
+            if (publisher.Contains("O=Microsoft Corporation", StringComparison.OrdinalIgnoreCase)) return null;
+            name = packageName[(packageName.LastIndexOf('.') + 1)..];
+        }
 
         return new(name, exe, "Microsoft Store");
     }
@@ -158,7 +177,7 @@ public static class InstalledAppCatalog
         {
             using var app = uninstall.OpenSubKey(id);
             if (app?.GetValue("SystemComponent") is int system && system == 1) continue;
-            var name = (app?.GetValue("DisplayName") as string)?.Trim();
+            var name = WithoutTrailingVersion((app?.GetValue("DisplayName") as string)?.Trim());
             if (string.IsNullOrWhiteSpace(name)) continue;
 
             var icon = CleanWindowsExecutable(app?.GetValue("DisplayIcon") as string);

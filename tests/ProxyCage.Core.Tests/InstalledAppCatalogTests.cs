@@ -76,7 +76,7 @@ public class InstalledAppCatalogTests
     }
 
     [Fact]
-    public void Store_packages_are_listed_by_latest_version_without_frameworks()
+    public void Store_packages_are_listed_by_latest_version_without_frameworks_or_hidden_system_parts()
     {
         var root = Directory.CreateTempSubdirectory().FullName;
         try
@@ -99,6 +99,13 @@ public class InstalledAppCatalogTests
             Package("Microsoft.VCLibs.140.00_14.0.0.0_x64__8wekyb3d8bbwe",
                 $"<Package {ns}><Properties><DisplayName>VCLibs</DisplayName><Framework>true</Framework></Properties></Package>");
             Package("Vendor.Tool_1.0.0.0_neutral_split.scale-100_abc", $"<Package {ns}><Properties><DisplayName>x</DisplayName></Properties></Package>");
+            Package("Microsoft.BingNews_4.1.0.0_x64__8wekyb3d8bbwe",
+                $"<Package {ns}><Identity Name=\"Microsoft.BingNews\" Publisher=\"CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US\"/>" +
+                "<Properties><DisplayName>ms-resource:AppName</DisplayName></Properties>" +
+                "<Applications><Application Id=\"App\" Executable=\"News.exe\"><uap:VisualElements DisplayName=\"ms-resource:AppName\"/></Application></Applications></Package>", "News.exe");
+            Package("Vendor.Helper_1.0.0.0_x64__abc",
+                $"<Package {ns}><Properties><DisplayName>Helper</DisplayName></Properties>" +
+                "<Applications><Application Id=\"App\" Executable=\"Helper.exe\"><uap:VisualElements DisplayName=\"Helper\" AppListEntry=\"none\"/></Application></Applications></Package>", "Helper.exe");
 
             var found = InstalledAppCatalog.DetectWindowsStore(root).OrderBy(e => e.Name).ToList();
 
@@ -108,4 +115,22 @@ public class InstalledAppCatalogTests
         }
         finally { Directory.Delete(root, true); }
     }
+
+    [Fact]
+    public void Only_folders_inside_count_as_under()
+    {
+        var win = Path.Combine(Path.GetTempPath(), "Win");
+        Assert.True(InstalledAppCatalog.IsUnder(Path.Combine(win, "System32", "wab.exe"), win));
+        Assert.False(InstalledAppCatalog.IsUnder(Path.Combine(Path.GetTempPath(), "WinApps", "a.exe"), win));
+        Assert.False(InstalledAppCatalog.IsUnder(Path.Combine(win, "a.exe"), ""));
+    }
+
+    [Theory]
+    [InlineData("Opera Stable 135.0.5973.92", "Opera Stable")]
+    [InlineData("7-Zip 24.08 (x64)", "7-Zip 24.08 (x64)")]
+    [InlineData("Notepad++ v8.6", "Notepad++")]
+    [InlineData("Telegram Desktop", "Telegram Desktop")]
+    [InlineData("1.2.3", "1.2.3")]
+    public void Trailing_version_is_dropped_from_the_name(string raw, string expected) =>
+        Assert.Equal(expected, InstalledAppCatalog.WithoutTrailingVersion(raw));
 }

@@ -353,4 +353,20 @@ public class PlatformTests
             ignoreCase: true);
         Assert.Equal("Google Chrome", d.Name);
     }
+
+    [Fact]
+    public void Version_folder_with_a_v_prefix_is_named_after_its_parent()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var folder = Path.Combine(root, "WindowsPowerShell", "v1.0");
+            Directory.CreateDirectory(folder);
+            var exe = Path.Combine(folder, "powershell.exe");
+            File.WriteAllText(exe, "");
+
+            Assert.Equal("WindowsPowerShell", AppDetector.Detect(exe).Name);
+        }
+        finally { Directory.Delete(root, true); }
+    }
 }
