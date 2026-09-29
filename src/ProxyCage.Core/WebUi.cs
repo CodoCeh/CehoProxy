@@ -468,7 +468,18 @@ public static class WebUi
       if(!box||!box.dataset.job)return;
       var id=box.dataset.job,fill=document.getElementById('jf'),
           stage=document.getElementById('js'),num=document.getElementById('jn'),
+          time=document.getElementById('jt'),
           fails=0, waiting=false;
+      function finish(result){
+        var q=new URLSearchParams(location.search);
+        q.delete('job');
+        if(result){
+          var before=q.get('m');
+          q.set('m',before&&before!==result?before+' '+result:result);
+          q.set('e','0');
+        }
+        location.replace(location.pathname+'?'+q.toString());
+      }
       function waitPanel(){
         if(waiting)return;
         waiting=true;
@@ -494,13 +505,17 @@ public static class WebUi
             if(fill)fill.style.transform='scaleX('+(j.percent/100)+')';
             if(num)num.textContent=j.percent+'%';
             if(stage&&j.stage)stage.textContent=j.stage;
+            if(time&&box.dataset.run&&j.state==='running')
+              time.textContent=box.dataset.run.replace('{0}',Number(j.seconds||0).toLocaleString(document.documentElement.lang,{minimumFractionDigits:1,maximumFractionDigits:1}));
             if(j.state==='running'){setTimeout(tick,700);return}
+            if(j.state==='gone'){finish('');return}
             if(j.state==='failed'&&box.dataset.relaunch){
               var tab=new URLSearchParams(location.search).get('tab')||'state';
               location.replace('/?tab='+encodeURIComponent(tab)+'&m='+encodeURIComponent(j.result||'Обновление не удалось.')+'&e=1');
               return;
             }
             if((j.relaunch||box.dataset.relaunch)&&!j.isError){waitPanel();return}
+            if(j.state==='done'&&!j.isError){finish(j.result||'');return}
             location.reload();
           })
           .catch(function(){

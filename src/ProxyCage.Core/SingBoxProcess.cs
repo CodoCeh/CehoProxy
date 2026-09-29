@@ -313,15 +313,26 @@ public sealed class SingBoxProcess : IDisposable
         }
     }
 
+    public static async Task<bool> ListensAsync(params int[] ports)
+    {
+        foreach (var port in ports)
+        {
+            using var client = new System.Net.Sockets.TcpClient();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+            try { await client.ConnectAsync(System.Net.IPAddress.Loopback, port, timeout.Token); }
+            catch { return false; }
+        }
+        return true;
+    }
+
     public bool Stop(int gracefulTimeoutMs = 5000)
     {
         if (_unix is not null) return StopUnix(gracefulTimeoutMs);
 
         if (_hProcess == IntPtr.Zero || !IsRunning) return true;
 
-        GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, ProcessId);
-
-        if (WaitForSingleObject(_hProcess, (uint)gracefulTimeoutMs) == 0)
+        if (GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, ProcessId)
+            && WaitForSingleObject(_hProcess, (uint)gracefulTimeoutMs) == 0)
             return true;
 
         TerminateProcess(_hProcess, 1);

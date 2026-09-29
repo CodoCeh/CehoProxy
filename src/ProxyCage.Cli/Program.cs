@@ -2055,8 +2055,13 @@ if (cmd is "daemon" or "web")
         Log.Info($"движок запущен, pid {p.ProcessId}");
 
         report?.Stage(Strings.T(c.Language, "stage_engine_wait"), 98);
-        for (var waited = 0; waited < 20000 && p.IsRunning; waited += 500)
-            await Task.Delay(500);
+        var answeredAt = -1;
+        for (var waited = 0; waited < 20000 && p.IsRunning; waited += 250)
+        {
+            if (answeredAt < 0 && await SingBoxProcess.ListensAsync(c.MixedPort, c.ClashApiPort)) answeredAt = waited;
+            if (answeredAt >= 0 && waited - answeredAt >= 1500) break;
+            await Task.Delay(250);
+        }
         TunCleanup.Remember(Ceho.Root, c.TunAddress, Log.Info, before);
         if (p.IsRunning)
         {

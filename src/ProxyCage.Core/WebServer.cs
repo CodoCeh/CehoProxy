@@ -1350,15 +1350,16 @@ public sealed class WebServer
 
         sb.Append("<div class=\"job ").Append(cls).Append("\" id=jp data-job=\"").Append(E(job.Id)).Append("\"")
           .Append(job.RelaunchPanel ? " data-relaunch=1" : "")
-          .Append(" data-wait=\"").Append(E(S("job_wait_panel", []))).Append("\">");
+          .Append(" data-wait=\"").Append(E(S("job_wait_panel", []))).Append("\"")
+          .Append(" data-run=\"").Append(E(S("job_running", ["{0}"]))).Append("\">");
         sb.Append("<div class=job-head><b>").Append(E(job.Title)).Append("</b>")
           .Append("<span class=job-num id=jn>").Append(job.Percent).Append("%</span></div>");
         sb.Append("<div class=bar><span id=jf style=\"transform:scaleX(")
           .Append((job.Percent / 100.0).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(")\"></span></div>");
         sb.Append("<div class=job-stage id=js>").Append(E(job.Stage)).Append("</div>");
-        sb.Append("<div class=job-foot>")
+        sb.Append("<div class=job-foot><span id=jt>")
           .Append(E(S(job.Running ? "job_running" : job.IsError ? "job_failed" : "job_done",
-              new object[] { job.Elapsed.TotalSeconds.ToString("F1") })));
+              new object[] { job.Elapsed.TotalSeconds.ToString("F1") }))).Append("</span>");
 
         if (!job.Running)
             sb.Append(" · <a href=\"/?tab=").Append(E(tab)).Append("\">").Append(E(S("job_hide", [])))
