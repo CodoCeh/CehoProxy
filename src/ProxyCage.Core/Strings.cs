@@ -700,6 +700,7 @@ public static class Strings
             "Пока ничего не добавлено. Выберите установленное приложение или укажите путь ниже.",
             "Nothing added yet. Choose an installed app or enter its path below."),
         ["apps_installed_title"] = new("Из установленных", "From installed apps"),
+        ["apps_rescan"] = new("Обновить список", "Refresh the list"),
         ["apps_installed_hint"] = new(
             "Выберите программу — путь и область правила определятся автоматически.",
             "Choose an app and its path and rule scope will be detected automatically."),

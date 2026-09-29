@@ -192,6 +192,10 @@ public static class WebUi
     .app-entry-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;
       margin-top:24px;padding-top:22px;border-top:1px solid var(--line)}
     .app-entry{min-width:0}
+    .app-entry h3{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .app-entry h3 a.small{padding:4px 12px;border:1px solid var(--line);border-radius:10px;color:var(--text);
+      text-decoration:none;font-weight:500;font-size:var(--fs-s)}
+    .app-entry h3 a.small:hover{background:var(--panel2)}
     .app-entry .hint{min-height:40px;margin-top:0}
     form.app-add{align-items:stretch}
     form.app-pick{margin:10px 0 4px}

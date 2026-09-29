@@ -12,10 +12,10 @@ public static class InstalledAppCatalog
     private static DateTime _cachedAtUtc;
     private static string? _cachedLang;
 
-    public static IReadOnlyList<Entry> Detect(string lang = "ru")
+    public static IReadOnlyList<Entry> Detect(string lang = "ru", bool fresh = false)
     {
         lock (CacheGate)
-            if (_cached is not null && _cachedLang == lang
+            if (!fresh && _cached is not null && _cachedLang == lang
                 && DateTime.UtcNow - _cachedAtUtc < TimeSpan.FromMinutes(5))
                 return _cached;
 

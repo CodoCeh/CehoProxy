@@ -2015,7 +2015,7 @@ public sealed class WebServer
         }
 
         IReadOnlyList<InstalledAppCatalog.Entry> installed;
-        try { installed = InstalledAppCatalog.Detect(cfg.Language); }
+        try { installed = InstalledAppCatalog.Detect(cfg.Language, fresh: true); }
         catch { installed = Array.Empty<InstalledAppCatalog.Entry>(); }
 
         if (cfg.Apps.Count == 0)
@@ -2057,7 +2057,8 @@ public sealed class WebServer
         }
 
         sb.Append("<div class=app-entry-grid><div class=app-entry><h3>")
-          .Append(E(S("apps_installed_title", []))).Append("</h3>")
+          .Append(E(S("apps_installed_title", [])))
+          .Append(" <a class=\"ghost small\" href=\"/?tab=apps\">").Append(E(S("apps_rescan", []))).Append("</a></h3>")
           .Append("<p class=hint>").Append(E(S("apps_installed_hint", []))).Append("</p>");
         if (installed.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("apps_installed_none", []))).Append("</p>");
