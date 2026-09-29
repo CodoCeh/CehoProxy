@@ -1934,6 +1934,9 @@ if (cmd is "daemon" or "web")
         || reason.Contains("not ready", StringComparison.OrdinalIgnoreCase)
         || reason.Contains("device is not ready", StringComparison.OrdinalIgnoreCase);
 
+    long cleanedAt = 0;
+    IReadOnlyList<string>? cleanedDevices = null;
+
     async Task<string?> StartTunnel(IStageReport? report)
     {
         using (EngineMutex.Acquire(Ceho.Root))
@@ -2039,7 +2042,18 @@ if (cmd is "daemon" or "web")
         StopGuard();
 
         var before = TunCleanup.Devices();
-        if (!handover)
+        var justCleaned = cleanedDevices is not null
+            && Environment.TickCount64 - cleanedAt < 60000
+            && before.Order(StringComparer.OrdinalIgnoreCase).SequenceEqual(
+                cleanedDevices.Order(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase)
+            && !TunCleanup.IsOurEngineRunning(Ceho.RuntimeConfigPath, Ceho.Root);
+        cleanedDevices = null;
+        if (!handover && justCleaned)
+        {
+            Log.Info("уборка перед запуском не нужна: только что убрано при остановке");
+            TunCleanup.PrepareWintunForStart(Log.Info);
+        }
+        else if (!handover)
         {
             // Движок от упавшего прошлого сеанса нам не сын: демон его не убьёт, уходя,
             // а порт прокси он держит — и новый запуск падает на «адрес уже занят».
@@ -2120,12 +2134,13 @@ if (cmd is "daemon" or "web")
         {
             Log.Warn("движок не завершился по-хорошему, снимаю следы");
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
-            Thread.Sleep(800);
         }
 
         TunCleanup.ReleaseOurs(
             Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Log.Info,
             attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
+        if (Os.IsWindows && TunCleanup.LastReleaseClean)
+            (cleanedAt, cleanedDevices) = (Environment.TickCount64, TunCleanup.Devices());
         Log.Info($"этап: уборка после остановки {watch.Elapsed.TotalSeconds:F1} с");
         StartGuard().GetAwaiter().GetResult();
         return null;

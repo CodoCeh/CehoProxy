@@ -126,6 +126,8 @@ public static class TunCleanup
     /// aggressive — после FATAL «file already exists»: снимаем всё с нашим адресом, не только по записи.
     /// Возвращает, сколько следов сняли (маршруты + адаптеры): доктор показывает это число.
     /// </summary>
+    public static bool LastReleaseClean { get; private set; }
+
     public static int ReleaseOurs(
         string runtimeConfigPath,
         string? tunAddress,
@@ -138,6 +140,7 @@ public static class TunCleanup
         if (!Os.IsWindows)
             return Math.Max(0, RemoveLeftovers(log, tunAddress, root, beforeStart, runtimeConfigPath));
 
+        LastReleaseClean = false;
         KillOurProcesses(runtimeConfigPath, log);
         WaitUntilEngineGone(runtimeConfigPath, 10000, log);
 
@@ -161,6 +164,7 @@ public static class TunCleanup
             cleaned += DisableOurNics(ourIp, log);
 
             var removed = 0;
+            var allGone = true;
             foreach (var id in WintunDevices())
             {
                 var nic = lookup(id);
@@ -175,16 +179,20 @@ public static class TunCleanup
                 removed++;
                 cleaned++;
                 if (!WaitUntilGone(id) || (nic is not null && !WaitUntilInterfaceGone(nic.Name)))
+                {
+                    allGone = false;
                     log?.Invoke($"устройство {id} ещё держится — продолжаю уборку");
+                }
             }
 
             cleaned += FlushHijackedRoutes(ourIp, log);
 
-            if (removed > 0) Thread.Sleep(4000);
+            if (removed > 0) Thread.Sleep(allGone ? 1000 : 4000);
 
             if (!AnyOursLeft(recorded, lookup, ourIp, aggressive) && !TunnelAddressBusy(ourIp))
             {
                 ClearOursFile(root);
+                LastReleaseClean = true;
                 return cleaned;
             }
         }

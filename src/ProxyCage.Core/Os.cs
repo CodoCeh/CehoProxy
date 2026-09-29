@@ -429,6 +429,7 @@ public static class Os
     {
         var list = new List<(int, string)>();
         if (!IsWindows) return list;
+        if (!AnyProcessNamed(exeName)) return list;
 
         var filter = exeName.Replace("'", "''");
         var (code, output) = Run("powershell", "-NoProfile -Command " +
@@ -445,6 +446,13 @@ public static class Os
             list.Add((pid, line[(tab + 1)..].Trim()));
         }
         return list;
+    }
+
+    private static bool AnyProcessNamed(string exeName)
+    {
+        var processes = System.Diagnostics.Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exeName));
+        foreach (var p in processes) p.Dispose();
+        return processes.Length > 0;
     }
 
     /// <summary>Как <see cref="WindowsProcesses"/>, плюс владелец (SAM), чтобы на RDS не трогать чужие сеансы.</summary>
