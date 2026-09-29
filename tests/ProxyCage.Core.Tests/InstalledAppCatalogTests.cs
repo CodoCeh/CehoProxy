@@ -161,10 +161,11 @@ public class InstalledAppCatalogTests
         var self = Path.Combine(home, "cehoproxy.exe");
         var bundle = Path.Combine(Path.GetTempPath(), "Apps", "CehoProxy.app");
 
-        Assert.True(InstalledAppCatalog.IsOwn(Path.Combine(home, "cehoproxy-tray.exe"), self, windows: true));
-        Assert.False(InstalledAppCatalog.IsOwn(Path.Combine(home, "cehoproxy-tray.exe"), self, windows: false));
+        Assert.True(InstalledAppCatalog.IsOwn(Path.Combine(home, "libcronet.dll"), self, windows: true));
+        Assert.False(InstalledAppCatalog.IsOwn(Path.Combine(home, "libcronet.dll"), self, windows: false));
         Assert.True(InstalledAppCatalog.IsOwn(bundle, Path.Combine(bundle, "Contents", "MacOS", "cehoproxy"), windows: false));
         Assert.False(InstalledAppCatalog.IsOwn(Path.Combine(Path.GetTempPath(), "Other", "app.exe"), self, windows: true));
-        Assert.False(InstalledAppCatalog.IsOwn(self, null, windows: true));
+        Assert.True(InstalledAppCatalog.IsOwn("/Applications/CehoProxy Tray.app", null, windows: false));
+        Assert.False(InstalledAppCatalog.IsOwn(Path.Combine(Path.GetTempPath(), "Other", "app.exe"), null, windows: true));
     }
 }

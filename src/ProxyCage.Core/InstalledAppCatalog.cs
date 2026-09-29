@@ -156,6 +156,7 @@ public static class InstalledAppCatalog
 
     internal static bool IsOwn(string path, string? self, bool windows)
     {
+        if (Path.GetFileName(path.TrimEnd('/', '\\')).StartsWith("CehoProxy", StringComparison.OrdinalIgnoreCase)) return true;
         if (string.IsNullOrEmpty(self)) return false;
         if (NormalizePath(path).Equals(NormalizePath(self), StringComparison.OrdinalIgnoreCase) || IsUnder(self, path)) return true;
         return windows && IsUnder(path, Path.GetDirectoryName(self) ?? "");
