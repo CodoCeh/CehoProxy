@@ -1945,6 +1945,7 @@ if (cmd is "daemon" or "web")
         if (proc is not null) return Strings.T(cfg.Language, "already_on");
         try
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
             var c = CehoConfig.Load(Ceho.ConfigPath);
 
             var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: true, report);
@@ -1978,6 +1979,7 @@ if (cmd is "daemon" or "web")
             await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
                 SingBoxConfigGenerator.GenerateForConfig(nodes, c));
             LeakGuard.Apply(c, Ceho.Root);
+            Log.Info($"этап: подписки и правила {watch.Elapsed.TotalSeconds:F1} с");
 
             var reason = await BringEngineUp(c, report);
             for (var attempt = 1;
@@ -2010,7 +2012,9 @@ if (cmd is "daemon" or "web")
             probed = false;
             boundAddress = Os.PhysicalBindAddress(c.TunAddress)?.ToString();
             report?.Stage(Strings.T(c.Language, "stage_bounce_apps"), 99);
+            watch.Restart();
             var bounced = IsolatedAppBounce.ResetNetwork(c, Log.Info);
+            Log.Info($"этап: сброс соединений программ {watch.Elapsed.TotalSeconds:F1} с");
             if (bounced.Killed + bounced.Connections > 0)
                 Log.Info(
                     $"сброшены старые соединения {string.Join(", ", bounced.Labels)}: " +
@@ -2029,6 +2033,7 @@ if (cmd is "daemon" or "web")
     async Task<string?> BringEngineUp(CehoConfig c, IStageReport? report)
     {
         report?.Stage(Strings.T(c.Language, "stage_cleanup"), 94);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
         var handover = guard is not null;
         StopGuard();
@@ -2047,6 +2052,8 @@ if (cmd is "daemon" or "web")
             TunCleanup.PrepareWintunForStart(Log.Info);
             await Task.Delay(1500);
         }
+        Log.Info($"этап: подготовка к запуску {watch.Elapsed.TotalSeconds:F1} с");
+        watch.Restart();
 
         report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
 
@@ -2064,6 +2071,7 @@ if (cmd is "daemon" or "web")
             if (answeredAt >= 0 && waited - answeredAt >= 1500) break;
             await Task.Delay(250);
         }
+        Log.Info($"этап: запуск движка {watch.Elapsed.TotalSeconds:F1} с, порты ответили через {(answeredAt < 0 ? "—" : $"{answeredAt / 1000.0:F1} с")}");
         TunCleanup.Remember(Ceho.Root, c.TunAddress, Log.Info, before);
         if (p.IsRunning)
         {
@@ -2099,7 +2107,10 @@ if (cmd is "daemon" or "web")
     string? StopTunnelLocked()
     {
         if (proc is null) return Strings.T(cfg.Language, "already_off");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var clean = proc.Stop(8000);
+        Log.Info($"этап: остановка движка {watch.Elapsed.TotalSeconds:F1} с");
+        watch.Restart();
         proc.Dispose();
         proc = null;
         exitCountry = exitIp = null;
@@ -2115,6 +2126,7 @@ if (cmd is "daemon" or "web")
         TunCleanup.ReleaseOurs(
             Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Log.Info,
             attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
+        Log.Info($"этап: уборка после остановки {watch.Elapsed.TotalSeconds:F1} с");
         StartGuard().GetAwaiter().GetResult();
         return null;
     }
