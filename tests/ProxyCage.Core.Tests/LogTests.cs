@@ -222,6 +222,8 @@ public class LogTests : IDisposable
     [InlineData("error", "engine", "[0928/055906:ERROR:tcp_socket_posix.cc:93] Failed to set TCP_KEEPIDLE", false)]
     [InlineData("error", "engine", "FATAL[0000] start service: configure tun interface", true)]
     [InlineData("info", "daemon", "daemon 1.2.110 на Windows 10.0.20348.0 (X64), pid 344", true)]
+    [InlineData("info", "verify", "verify 1.2.110 на Windows 10.0.20348.0 (X64), pid 400", false)]
+    [InlineData("info", "daemon", "install 1.2.110 на Windows 10.0.20348.0 (X64), pid 344", true)]
     [InlineData("crash", "daemon", ">>> падение: фоновое действие update", true)]
     public void Important_view_keeps_what_matters(string level, string component, string message, bool important) =>
         Assert.Equal(important, Log.IsImportant(new LogEntry(DateTime.Now, level, component, message)));

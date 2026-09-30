@@ -275,7 +275,7 @@ public static class Log
             foreach (var lang in Strings.Languages)
                 if (entry.Message.StartsWith(Strings.T(lang, key), StringComparison.Ordinal)) return true;
         return ImportantWords.Any(w => entry.Message.Contains(w, StringComparison.Ordinal))
-            || System.Text.RegularExpressions.Regex.IsMatch(entry.Message, @"^\S+ \d+\.\d+\.\d+ (на|on) ");
+            || System.Text.RegularExpressions.Regex.IsMatch(entry.Message, @"^(daemon|install|uninstall|update) \d+\.\d+\.\d+ (на|on) ");
     }
 
     /// <summary>Записанные падения, свежие сверху: блок от начала до конца.</summary>

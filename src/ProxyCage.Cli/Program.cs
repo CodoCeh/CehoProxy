@@ -364,8 +364,8 @@ if (cmd == "daemon" && DaemonControl.WantsBackground(Console.IsInputRedirected,
     return 0;
 }
 
-if (Cli.ConfigUnreadable(Ceho.ConfigPath) ||
-    (Cli.ChangesSettings(cmd) && Cli.ConfigReadOnly(Ceho.ConfigPath)))
+if (cmd != "detect-apps" && (Cli.ConfigUnreadable(Ceho.ConfigPath) ||
+    (Cli.ChangesSettings(cmd) && Cli.ConfigReadOnly(Ceho.ConfigPath))))
 {
     if (!Cli.CanRunRemotely(cmd))
     {
