@@ -27,13 +27,11 @@ esac
 if [ "$LANG_CODE" = ru ]; then
   T_LINK="Вставьте ссылку на подписку от вашего VPN-сервиса. Её можно пропустить и добавить позже в панели."
   T_SKIP="Пропустить"; T_NEXT="Продолжить"
-  T_APPS="Отправить в туннель все найденные на этом Mac программы из рекомендуемых?"
-  T_NO="Нет, выберу сам"; T_YES="Да, все найденные"
+  T_APPS="Выберите программы, которым нужен VPN. Рекомендуемые отмечены. Остальные будут работать напрямую."
 else
   T_LINK="Paste the subscription link from your VPN service. You can skip it and add it later in the panel."
   T_SKIP="Skip"; T_NEXT="Continue"
-  T_APPS="Send all recommended programs found on this Mac through the tunnel?"
-  T_NO="No, I will choose"; T_YES="Yes, all found"
+  T_APPS="Choose the programs that need the VPN. Recommended ones are ticked. The rest keep working directly."
 fi
 
 if [ ! -f "$ROOT/config.json" ] || ! grep -q '"SetupDone": *true' "$ROOT/config.json" 2>/dev/null; then
@@ -45,9 +43,29 @@ if [ ! -f "$ROOT/config.json" ] || ! grep -q '"SetupDone": *true' "$ROOT/config.
   LINK="$(printf '%s' "$ANSWER" | tr -d '"' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   [ -n "$LINK" ] && ARGS+=(--sub "$LINK")
 
-  PICK="$(as_user osascript \
-    -e "button returned of (display dialog \"$T_APPS\" with title \"CehoProxy\" buttons {\"$T_NO\", \"$T_YES\"} default button \"$T_YES\")" 2>/dev/null)"
-  [ "$PICK" = "$T_YES" ] && ARGS+=(--all-apps)
+  ITEMS=()
+  while IFS=$'\t' read -r KIND NAME APP_PATH; do
+    [ -n "$APP_PATH" ] || continue
+    MARK=""; [ "$KIND" = R ] && MARK="*"
+    ITEMS+=("${MARK}${NAME} — ${APP_PATH}")
+  done < <("$BIN" detect-apps 2>/dev/null)
+
+  if [ "${#ITEMS[@]}" -gt 0 ]; then
+    PICKED="$(as_user osascript \
+      -e 'on run argv' \
+      -e 'set listItems to {}' -e 'set defs to {}' \
+      -e 'repeat with a in argv' -e 'set t to a as text' \
+      -e 'if t starts with "*" then' -e 'set t to text 2 thru -1 of t' -e 'set end of defs to t' -e 'end if' \
+      -e 'set end of listItems to t' -e 'end repeat' \
+      -e "set r to choose from list listItems with title \"CehoProxy\" with prompt \"$T_APPS\" default items defs with multiple selections allowed and empty selection allowed" \
+      -e 'if r is false then return ""' \
+      -e "set AppleScript's text item delimiters to linefeed" \
+      -e 'return r as text' -e 'end run' \
+      "${ITEMS[@]}" 2>/dev/null)"
+    while IFS= read -r ROW; do
+      [ -n "$ROW" ] && ARGS+=(--app "${ROW##* — }")
+    done <<< "$PICKED"
+  fi
   [ -n "$LINK" ] && ARGS+=(--autostart)
 
   "$BIN" "${ARGS[@]}" >>"$LOG" 2>&1

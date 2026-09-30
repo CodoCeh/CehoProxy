@@ -13,7 +13,7 @@ public static class Cli
         "sub-add", "subs", "sub-remove", "sub-on", "sub-off", "countries", "country", "node", "nodes",
         "speed", "passwd", "lang", "set-port", "timeout", "set-proxy-port", "autostart", "daemon",
         "restart", "stop", "off", "run", "wrap", "unwrap", "wrapped", "browser", "doctor", "engine",
-        "log", "detect", "apply", "update", "update-status", "autoupdate", "version", "uninstall", "ping", "proxy-test",
+        "log", "detect", "detect-apps", "apply", "update", "update-status", "autoupdate", "version", "uninstall", "ping", "proxy-test",
     };
 
     private static readonly HashSet<string> ReadOnlyCommands = new(StringComparer.OrdinalIgnoreCase)
@@ -922,6 +922,22 @@ public static class Cli
         }
 
         if (args.Contains("--all-apps")) Assistant.AddAllFound(cfg);
+
+        var tools = AiTools.Detect();
+        for (var i = 0; i + 1 < args.Length; i++)
+        {
+            if (args[i] != "--app") continue;
+            var path = args[i + 1];
+            var script = tools.FirstOrDefault(t => t.Kind == AiTools.ToolKind.Script
+                && t.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+            if (script is not null)
+            {
+                var command = AiTools.SuggestedCommand(script);
+                var error = Wrap(command, out _);
+                Console.WriteLine("  " + (error is null ? S(cfg, "wrap_done", command) : S(cfg, "wrap_failed", error)));
+            }
+            else Assistant.AddApp(cfg, path);
+        }
 
         cfg.SetupDone = true;
         cfg.Save(configPath);

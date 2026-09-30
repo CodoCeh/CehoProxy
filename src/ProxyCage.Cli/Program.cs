@@ -229,7 +229,7 @@ if (cmd is "engine" or "движок")
 }
 
 if (cmd == "setup")
-    return args.Any(a => a is "--sub" or "--all-apps" or "--autostart" or "--lang")
+    return args.Any(a => a is "--sub" or "--all-apps" or "--app" or "--autostart" or "--lang")
         ? await Cli.SetupFromFlagsAsync(Ceho.ConfigPath, args)
         : await Cli.SetupAsync(Ceho.ConfigPath);
 
@@ -1159,6 +1159,31 @@ switch (cmd)
             ? Cli.S(cfg, "alias_made", made ?? "chp")
             : Cli.S(cfg, "alias_failed", err));
         return err is null ? 0 : 1;
+    }
+
+    case "detect-apps":
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var outFile = args.Length >= 3 && args[1] == "--out" ? args[2] : null;
+        var lines = new List<string>();
+        void Line(char kind, string name, string path)
+        {
+            if (!seen.Add(path)) return;
+            lines.Add($"{kind}\t{name.Replace('\t', ' ')}\t{path}");
+        }
+        var installed = InstalledAppCatalog.Detect(Strings.Normalize("ru"));
+        foreach (var t in AiTools.Detect()) Line('R', t.Name, t.Path);
+        foreach (var e in installed.Where(e => InstalledAppCatalog.GroupOf(e) == InstalledAppCatalog.Group.Ai)) Line('R', e.Name, e.Path);
+        foreach (var e in installed)
+            Line(InstalledAppCatalog.GroupOf(e) switch
+            {
+                InstalledAppCatalog.Group.Browsers => 'B',
+                InstalledAppCatalog.Group.Messengers => 'M',
+                _ => 'O',
+            }, e.Name, e.Path);
+        if (outFile is not null) File.WriteAllLines(outFile, lines, new System.Text.UTF8Encoding(true));
+        else foreach (var l in lines) Console.WriteLine(l);
+        return 0;
     }
 
     case "detect":
