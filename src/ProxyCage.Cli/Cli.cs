@@ -910,9 +910,8 @@ public static class Cli
             catch (Exception ex) { Console.WriteLine("  " + ex.Message); }
             Ceho.Quiet = false;
             var entry = cfg.Subscriptions.First(x => x.Name == name);
-            entry.LastCheckOk = count > 0;
             entry.LastCheckedUtc = DateTime.UtcNow.ToString("u");
-            if (count > 0) Console.WriteLine("  " + S(cfg, "sub_parsed", count));
+            if (entry.LastCheckOk == true) Console.WriteLine("  " + S(cfg, "sub_parsed", count));
             else
             {
                 Console.WriteLine("  " + S(cfg, "sub_bad"));

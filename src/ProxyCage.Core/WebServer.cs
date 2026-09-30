@@ -1739,7 +1739,7 @@ public sealed class WebServer
         if (info.Processes == 0) return (S("check_idle", app.Label), false, null);
         if (info.Direct > 0) return (S("check_leak", app.Label, info.Direct), true, null);
         if (info.Tunneled == 0 && info.EngineVpn == 0) return (S("check_quiet", app.Label), false, null);
-        return (S("check_ok", app.Label, Math.Max(info.Tunneled, info.EngineVpn)) + exit
+        return (S("app_check_ok", app.Label, Math.Max(info.Tunneled, info.EngineVpn)) + exit
                 + (info.EngineDirect > 0 ? " " + S("check_rules_direct", info.EngineDirect) : ""), false, null);
     }
 

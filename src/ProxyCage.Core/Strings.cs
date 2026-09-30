@@ -1573,7 +1573,7 @@ public static class Strings
         ["check_idle"] = new("{0} не запущена. Запустите её, дайте ей выйти в сеть и нажмите ещё раз.", "{0} is not running. Start it, let it go online and press again."),
         ["check_quiet"] = new("{0} запущена, но сейчас в сеть не ходит. Сделайте в ней что-нибудь сетевое и нажмите ещё раз.", "{0} is running but not using the network right now. Do something online in it and press again."),
         ["check_leak"] = new("{0}: соединений мимо VPN — {1}. Откройте вкладку «Проверка».", "{0}: {1} connections bypass the VPN. Open the Check tab."),
-        ["check_ok"] = new("{0} идёт через VPN, соединений: {1}.", "{0} goes through the VPN, connections: {1}."),
+        ["app_check_ok"] = new("{0} идёт через VPN, соединений: {1}.", "{0} goes through the VPN, connections: {1}."),
         ["check_rules_direct"] = new("Напрямую по вашим правилам сайтов: {0}.", "Direct by your site rules: {0}."),
         ["theme_label"] = new("Тема", "Theme"),
         ["theme_auto"] = new("Как в системе", "As in the system"),
