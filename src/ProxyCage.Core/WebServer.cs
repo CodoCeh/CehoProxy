@@ -362,7 +362,14 @@ public sealed class WebServer
             return;
         }
 
-        var bytes = Encoding.UTF8.GetBytes(SettingsTransfer.Export(Root, password));
+        var parts = PartsFromForm(form);
+        if (parts == SettingsTransfer.Parts.None)
+        {
+            Redirect(ctx, "/?tab=access&m=" + Uri.EscapeDataString(Strings.T(cfg.Language, "transfer_no_parts")) + "&e=1");
+            return;
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(SettingsTransfer.Export(Root, password, parts));
         ctx.Response.ContentType = "application/octet-stream";
         ctx.Response.Headers.Add("Content-Disposition", $"attachment; filename=\"{SettingsTransfer.FileName}\"");
         ctx.Response.ContentLength64 = bytes.Length;
@@ -624,14 +631,16 @@ public sealed class WebServer
                 {
                     var data = f.GetValueOrDefault("data", "");
                     if (data.Length == 0) return (S("transfer_no_file"), true, null);
+                    var parts = PartsFromForm(f);
+                    if (parts == SettingsTransfer.Parts.None) return (S("transfer_no_parts"), true, null);
                     try
                     {
-                        var subs = SettingsTransfer.Import(Root, data, f.GetValueOrDefault("password", ""));
+                        var result = SettingsTransfer.Import(Root, data, f.GetValueOrDefault("password", ""), parts);
                         _pool = null;
                         var fresh = CehoConfig.Load(_configPath);
-                        Log.Info(Strings.T(fresh.Language, "transfer_imported", fresh.Apps.Count, fresh.Subscriptions.Count, subs));
-                        return (Strings.T(fresh.Language, "transfer_imported", fresh.Apps.Count, fresh.Subscriptions.Count, subs), false,
-                            ApplyJob(fresh, restartIfRunning: true).Id);
+                        var text = SettingsTransfer.Describe(result, fresh.Language);
+                        Log.Info(text);
+                        return (text, false, ApplyJob(fresh, restartIfRunning: true).Id);
                     }
                     catch (SettingsTransfer.WrongPasswordException) { return (S("transfer_wrong_password"), true, null); }
                     catch (InvalidDataException) { return (S("transfer_bad_file"), true, null); }
@@ -2961,6 +2970,7 @@ public sealed class WebServer
         sb.Append("<p class=lede>").Append(E(S("transfer_lede", []))).Append("</p>");
         sb.Append("<h3>").Append(E(S("transfer_export", []))).Append("</h3>");
         sb.Append("<form class=row method=post action=/settings/export>");
+        AppendTransferParts(sb, S);
         sb.Append("<input type=password name=password autocomplete=new-password minlength=6 required placeholder=\"")
           .Append(E(S("transfer_password", []))).Append("\">");
         sb.Append("<input type=password name=password2 autocomplete=new-password minlength=6 required placeholder=\"")
@@ -2968,6 +2978,7 @@ public sealed class WebServer
         sb.Append("<button>").Append(E(S("transfer_export_btn", []))).Append("</button></form>");
         sb.Append("<h3>").Append(E(S("transfer_import", []))).Append("</h3>");
         sb.Append("<form class=row method=post action=/settings/import id=settings-import><input type=hidden name=tab value=").Append(tab).Append(">");
+        AppendTransferParts(sb, S);
         sb.Append("<input type=file id=settings-file accept=\".chps,text/plain\" required>");
         sb.Append("<input type=hidden name=data id=settings-data>");
         sb.Append("<input type=password name=password autocomplete=off required placeholder=\"")
@@ -2992,6 +3003,26 @@ public sealed class WebServer
           .Append("');\"><input type=hidden name=tab value=").Append(tab).Append(">")
           .Append("<button class=danger>").Append(E(S("btn_uninstall", [])))
           .Append("</button></form></section>");
+    }
+
+    private static void AppendTransferParts(StringBuilder sb, Func<string, object[], string> S)
+    {
+        sb.Append("<div class=transfer-parts style=\"flex:1 0 100%\"><b>").Append(E(S("transfer_what", []))).Append(":</b> ");
+        foreach (var (field, key) in new[] { ("p_vpn", "transfer_part_vpn"), ("p_apps", "transfer_part_apps"),
+                     ("p_sites", "transfer_part_sites"), ("p_other", "transfer_part_other") })
+            sb.Append("<label style=\"margin-right:14px;white-space:nowrap\"><input type=checkbox name=").Append(field)
+              .Append(" value=1 checked> ").Append(E(S(key, []))).Append("</label>");
+        sb.Append("</div>");
+    }
+
+    private static SettingsTransfer.Parts PartsFromForm(IReadOnlyDictionary<string, string> form)
+    {
+        var parts = SettingsTransfer.Parts.None;
+        if (form.ContainsKey("p_vpn")) parts |= SettingsTransfer.Parts.Vpn;
+        if (form.ContainsKey("p_apps")) parts |= SettingsTransfer.Parts.Apps;
+        if (form.ContainsKey("p_sites")) parts |= SettingsTransfer.Parts.Sites;
+        if (form.ContainsKey("p_other")) parts |= SettingsTransfer.Parts.Other;
+        return parts;
     }
 
     private static void RenderHelp(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)

@@ -571,8 +571,20 @@ switch (cmd)
     case "import":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
-        if (args.Length < 2) { Console.Error.WriteLine(Cli.S(cfg, "transfer_usage")); return 1; }
-        var file = Path.GetFullPath(args[1]);
+        var words = args.Skip(1).ToList();
+        string? partText = null;
+        for (var i = 0; i < words.Count; i++)
+        {
+            if (words[i] is "--part" or "--часть" && i + 1 < words.Count) { partText = words[i + 1]; words.RemoveRange(i, 2); break; }
+            if (words[i].StartsWith("--part=") || words[i].StartsWith("--часть="))
+            { partText = words[i][(words[i].IndexOf('=') + 1)..]; words.RemoveAt(i); break; }
+        }
+        if (words.Count < 1) { Console.Error.WriteLine(Cli.S(cfg, "transfer_usage")); return 1; }
+        var file = Path.GetFullPath(words[0]);
+        if (partText is null && Assistant.Interactive)
+            partText = Cli.Ask("  " + Cli.S(cfg, "transfer_what_ask"));
+        var parts = SettingsTransfer.ParseParts(partText);
+        if (parts == SettingsTransfer.Parts.None) { Console.Error.WriteLine(Cli.S(cfg, "transfer_no_parts")); return 1; }
         var password = Environment.GetEnvironmentVariable("CEHOPROXY_TRANSFER_PASSWORD")
                        ?? Cli.AskSecret(Cli.S(cfg, "transfer_password"));
         if (args[0] == "export")
@@ -584,7 +596,7 @@ switch (cmd)
                 Console.Error.WriteLine(Cli.S(cfg, "setup_password_mismatch"));
                 return 1;
             }
-            File.WriteAllText(file, SettingsTransfer.Export(Ceho.Root, password));
+            File.WriteAllText(file, SettingsTransfer.Export(Ceho.Root, password, parts));
             Console.WriteLine(Cli.S(cfg, "transfer_exported") + " " + file);
             return 0;
         }
@@ -592,9 +604,9 @@ switch (cmd)
         if (!File.Exists(file)) { Console.Error.WriteLine(Cli.S(cfg, "transfer_no_file")); return 1; }
         try
         {
-            var subs = SettingsTransfer.Import(Ceho.Root, File.ReadAllText(file), password);
+            var result = SettingsTransfer.Import(Ceho.Root, File.ReadAllText(file), password, parts);
             var fresh = CehoConfig.Load(Ceho.ConfigPath);
-            Console.WriteLine(Cli.S(fresh, "transfer_imported", fresh.Apps.Count, fresh.Subscriptions.Count, subs));
+            Console.WriteLine(SettingsTransfer.Describe(result, fresh.Language));
             Console.WriteLine(Cli.S(fresh, "transfer_restart_hint"));
             return 0;
         }
