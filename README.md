@@ -75,12 +75,13 @@ iex (irm https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/instal
 | Ubuntu, Debian, Raspberry Pi, ARM | [CehoProxy-linux-arm64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.deb) | То же |
 | Другой Linux | [CehoProxy-linux-x64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.zip) | Распаковать, `sudo ./install.sh ./cehoproxy` |
 
-Во всех окнах настройка одна и та же: ссылка на подписку, отправить ли в туннель все найденные
-рекомендуемые программы, включить ли защиту сразу. Каждый вопрос можно пропустить и вернуться
+Во всех окнах настройка одна и та же: ссылка на подписку, затем список найденных на компьютере
+программ с галочками (рекомендуемые отмечены заранее, остальное можно добавить или снять),
+включить ли защиту сразу. Каждый вопрос можно пропустить и вернуться
 к нему в панели. Контрольные суммы лежат рядом с релизом в файле `CehoProxy-<версия>-SHA256SUMS.txt`.
 
 На Windows в окне есть галки «Ярлык на рабочем столе» и «Значок в области уведомлений». Для
-установки на много компьютеров сразу: `CehoProxy-Setup.exe /VERYSILENT /SUB="ссылка"`.
+установки на много компьютеров сразу: `CehoProxy-Setup.exe /VERYSILENT /SUB="ссылка"` (рекомендуемые программы добавятся сами; `/APPS=none` — не добавлять).
 
 Правая кнопка на macOS не прихоть: система не знает нашего разработчика и по двойному щелчку
 файл не откроет. Один раз через «Открыть» — и дальше всё как обычно.
