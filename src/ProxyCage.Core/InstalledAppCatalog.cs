@@ -103,6 +103,7 @@ public static class InstalledAppCatalog
         }
 
         var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var storeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsApps");
 
         foreach (var (hive, view) in roots)
         {
@@ -113,7 +114,7 @@ public static class InstalledAppCatalog
             {
                 using var app = paths.OpenSubKey(id);
                 var path = CleanWindowsExecutable(app?.GetValue(null) as string);
-                if (path is not null && File.Exists(path) && !IsUnder(path, windowsDir) && !IsWindowsComponent(ProductOf(path))
+                if (path is not null && File.Exists(path) && !IsUnder(path, windowsDir) && !IsUnder(path, storeDir) && !IsWindowsComponent(ProductOf(path))
                     && !SameProgramSeen(seen, path) && seen.Add(NormalizePath(path)))
                     yield return new(Path.GetFileNameWithoutExtension(id), path, "Windows");
             }
