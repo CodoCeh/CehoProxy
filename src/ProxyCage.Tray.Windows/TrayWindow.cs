@@ -27,6 +27,7 @@ internal sealed class TrayWindow : IDisposable
     private TrayState.Snapshot? _snapshot;
     private DateTime _resumeAtUtc = DateTime.MinValue;
     private string? _balloon;
+    private readonly TrayNotifier _notifier = new();
     private int _working;
     private readonly string? _exe = Environment.ProcessPath;
     private readonly DateTime _built = Environment.ProcessPath is { } exe ? File.GetLastWriteTimeUtc(exe) : default;
@@ -168,6 +169,7 @@ internal sealed class TrayWindow : IDisposable
                 _look = TrayLook.Stopped;
                 break;
         }
+        if (_notifier.Next(_lang, _look, _snapshot) is { } notice) _balloon = notice;
     }
 
     private IntPtr Handle(IntPtr window, int message, IntPtr wParam, IntPtr lParam)
@@ -221,7 +223,7 @@ internal sealed class TrayWindow : IDisposable
         try
         {
             Win32.AppendMenu(menu, Win32.MF_STRING | Win32.MF_GRAYED, 0,
-                TrayState.StateText(_lang, _look, wait));
+                TrayState.StateText(_lang, _look, wait, _snapshot?.Recovering == true));
             if (TrayState.Hint(_lang, _look, wait) is { } hint)
                 Win32.AppendMenu(menu, Win32.MF_STRING | Win32.MF_GRAYED, 0, hint);
             Win32.AppendMenu(menu, Win32.MF_SEPARATOR, 0, null);

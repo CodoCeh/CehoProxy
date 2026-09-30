@@ -555,6 +555,41 @@ switch (cmd)
         return 0;
     }
 
+    case "export":
+    case "import":
+    {
+        var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        if (args.Length < 2) { Console.Error.WriteLine(Cli.S(cfg, "transfer_usage")); return 1; }
+        var file = Path.GetFullPath(args[1]);
+        var password = Environment.GetEnvironmentVariable("CEHOPROXY_TRANSFER_PASSWORD")
+                       ?? Cli.AskSecret(Cli.S(cfg, "transfer_password"));
+        if (args[0] == "export")
+        {
+            if (password.Length < 6) { Console.Error.WriteLine(Cli.S(cfg, "transfer_password_short")); return 1; }
+            if (Environment.GetEnvironmentVariable("CEHOPROXY_TRANSFER_PASSWORD") is null
+                && Cli.AskSecret(Cli.S(cfg, "setup_password_again")) != password)
+            {
+                Console.Error.WriteLine(Cli.S(cfg, "setup_password_mismatch"));
+                return 1;
+            }
+            File.WriteAllText(file, SettingsTransfer.Export(Ceho.Root, password));
+            Console.WriteLine(Cli.S(cfg, "transfer_exported") + " " + file);
+            return 0;
+        }
+
+        if (!File.Exists(file)) { Console.Error.WriteLine(Cli.S(cfg, "transfer_no_file")); return 1; }
+        try
+        {
+            var subs = SettingsTransfer.Import(Ceho.Root, File.ReadAllText(file), password);
+            var fresh = CehoConfig.Load(Ceho.ConfigPath);
+            Console.WriteLine(Cli.S(fresh, "transfer_imported", fresh.Apps.Count, fresh.Subscriptions.Count, subs));
+            Console.WriteLine(Cli.S(fresh, "transfer_restart_hint"));
+            return 0;
+        }
+        catch (SettingsTransfer.WrongPasswordException) { Console.Error.WriteLine(Cli.S(cfg, "transfer_wrong_password")); return 1; }
+        catch (InvalidDataException) { Console.Error.WriteLine(Cli.S(cfg, "transfer_bad_file")); return 1; }
+    }
+
     case "tunnel":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
@@ -764,6 +799,7 @@ switch (cmd)
                 case "ours" or "наше": view = LogView.Ours; break;
                 case "crash" or "crashes" or "падения": view = LogView.Crashes; break;
                 case "all" or "всё" or "все": view = LogView.All; break;
+                case "important" or "важное": view = LogView.Important; break;
                 case "clear" or "очистить": clear = true; break;
                 default:
                     Console.Error.WriteLine(Cli.S(cfg, "log_arg_bad", arg));
@@ -801,6 +837,7 @@ switch (cmd)
             LogView.Engine => "log_view_engine",
             LogView.Ours => "log_view_ours",
             LogView.Crashes => "log_view_crashes",
+            LogView.Important => "log_view_important",
             _ => "log_view_all",
         };
         Console.WriteLine(Cli.S(cfg, title) + $"  ({Log.FilePath})");
@@ -991,6 +1028,7 @@ switch (cmd)
             var swept = Installer.SweepOldBinaries(binaryDir, Ceho.OwnExecutablePath);
             if (swept > 0) Console.WriteLine("  " + Cli.S(cfg, "upd_swept", swept));
 
+            UpdateRollback.RememberProtection(Ceho.Root, NodeProbe.TunnelIsUp(cfg.TunAddress));
             var (downloaded, shut) = await Updater.DownloadThenPrepareForUpdateAsync(
                 async () =>
                 {
@@ -1577,6 +1615,7 @@ switch (cmd)
             {
                 ["running"] = running,
                 ["starting"] = daemon && !running && DaemonControl.IsStarting(Ceho.Root),
+                ["recovering"] = daemon && !running && DaemonControl.IsRecovering(Ceho.Root),
                 ["daemon"] = daemon,
                 ["leakGuard"] = LeakGuard.IsActive(Ceho.Root),
                 ["apps"] = cfg.Apps.Count(a => a.Enabled),
@@ -1590,8 +1629,9 @@ switch (cmd)
             return running ? 0 : 1;
         }
         Console.WriteLine(running ? Cli.Paint(Cli.S(cfg, "state_on"), Preflight.Level.Ok)
-            : LeakGuard.IsActive(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)
+            : daemon && DaemonControl.IsRecovering(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_recovering"), Preflight.Level.Warning)
             : daemon && DaemonControl.IsStarting(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_starting"), Preflight.Level.Warning)
+            : LeakGuard.IsActive(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)
             : daemon ? Cli.Paint(Cli.S(cfg, "state_broken"), Preflight.Level.Blocker)
             : Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning));
 
@@ -1883,6 +1923,8 @@ if (cmd is "daemon" or "web")
     var guardConfigPath = TunCleanup.GuardConfigPath(Ceho.Root);
     var shuttingDown = false;
     string? lastError = null;
+    var wanted = false;
+    long lastRetryAt = 0;
     string? exitCountry = null, exitIp = null;
     var probed = false;
     string? boundAddress = null;
@@ -1963,6 +2005,8 @@ if (cmd is "daemon" or "web")
     async Task<string?> StartTunnelLocked(IStageReport? report)
     {
         if (proc is not null) return Strings.T(cfg.Language, "already_on");
+        wanted = true;
+        DaemonControl.MarkStarting(Ceho.Root, recovering: lastError is not null);
         try
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -2009,6 +2053,7 @@ if (cmd is "daemon" or "web")
                  attempt++)
             {
                 Log.Info($"адаптер Wintun не готов — включаю устройство и пробую снова (попытка {attempt}/5)");
+                DaemonControl.MarkStarting(Ceho.Root, recovering: true);
                 var beforeRetry = TunCleanup.Devices();
                 TunCleanup.ReleaseOurs(
                     Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
@@ -2047,6 +2092,11 @@ if (cmd is "daemon" or "web")
             lastError = ex.Message;
             await StartGuard();
             return ex.Message;
+        }
+        finally
+        {
+            if (proc is null && wanted) DaemonControl.MarkStarting(Ceho.Root, recovering: true);
+            else DaemonControl.ClearStarting(Ceho.Root);
         }
     }
 
@@ -2188,7 +2238,7 @@ if (cmd is "daemon" or "web")
             return new WebServer.AppLive(a.Folder, v.Processes, v.Tunneled, v.Direct, vpn, direct);
         }).ToList();
     };
-    web.OnStop = () => Task.FromResult(StopTunnel());
+    web.OnStop = () => { wanted = false; DaemonControl.ClearStarting(Ceho.Root); return Task.FromResult(StopTunnel()); };
     web.OnRestart = RestartTunnel;
     web.OnApply = report => TunnelRuleApply.RunAsync(
         report,
@@ -2266,6 +2316,7 @@ if (cmd is "daemon" or "web")
 
         report.Stage(Strings.T(c.Language, "stage_download",
             release.Version, release.Size / 1024 / 1024), 40);
+        UpdateRollback.RememberProtection(Ceho.Root, proc is not null);
         var (downloaded, shut) = await Updater.DownloadThenPrepareForUpdateAsync(
             async () =>
             {
@@ -2353,6 +2404,50 @@ if (cmd is "daemon" or "web")
     }
 
     web.OnUpdate = UpdateAsync;
+
+    bool RollBackAfterBadUpdate(string reason)
+    {
+        var exe = Ceho.OwnExecutablePath;
+        var current = Updater.CurrentVersion;
+        if (!UpdateRollback.ShouldRollBack(Ceho.Root, current, exe, DateTime.UtcNow)) return false;
+        try
+        {
+            var candidate = UpdateRollback.PrepareCandidate(exe)!;
+            var previous = Updater.ReadVersion(candidate);
+            if (previous is null || previous == current) { File.Delete(candidate); return false; }
+
+            UpdateRollback.Mark(Ceho.Root, current);
+            var message = Strings.T(cfg.Language, "upd_rolled_back", current, previous, reason);
+            Log.Error(message);
+            var status = new UpdateHandoff.Status("rollback-" + Guid.NewGuid().ToString("N"), "failed", current, message);
+            UpdateHandoff.Write(Ceho.Root, status);
+
+            shuttingDown = true;
+            StopTunnel();
+            StopGuard();
+            if (OperatingSystem.IsWindows())
+            {
+                DaemonControl.SpawnUpdateRelaunchHelper(exe, candidate, Ceho.Root, previous, status.JobId);
+                Thread.Sleep(2500);
+                Environment.Exit(0);
+                return true;
+            }
+
+            var applied = Updater.ApplyDownloaded(candidate, exe, previous, Log.Info);
+            if (!applied.Ok) { Log.Error(Strings.T(cfg.Language, "upd_rollback_failed")); return false; }
+            UpdateHandoff.Write(Ceho.Root, status);
+            if (Autostart.IsEnabled()) Autostart.Restart();
+            else DaemonControl.SpawnRelaunchHelper(exe, Ceho.Root);
+            Thread.Sleep(1500);
+            Environment.Exit(0);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(Strings.T(cfg.Language, "upd_rollback_failed"), ex);
+            return false;
+        }
+    }
     web.OnPool = report =>
         Ceho.LoadAllNodesAsync(CehoConfig.Load(Ceho.ConfigPath), preferCache: false, report);
     web.OnExit = () => Ceho.ProbeExitAsync(CehoConfig.Load(Ceho.ConfigPath).MixedPort);
@@ -2557,6 +2652,7 @@ if (cmd is "daemon" or "web")
             Log.Info(err is null
                 ? Strings.T(cfg.Language, "state_on")
                 : $"{Strings.T(cfg.Language, "start_failed")}: {err}");
+            if (err is not null && RollBackAfterBadUpdate(err)) return 0;
         }
     }
 
@@ -2579,6 +2675,23 @@ if (cmd is "daemon" or "web")
                         {
                             StopGuard();
                             await StartGuard();
+                        }
+                    }
+                }
+
+                if (proc is null && wanted && lastError is not null
+                    && Environment.TickCount64 - lastRetryAt > 60_000)
+                {
+                    using (EngineMutex.Acquire(Ceho.Root))
+                    {
+                        if (proc is null && wanted)
+                        {
+                            lastRetryAt = Environment.TickCount64;
+                            Log.Info(Strings.T(cfg.Language, "state_recovering"));
+                            var again = await StartTunnelLocked(null);
+                            Log.Info(again is null
+                                ? Strings.T(cfg.Language, "state_on")
+                                : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
                         }
                     }
                 }
@@ -2701,6 +2814,11 @@ if (cmd is "daemon" or "web")
             {
                 var release = await Updater.CheckAsync(c.UpdateRepo);
                 if (release is null) continue;
+                if (UpdateRollback.WasRolledBack(Ceho.Root, release.Version))
+                {
+                    Log.Info(Strings.T(c.Language, "upd_auto_skip_rolled_back", release.Version));
+                    continue;
+                }
 
                 Log.Warn(Strings.T(c.Language, "upd_auto_starting", release.Version));
                 var outcome = await web.OnUpdate!(true, new DelegateReport(Log.Info));

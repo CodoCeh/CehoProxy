@@ -15,7 +15,7 @@ public static class Elevation
         if (args.Count == 0) return RightsNeed.None;
         return args[0] switch
         {
-            "install" or "uninstall" or "uninstal" or "daemon" => RightsNeed.Root,
+            "install" or "uninstall" or "uninstal" or "daemon" or "export" or "import" => RightsNeed.Root,
             "autostart" => args.Count >= 2 ? RightsNeed.Root : RightsNeed.None,
             "stop" or "off" => DaemonControl.IsRunning(root) ? RightsNeed.Root : RightsNeed.None,
             "restart" =>

@@ -212,4 +212,16 @@ public class TrayStateTests
         Assert.Equal(new[] { "status", "--json" }, TrayState.FullStatusArgs);
         Assert.True(TrayState.PollSeconds >= 3);
     }
+
+    [Fact]
+    public void Recovery_is_shown_as_its_own_state()
+    {
+        var snap = TrayState.Parse("{\"daemon\":true,\"running\":false,\"starting\":true,\"recovering\":true}");
+        var look = TrayState.Look(snap, false);
+
+        Assert.Equal(TrayLook.Starting, look);
+        Assert.True(TrayState.CanTurnOff(look));
+        Assert.Contains(Strings.T("ru", "state_recovering"), TrayState.Tooltip("ru", look, snap, limit: 0));
+        Assert.Equal(Strings.T("ru", "state_starting"), TrayState.StateText("ru", look));
+    }
 }

@@ -13,12 +13,18 @@ public static class WebUi
       --fs-xs:12px; --fs-s:14px; --fs-m:16px; --fs-l:20px; --fs-xl:28px;
     }
     @media (prefers-color-scheme:dark){
-      :root{
+      :root:not([data-theme=light]){
         --bg:#101512; --surface:#161d19; --text:#e8ede9; --subtext:#c7d6cd; --muted:#83978b;
         --brand-ink:#4bb98a; --brand-strong:#349f74;
         --ok-ink:#4fc39a; --warn-ink:#e0a82e; --danger-ink:#e8695e; --info-ink:#5cb8e8;
         --line:rgba(232,237,233,.16); --panel:rgba(232,237,233,.05); --panel2:rgba(232,237,233,.09);
       }
+    }
+    :root[data-theme=dark]{
+        --bg:#101512; --surface:#161d19; --text:#e8ede9; --subtext:#c7d6cd; --muted:#83978b;
+        --brand-ink:#4bb98a; --brand-strong:#349f74;
+        --ok-ink:#4fc39a; --warn-ink:#e0a82e; --danger-ink:#e8695e; --info-ink:#5cb8e8;
+        --line:rgba(232,237,233,.16); --panel:rgba(232,237,233,.05); --panel2:rgba(232,237,233,.09);
     }
     html{-webkit-text-size-adjust:100%}
     body{
@@ -51,6 +57,9 @@ public static class WebUi
       color:var(--subtext);font-size:var(--fs-s);font-weight:500}
     header form.mode button:hover{background:var(--panel2);color:var(--text)}
     header form.mode button.on{background:var(--brand-ink);color:#f4fbf7;font-weight:600}
+    header button.theme{min-height:34px;min-width:34px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;
+      background:var(--panel);color:var(--subtext);font-size:var(--fs-s);font-weight:500}
+    header button.theme:hover{background:var(--panel2);color:var(--text)}
     nav.tabs{display:flex;gap:2px;flex-wrap:wrap;margin:0 0 20px;padding-top:14px}
     nav.tabs a{display:inline-flex;align-items:center;min-height:44px;padding:9px 13px;border-radius:9px;color:var(--subtext);text-decoration:none;
       font-size:var(--fs-s);transition:background .18s ease,color .18s ease}
@@ -201,8 +210,11 @@ public static class WebUi
     form.app-pick{margin:10px 0 4px}
     form.app-pick input.app-filter{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--line);
       border-radius:10px;background:var(--surface);color:var(--text);font:inherit;font-size:var(--fs-s)}
-    .app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:8px;margin-top:10px;
-      max-height:326px;overflow:auto;padding:2px}
+    .app-groups{max-height:420px;overflow:auto;margin-top:10px;padding:2px}
+    .app-group+.app-group{margin-top:14px}
+    .app-group[hidden]{display:none}
+    .app-group-title{margin:0 0 6px;font-size:var(--fs-xs);font-weight:600;color:var(--muted);letter-spacing:.02em}
+    .app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:8px}
     button.app-card{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 10px;text-align:left;
       background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:10px;
       font-weight:500;overflow:hidden}
@@ -431,6 +443,48 @@ public static class WebUi
     </script>
     """;
 
+    public const string ThemeEarlyScript =
+        "<script>try{var t=localStorage.getItem('ceho-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>";
+
+    public const string ThemeScript = """
+    <script>
+    (function(){
+      var btn=document.getElementById('theme');
+      if(!btn)return;
+      var order=['auto','light','dark'];
+      function now(){return document.documentElement.getAttribute('data-theme')||'auto'}
+      function paint(){btn.textContent=btn.getAttribute('data-'+now());btn.setAttribute('aria-label',btn.getAttribute('data-label')+': '+btn.textContent)}
+      btn.addEventListener('click',function(){
+        var next=order[(order.indexOf(now())+1)%order.length];
+        if(next==='auto')document.documentElement.removeAttribute('data-theme');
+        else document.documentElement.setAttribute('data-theme',next);
+        try{if(next==='auto')localStorage.removeItem('ceho-theme');else localStorage.setItem('ceho-theme',next)}catch(e){}
+        paint();
+      });
+      paint();
+    })();
+    </script>
+    """;
+
+    public const string SettingsImportScript = """
+    <script>
+    (function(){
+      var form=document.getElementById('settings-import');
+      if(!form)return;
+      var file=document.getElementById('settings-file'),data=document.getElementById('settings-data');
+      form.addEventListener('submit',function(e){
+        if(data.value)return;
+        e.preventDefault();
+        var f=file.files&&file.files[0];
+        if(!f)return;
+        var r=new FileReader();
+        r.onload=function(){data.value=r.result;form.submit();};
+        r.readAsText(f);
+      });
+    })();
+    </script>
+    """;
+
     public const string StateRefreshScript = """
     <script>
     (function(){
@@ -458,6 +512,9 @@ public static class WebUi
           var text=box.value.trim().toLowerCase();
           cards.forEach(function(card){
             card.hidden=text.length>0&&card.getAttribute('data-name').indexOf(text)<0;
+          });
+          box.parentElement.querySelectorAll('.app-group').forEach(function(g){
+            g.hidden=!g.querySelector('button.app-card:not([hidden])');
           });
         });
       });

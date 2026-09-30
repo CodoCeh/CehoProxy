@@ -15,6 +15,7 @@ enum Outcome {
 struct Snapshot {
     let running: Bool
     let starting: Bool
+    var recovering: Bool = false
     let daemon: Bool
     var exitCountry: String?
     var exitIp: String?
@@ -42,6 +43,9 @@ let phrases: [String: Phrase] = [
     "state_starting": Phrase(
         ru: "Защита запускается — туннель ещё поднимается",
         en: "Protection is starting — the tunnel is still coming up"),
+    "state_recovering": Phrase(
+        ru: "Восстанавливаю защиту — программы из списка пока без интернета",
+        en: "Restoring protection — the listed apps have no internet until then"),
     "state_off": Phrase(ru: "Защита выключена", en: "Protection is off"),
     "hero_no_exit": Phrase(ru: "Нет связи с VPN", en: "No connection to the VPN"),
     "state_no_exit": Phrase(
@@ -65,6 +69,14 @@ let phrases: [String: Phrase] = [
         en: "The panel itself asks to wait this long after failed attempts"),
     "tray_failed": Phrase(ru: "Панель не приняла команду", en: "The panel did not accept the command"),
     "exit_is": Phrase(ru: "выход: {0} · {1}", en: "exit: {0} · {1}"),
+    "notice_off": Phrase(
+        ru: "Защита выключилась. Программы из списка идут без VPN или без интернета.",
+        en: "Protection turned off. The listed apps go without the VPN or without internet."),
+    "notice_trouble": Phrase(
+        ru: "Нет связи с VPN: ноды не отвечают. Программы из списка пока без интернета.",
+        en: "No connection to the VPN: nodes do not answer. The listed apps have no internet for now."),
+    "notice_service_gone": Phrase(ru: "Служба CehoProxy остановилась.", en: "The CehoProxy service stopped."),
+    "notice_exit_changed": Phrase(ru: "Выход сменился: {0} → {1}", en: "The exit changed: {0} → {1}"),
     "auth_enter": Phrase(ru: "Войти", en: "Sign in"),
     "auth_wrong": Phrase(ru: "Неверный пароль.", en: "Wrong password."),
     "btn_cancel": Phrase(ru: "Отмена", en: "Cancel"),
@@ -202,7 +214,8 @@ final class PanelLink {
         }
         return Snapshot(
             running: state["running"] as? Bool ?? false,
-            starting: state["starting"] as? Bool ?? false,
+            starting: (state["starting"] as? Bool ?? false) || (state["recovering"] as? Bool ?? false),
+            recovering: state["recovering"] as? Bool ?? false,
             daemon: daemon,
             exitCountry: state["exitCountry"] as? String,
             exitIp: state["exitIp"] as? String,
@@ -219,6 +232,10 @@ final class Tray: NSObject, NSMenuDelegate {
     private var langKnown = false
     private var passwordProved = false
     private var look = Look.stopped
+    private var noticeStarted = false
+    private var noticeLost = false
+    private var noticeLast = Look.stopped
+    private var noticeCountry: String?
     private var snapshot: Snapshot?
     private var resumeAt = Date.distantPast
     private var lastRead = Date.distantPast
@@ -320,8 +337,47 @@ final class Tray: NSObject, NSMenuDelegate {
                 self.snapshot = nil
                 self.look = .stopped
             }
+            if let notice = self.nextNotice() { Tray.notify(notice) }
             self.paint()
         }
+    }
+
+    private func nextNotice() -> String? {
+        let country = look == .guarded ? snapshot?.exitCountry : nil
+        var notice: String?
+        if !noticeStarted || look == .locked || noticeLast == .locked {
+            noticeStarted = true
+        } else if look == .guarded {
+            if noticeLost {
+                notice = say(lang, "state_on")
+                if let ip = snapshot?.exitIp, !ip.isEmpty {
+                    notice! += " · " + say(lang, "exit_is", snapshot?.exitCountry ?? "?", ip)
+                }
+            } else if noticeLast == .guarded, let was = noticeCountry, let now = country, was != now {
+                notice = say(lang, "notice_exit_changed", was, now)
+            }
+            noticeLost = false
+        } else if !noticeLost && (noticeLast == .guarded || noticeLast == .starting) {
+            switch look {
+            case .off where noticeLast == .guarded: notice = say(lang, "notice_off")
+            case .trouble: notice = say(lang, "notice_trouble")
+            case .stopped: notice = say(lang, "notice_service_gone")
+            case .starting where snapshot?.recovering == true: notice = say(lang, "state_recovering")
+            default: break
+            }
+            if notice != nil { noticeLost = true }
+        }
+        noticeLast = look
+        if let country = country { noticeCountry = country }
+        return notice
+    }
+
+    private static func notify(_ text: String) {
+        let quoted = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", "display notification \"\(quoted)\" with title \"CehoProxy\""]
+        try? task.run()
     }
 
     private static func lookOf(_ snapshot: Snapshot?) -> Look {
@@ -335,7 +391,7 @@ final class Tray: NSObject, NSMenuDelegate {
     private func stateText() -> String {
         switch look {
         case .guarded: return say(lang, "state_on")
-        case .starting: return say(lang, "state_starting")
+        case .starting: return say(lang, snapshot?.recovering == true ? "state_recovering" : "state_starting")
         case .off: return say(lang, "state_off")
         case .trouble: return say(lang, "hero_no_exit")
         case .stopped: return say(lang, "tray_no_service")

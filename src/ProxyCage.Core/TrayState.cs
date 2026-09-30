@@ -20,7 +20,7 @@ public static class TrayState
 
     public sealed record Snapshot(
         bool Running, bool Starting, bool Daemon, int Apps,
-        string? ExitCountry, string? ExitIp, bool ExitProbed, bool TrayControls = false);
+        string? ExitCountry, string? ExitIp, bool ExitProbed, bool TrayControls = false, bool Recovering = false);
 
     public static string? Unwrap(string? apiBody)
     {
@@ -47,7 +47,7 @@ public static class TrayState
             return new Snapshot(
                 Flag(root, "running"), Flag(root, "starting"), Flag(root, "daemon"),
                 Count(root, "apps"), Text(root, "exitCountry"), Text(root, "exitIp"), exitProbed,
-                Flag(root, "trayControls"));
+                Flag(root, "trayControls"), Flag(root, "recovering"));
         }
         catch { return null; }
     }
@@ -77,7 +77,7 @@ public static class TrayState
         : snapshot is null || !snapshot.Daemon ? TrayLook.Stopped
         : snapshot is { Running: true, ExitProbed: true, ExitIp: null } ? TrayLook.Trouble
         : snapshot.Running ? TrayLook.Protected
-        : snapshot.Starting ? TrayLook.Starting
+        : snapshot.Starting || snapshot.Recovering ? TrayLook.Starting
         : TrayLook.Off;
 
     public static TrayBadge Badge(TrayLook look) => look switch
@@ -99,10 +99,10 @@ public static class TrayState
 
     public static bool HidesDetails(TrayLook look) => look == TrayLook.Locked;
 
-    public static string StateText(string? lang, TrayLook look, int waitSeconds = 0) => look switch
+    public static string StateText(string? lang, TrayLook look, int waitSeconds = 0, bool recovering = false) => look switch
     {
         TrayLook.Protected => Strings.T(lang, "state_on"),
-        TrayLook.Starting => Strings.T(lang, "state_starting"),
+        TrayLook.Starting => Strings.T(lang, recovering ? "state_recovering" : "state_starting"),
         TrayLook.Off => Strings.T(lang, "state_off"),
         TrayLook.Trouble => Strings.T(lang, "hero_no_exit"),
         TrayLook.Locked => waitSeconds > 0
@@ -122,7 +122,7 @@ public static class TrayState
     public static string Tooltip(
         string? lang, TrayLook look, Snapshot? snapshot, int waitSeconds = 0, int limit = 127)
     {
-        var text = "CehoProxy — " + StateText(lang, look, waitSeconds);
+        var text = "CehoProxy — " + StateText(lang, look, waitSeconds, snapshot?.Recovering == true);
         if (!HidesDetails(look) && look == TrayLook.Protected && snapshot is { ExitIp: { Length: > 0 } ip })
             text += " · " + Strings.T(lang, "exit_is", snapshot.ExitCountry ?? "?", ip);
         return limit > 1 && text.Length > limit
@@ -134,5 +134,48 @@ public static class TrayState
     {
         if (!int.TryParse(header?.Trim(), out var seconds)) return PollSeconds;
         return Math.Clamp(seconds, 1, MaxWaitSeconds);
+    }
+}
+
+public sealed class TrayNotifier
+{
+    private bool _started;
+    private bool _lost;
+    private TrayLook _last;
+    private string? _country;
+
+    public string? Next(string? lang, TrayLook look, TrayState.Snapshot? snapshot)
+    {
+        var country = look == TrayLook.Protected ? snapshot?.ExitCountry : null;
+        string? notice = null;
+        if (!_started || look == TrayLook.Locked || _last == TrayLook.Locked)
+        {
+            _started = true;
+        }
+        else if (look == TrayLook.Protected)
+        {
+            if (_lost)
+                notice = Strings.T(lang, "state_on") + (snapshot is { ExitIp: { Length: > 0 } ip }
+                    ? " · " + Strings.T(lang, "exit_is", snapshot.ExitCountry ?? "?", ip) : "");
+            else if (_last == TrayLook.Protected && _country is not null && country is not null && _country != country)
+                notice = Strings.T(lang, "notice_exit_changed", _country, country);
+            _lost = false;
+        }
+        else if (!_lost && (_last == TrayLook.Protected || _last == TrayLook.Starting))
+        {
+            var reason = look switch
+            {
+                TrayLook.Off when _last == TrayLook.Protected => Strings.T(lang, "notice_off"),
+                TrayLook.Trouble => Strings.T(lang, "notice_trouble"),
+                TrayLook.Stopped => Strings.T(lang, "notice_service_gone"),
+                TrayLook.Starting when snapshot?.Recovering == true => Strings.T(lang, "state_recovering"),
+                _ => null,
+            };
+            if (reason is not null) { notice = reason; _lost = true; }
+        }
+
+        _last = look;
+        if (country is not null) _country = country;
+        return notice;
     }
 }

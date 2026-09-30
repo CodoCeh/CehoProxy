@@ -177,8 +177,27 @@ public static class AppIcons
         if (Path.GetExtension(path).Equals(".ico", StringComparison.OrdinalIgnoreCase))
             return new Icon(File.ReadAllBytes(path), "image/x-icon");
 
-        using var file = new PeFile(path);
-        return file.Icon();
+        Icon? own;
+        try
+        {
+            using var file = new PeFile(path);
+            own = file.Icon();
+        }
+        catch { own = null; }
+        if (own is not null) return own;
+        return PackageOf(path) is { } package && PackageLogo(package) is { } packaged
+            ? new Icon(File.ReadAllBytes(packaged), "image/png")
+            : null;
+    }
+
+    internal static string? PackageOf(string path)
+    {
+        for (var dir = Path.GetDirectoryName(path); !string.IsNullOrEmpty(dir); dir = Path.GetDirectoryName(dir))
+        {
+            if (File.Exists(Path.Combine(dir, "AppxManifest.xml"))) return dir;
+            if (Path.GetFileName(Path.GetDirectoryName(dir) ?? "").Equals("WindowsApps", StringComparison.OrdinalIgnoreCase)) return null;
+        }
+        return null;
     }
 
     private sealed class PeFile : IDisposable

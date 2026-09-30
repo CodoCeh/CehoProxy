@@ -168,4 +168,35 @@ public class InstalledAppCatalogTests
         Assert.True(InstalledAppCatalog.IsOwn("/Applications/CehoProxy Tray.app", null, windows: false));
         Assert.False(InstalledAppCatalog.IsOwn(Path.Combine(Path.GetTempPath(), "Other", "app.exe"), null, windows: true));
     }
+
+    [Fact]
+    public void Store_program_inside_a_subfolder_finds_its_package()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var package = Path.Combine(root, "WindowsApps", "Microsoft.Paint_11.0.0.0_x64__8wekyb3d8bbwe");
+            var exe = Path.Combine(package, "PaintApp", "mspaint.exe");
+            Directory.CreateDirectory(Path.GetDirectoryName(exe)!);
+            File.WriteAllText(Path.Combine(package, "AppxManifest.xml"), "<Package/>");
+            File.WriteAllText(exe, "");
+
+            Assert.Equal(package, AppIcons.PackageOf(exe));
+            Assert.Null(AppIcons.PackageOf(Path.Combine(root, "Other", "a.exe")));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData("Telegram Desktop", "/x/Telegram.exe", InstalledAppCatalog.Group.Messengers)]
+    [InlineData("Microsoft Teams", "/x/ms-teams.exe", InstalledAppCatalog.Group.Messengers)]
+    [InlineData("ChatGPT", "/x/ChatGPT.exe", InstalledAppCatalog.Group.Ai)]
+    [InlineData("Microsoft 365 Copilot", "/x/m365.exe", InstalledAppCatalog.Group.Ai)]
+    [InlineData("Firefox ESR", "/usr/bin/firefox-esr", InstalledAppCatalog.Group.Browsers)]
+    [InlineData("Microsoft Edge", "/x/msedge.exe", InstalledAppCatalog.Group.Browsers)]
+    [InlineData("Opera Stable", "/x/opera.exe", InstalledAppCatalog.Group.Browsers)]
+    [InlineData("Paint", "/x/mspaint.exe", InstalledAppCatalog.Group.Other)]
+    [InlineData("Cursorless Notes", "/x/notes.exe", InstalledAppCatalog.Group.Other)]
+    public void Programs_are_grouped_by_what_people_usually_tunnel(string name, string path, InstalledAppCatalog.Group group) =>
+        Assert.Equal(group, InstalledAppCatalog.GroupOf(new InstalledAppCatalog.Entry(name, path, "test")));
 }

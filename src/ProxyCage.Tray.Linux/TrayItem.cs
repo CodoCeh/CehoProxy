@@ -39,6 +39,7 @@ internal sealed class TrayItem : IDisposable
     private bool _passwordProved;
     private TrayLook _look = TrayLook.Stopped;
     private TrayState.Snapshot? _snapshot;
+    private readonly TrayNotifier _notifier = new();
     private DateTime _resumeAtUtc = DateTime.MinValue;
     private uint _revision = 1;
     private int _working;
@@ -188,6 +189,7 @@ internal sealed class TrayItem : IDisposable
                     _look = TrayLook.Stopped;
                     break;
             }
+            if (_notifier.Next(_lang, _look, _snapshot) is { } notice) Notify(notice);
         }
     }
 
@@ -372,7 +374,7 @@ internal sealed class TrayItem : IDisposable
         {
             var wait = WaitSeconds;
             var busy = Volatile.Read(ref _working) == 1;
-            var list = new List<Entry> { new(IdState, TrayState.StateText(_lang, _look, wait), false) };
+            var list = new List<Entry> { new(IdState, TrayState.StateText(_lang, _look, wait, _snapshot?.Recovering == true), false) };
             if (TrayState.Hint(_lang, _look, wait) is { } hint) list.Add(new(IdHint, hint, false));
             list.Add(new(3, null, true, true));
             if (_look == TrayLook.Locked)

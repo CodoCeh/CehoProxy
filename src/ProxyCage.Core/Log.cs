@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace ProxyCage.Core;
 
 /// <summary>Что показывать из журнала: всё, только наше, только движок или только падения.</summary>
-public enum LogView { All, Ours, Engine, Crashes }
+public enum LogView { All, Ours, Engine, Crashes, Important }
 
 public sealed record LogEntry(DateTime When, string Level, string Component, string Message)
 {
@@ -253,8 +253,30 @@ public static class Log
         LogView.Engine => entry.IsEngine,
         LogView.Ours => !entry.IsEngine,
         LogView.Crashes => entry.IsCrash,
+        LogView.Important => IsImportant(entry),
         _ => true,
     };
+
+    private static readonly string[] ImportantKeys =
+        { "state_on", "start_failed", "state_recovering", "engine_gone", "upd_relaunch" };
+
+    private static readonly string[] ImportantWords =
+        { "Панель управления", "Control panel", "установлено:", "Обновлено до", "Updated to", "адрес сети сменился", "FATAL" };
+
+    internal static bool IsImportant(LogEntry entry)
+    {
+        if (entry.IsCrash) return true;
+        if (entry.IsEngine) return entry.Message.Contains("FATAL", StringComparison.Ordinal);
+        if (entry.Level is "warn" or "error") return true;
+        if (entry.Message.StartsWith("[", StringComparison.Ordinal) && !entry.Message.Contains("] готово за", StringComparison.Ordinal)
+            && !entry.Message.Contains("] не удалось", StringComparison.Ordinal)) return false;
+        if (entry.Message.Contains("] готово за", StringComparison.Ordinal)) return true;
+        foreach (var key in ImportantKeys)
+            foreach (var lang in Strings.Languages)
+                if (entry.Message.StartsWith(Strings.T(lang, key), StringComparison.Ordinal)) return true;
+        return ImportantWords.Any(w => entry.Message.Contains(w, StringComparison.Ordinal))
+            || System.Text.RegularExpressions.Regex.IsMatch(entry.Message, @"^\S+ \d+\.\d+\.\d+ (на|on) ");
+    }
 
     /// <summary>Записанные падения, свежие сверху: блок от начала до конца.</summary>
     public static IReadOnlyList<CrashRecord> Crashes(int max = 10)

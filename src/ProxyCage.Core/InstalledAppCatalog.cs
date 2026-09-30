@@ -7,6 +7,24 @@ namespace ProxyCage.Core;
 public static class InstalledAppCatalog
 {
     public sealed record Entry(string Name, string Path, string Source, string? Icon = null);
+
+    public enum Group { Browsers, Messengers, Ai, Other }
+
+    private static readonly string[] MessengerWords =
+        { "telegram", "whatsapp", "discord", "signal", "viber", "slack", "teams", "zoom", "skype", "element", "threema" };
+
+    private static readonly string[] AiWords =
+        { "chatgpt", "claude", "codex", "cursor", "gemini", "copilot", "antigravity", "windsurf", "perplexity", "ollama", "lm studio", "deepseek", "grok" };
+
+    public static Group GroupOf(Entry entry)
+    {
+        var name = entry.Name.ToLowerInvariant();
+        bool Word(string w) => System.Text.RegularExpressions.Regex.IsMatch(name, $@"(^|[^\p{{L}}]){System.Text.RegularExpressions.Regex.Escape(w)}($|[^\p{{L}}])");
+        if (AiWords.Any(Word)) return Group.Ai;
+        if (MessengerWords.Any(Word)) return Group.Messengers;
+        if (AppDetector.IsBrowser(new AppEntry { Name = entry.Name, Folder = entry.Path })) return Group.Browsers;
+        return Group.Other;
+    }
     private static readonly object CacheGate = new();
     private static IReadOnlyList<Entry>? _cached;
     private static DateTime _cachedAtUtc;

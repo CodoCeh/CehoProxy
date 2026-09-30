@@ -149,6 +149,12 @@ public sealed class WebServer
             return;
         }
 
+        if (path == "/settings/export" && ctx.Request.HttpMethod == "POST")
+        {
+            await HandleSettingsExportAsync(ctx, cfg);
+            return;
+        }
+
         if (ctx.Request.HttpMethod == "POST")
         {
             var form = await ReadFormAsync(ctx.Request);
@@ -343,6 +349,28 @@ public sealed class WebServer
     /// Журнал текстом. Файл на диске один, поэтому «скачать» — это его нужная часть,
     /// а не отдельный файл под каждый вид записей.
     /// </summary>
+    private async Task HandleSettingsExportAsync(HttpListenerContext ctx, CehoConfig cfg)
+    {
+        var form = await ReadFormAsync(ctx.Request);
+        var password = form.GetValueOrDefault("password", "");
+        string? error = password.Length < 6 ? "transfer_password_short"
+            : password != form.GetValueOrDefault("password2", "") ? "setup_password_mismatch"
+            : null;
+        if (error is not null)
+        {
+            Redirect(ctx, "/?tab=access&m=" + Uri.EscapeDataString(Strings.T(cfg.Language, error)) + "&e=1");
+            return;
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(SettingsTransfer.Export(Root, password));
+        ctx.Response.ContentType = "application/octet-stream";
+        ctx.Response.Headers.Add("Content-Disposition", $"attachment; filename=\"{SettingsTransfer.FileName}\"");
+        ctx.Response.ContentLength64 = bytes.Length;
+        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.Close();
+        Log.Info(Strings.T(cfg.Language, "transfer_exported"));
+    }
+
     private async Task HandleLogFileAsync(HttpListenerContext ctx)
     {
         var view = ViewFromQuery(ctx.Request.QueryString["view"]);
@@ -353,6 +381,7 @@ public sealed class WebServer
         {
             LogView.Engine => "cehoproxy-движок.log",
             LogView.Crashes => "cehoproxy-падения.log",
+            LogView.Important => "cehoproxy-важное.log",
             _ => "cehoproxy.log",
         };
 
@@ -368,6 +397,7 @@ public sealed class WebServer
         "engine" => LogView.Engine,
         "ours" => LogView.Ours,
         "crashes" => LogView.Crashes,
+        "important" => LogView.Important,
         _ => LogView.All,
     };
 
@@ -588,6 +618,32 @@ public sealed class WebServer
                         ? ApplyJob(cfg, restartIfRunning: true).Id
                         : null;
                     return (S("removed"), false, job);
+                }
+
+                case "/settings/import":
+                {
+                    var data = f.GetValueOrDefault("data", "");
+                    if (data.Length == 0) return (S("transfer_no_file"), true, null);
+                    try
+                    {
+                        var subs = SettingsTransfer.Import(Root, data, f.GetValueOrDefault("password", ""));
+                        _pool = null;
+                        var fresh = CehoConfig.Load(_configPath);
+                        Log.Info(Strings.T(fresh.Language, "transfer_imported", fresh.Apps.Count, fresh.Subscriptions.Count, subs));
+                        return (Strings.T(fresh.Language, "transfer_imported", fresh.Apps.Count, fresh.Subscriptions.Count, subs), false,
+                            ApplyJob(fresh, restartIfRunning: true).Id);
+                    }
+                    catch (SettingsTransfer.WrongPasswordException) { return (S("transfer_wrong_password"), true, null); }
+                    catch (InvalidDataException) { return (S("transfer_bad_file"), true, null); }
+                }
+
+                case "/apps/check":
+                {
+                    var folder = f.GetValueOrDefault("folder", "");
+                    var app = cfg.Apps.FirstOrDefault(a =>
+                        a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                    if (app is null) return (S("app_tunnel_missing"), true, null);
+                    return CheckApp(cfg, app);
                 }
 
                 case "/apps/rename":
@@ -1214,14 +1270,23 @@ public sealed class WebServer
           .Append("<input class=app-filter type=search autocomplete=off id=").Append(id)
           .Append(" placeholder=\"").Append(E(S("apps_pick_search", []))).Append("\">");
 
-        sb.Append("<div class=app-grid>");
-        foreach (var app in installed)
+        sb.Append("<div class=app-groups>");
+        var groups = installed.GroupBy(InstalledAppCatalog.GroupOf).OrderBy(g => g.Key).ToList();
+        foreach (var group in groups)
         {
-            sb.Append("<button class=app-card type=submit name=path value=\"").Append(E(app.Path))
-              .Append("\" data-name=\"").Append(E(app.Name.ToLowerInvariant())).Append("\">");
-            AppIcon(sb, app.Path, app.Name);
-            sb.Append("<span class=app-name title=\"").Append(E(app.Path)).Append("\">")
-              .Append(E(app.Name)).Append("</span></button>");
+            sb.Append("<div class=app-group>");
+            if (groups.Count > 1)
+                sb.Append("<h4 class=app-group-title>").Append(E(S("apps_group_" + group.Key.ToString().ToLowerInvariant(), []))).Append("</h4>");
+            sb.Append("<div class=app-grid>");
+            foreach (var app in group)
+            {
+                sb.Append("<button class=app-card type=submit name=path value=\"").Append(E(app.Path))
+                  .Append("\" data-name=\"").Append(E(app.Name.ToLowerInvariant())).Append("\">");
+                AppIcon(sb, app.Path, app.Name);
+                sb.Append("<span class=app-name title=\"").Append(E(app.Path)).Append("\">")
+                  .Append(E(app.Name)).Append("</span></button>");
+            }
+            sb.Append("</div></div>");
         }
         sb.Append("</div></form>");
     }
@@ -1254,7 +1319,7 @@ public sealed class WebServer
         if (job is { Running: true })
             sb.Append("<noscript><meta http-equiv=refresh content=2></noscript>");
 
-        sb.Append("<title>CehoProxy</title><style>").Append(WebUi.Css).Append("</style></head>");
+        sb.Append("<title>CehoProxy</title>").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append("</style></head>");
 
         // Пока идёт операция, страница перерисовывается каждые пару секунд.
         // Появление разделов на таких перерисовках только мельтешит, поэтому его выключаем.
@@ -1279,7 +1344,12 @@ public sealed class WebServer
             sb.Append("<button name=mode value=").Append(mode)
               .Append(cfg.PanelMode == mode ? " class=on aria-pressed=true" : " aria-pressed=false").Append('>')
               .Append(E(S(key))).Append("</button>");
-        sb.Append("</form></header>");
+        sb.Append("</form>");
+        sb.Append("<button type=button id=theme class=theme data-label=\"").Append(E(S("theme_label")))
+          .Append("\" data-auto=\"").Append(E(S("theme_auto"))).Append("\" data-light=\"").Append(E(S("theme_light")))
+          .Append("\" data-dark=\"").Append(E(S("theme_dark"))).Append("\">").Append(E(S("theme_auto"))).Append("</button>");
+        sb.Append(WebUi.ThemeScript);
+        sb.Append("</header>");
 
         var tabs = cfg.SimplePanel
             ? new (string Id, string Key)[] { ("state", "nav_state"), ("apps", "nav_apps"), ("subs", "nav_subs"), ("help", "nav_help") }
@@ -1401,6 +1471,8 @@ public sealed class WebServer
             : st.Running && st.ExitIp is not null ? ("on", S("hero_on", []), S("exit_is", [st.ExitCountry ?? "?", st.ExitIp]))
             : st.Running && st.Probed ? ("bad", S("hero_no_exit", []), S("hero_no_exit_detail", []))
             : st.Running ? ("wait", S("hero_checking", []), S("state_checking", []))
+            : DaemonControl.IsRecovering(Root) ? ("wait", S("hero_recovering", []), S("hero_recovering_detail", []))
+            : DaemonControl.IsStarting(Root, TimeSpan.Zero) ? ("wait", S("hero_checking", []), S("state_starting", []))
             : guarded ? ("warn", S("hero_off_guarded", []), S("hero_off_guarded_detail", []))
             : ("bad", S("hero_off_direct", []), S("hero_off_direct_detail", []));
 
@@ -1651,6 +1723,24 @@ public sealed class WebServer
             _appsLiveAtUtc = DateTime.UtcNow;
         }
         return _appsLive;
+    }
+
+    private (string? Message, bool IsError, string? JobId) CheckApp(CehoConfig cfg, AppEntry app)
+    {
+        string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
+        var st = _state();
+        if (!st.Running)
+            return (S("check_off", app.Label) + " " + S(app.NoInternet ? "check_off_blocked" : "check_off_hint"), true, null);
+
+        _appsLive = null;
+        var info = AppsLive()?.FirstOrDefault(l => l.Folder == app.Folder);
+        var exit = st.ExitIp is null ? "" : " " + S("exit_is", st.ExitCountry ?? "?", st.ExitIp);
+        if (info is null) return (S("check_unknown", app.Label), true, null);
+        if (info.Processes == 0) return (S("check_idle", app.Label), false, null);
+        if (info.Direct > 0) return (S("check_leak", app.Label, info.Direct), true, null);
+        if (info.Tunneled == 0 && info.EngineVpn == 0) return (S("check_quiet", app.Label), false, null);
+        return (S("check_ok", app.Label, Math.Max(info.Tunneled, info.EngineVpn)) + exit
+                + (info.EngineDirect > 0 ? " " + S("check_rules_direct", info.EngineDirect) : ""), false, null);
     }
 
     private void RenderLiveApps(StringBuilder sb, CehoConfig cfg, ControlState st, bool guarded, Func<string, object[], string> S)
@@ -2058,6 +2148,9 @@ public sealed class WebServer
                   .Append("\" placeholder=\"").Append(E(S("rename_app_ask", []))).Append("\">")
                   .Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></details>");
                 sb.Append("</td><td class=actions>");
+                sb.Append("<form method=post action=/apps/check><input type=hidden name=tab value=apps>")
+                  .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder))
+                  .Append("\"><button class=ghost>").Append(E(S("btn_check_app", []))).Append("</button></form>");
                 sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")
                   .Append(Uri.EscapeDataString(a.Folder)).Append("\">")
                   .Append(E(S("btn_tunnel", []))).Append("</a>");
@@ -2776,6 +2869,7 @@ public sealed class WebServer
 
     private static readonly (LogView View, string Key, string Query)[] LogViews =
     {
+        (LogView.Important, "log_view_important", "important"),
         (LogView.All, "log_view_all", "all"),
         (LogView.Ours, "log_view_ours", "ours"),
         (LogView.Engine, "log_view_engine", "engine"),
@@ -2861,6 +2955,26 @@ public sealed class WebServer
               .Append("<input type=hidden name=clear value=1>")
               .Append("<button class=danger>").Append(E(S("auth_remove", []))).Append("</button></form>");
         }
+        sb.Append("</section>");
+
+        sb.Append("<section><h2>").Append(E(S("transfer_title", []))).Append("</h2>");
+        sb.Append("<p class=lede>").Append(E(S("transfer_lede", []))).Append("</p>");
+        sb.Append("<h3>").Append(E(S("transfer_export", []))).Append("</h3>");
+        sb.Append("<form class=row method=post action=/settings/export>");
+        sb.Append("<input type=password name=password autocomplete=new-password minlength=6 required placeholder=\"")
+          .Append(E(S("transfer_password", []))).Append("\">");
+        sb.Append("<input type=password name=password2 autocomplete=new-password minlength=6 required placeholder=\"")
+          .Append(E(S("setup_password_again", []))).Append("\">");
+        sb.Append("<button>").Append(E(S("transfer_export_btn", []))).Append("</button></form>");
+        sb.Append("<h3>").Append(E(S("transfer_import", []))).Append("</h3>");
+        sb.Append("<form class=row method=post action=/settings/import id=settings-import><input type=hidden name=tab value=").Append(tab).Append(">");
+        sb.Append("<input type=file id=settings-file accept=\".chps,text/plain\" required>");
+        sb.Append("<input type=hidden name=data id=settings-data>");
+        sb.Append("<input type=password name=password autocomplete=off required placeholder=\"")
+          .Append(E(S("transfer_password", []))).Append("\">");
+        sb.Append("<button>").Append(E(S("transfer_import_btn", []))).Append("</button></form>");
+        sb.Append("<p class=hint>").Append(E(S("transfer_hint", []))).Append("</p>");
+        sb.Append(WebUi.SettingsImportScript);
         sb.Append("</section>");
 
         sb.Append("<section><h2>").Append(E(S("lang_title", []))).Append("</h2>");

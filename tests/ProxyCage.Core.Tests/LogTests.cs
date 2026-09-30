@@ -212,4 +212,17 @@ public class LogTests : IDisposable
         Assert.True(asFile.ToList().FindIndex(l => l.Contains(older))
                     < asFile.ToList().FindIndex(l => l.Contains(newer)));
     }
+
+    [Theory]
+    [InlineData("info", "daemon", "снят маршрут 0.0.0.0/128.0.0.0 через 172.31.211.1", false)]
+    [InlineData("info", "daemon", "[pool] 95% Складываю ноды в общий пул", false)]
+    [InlineData("info", "daemon", "[doctor] готово за 3.3 с: Всё в порядке", true)]
+    [InlineData("info", "daemon", "Защита включена", true)]
+    [InlineData("warn", "daemon", "движок не завершился по-хорошему, снимаю следы", true)]
+    [InlineData("error", "engine", "[0928/055906:ERROR:tcp_socket_posix.cc:93] Failed to set TCP_KEEPIDLE", false)]
+    [InlineData("error", "engine", "FATAL[0000] start service: configure tun interface", true)]
+    [InlineData("info", "daemon", "daemon 1.2.110 на Windows 10.0.20348.0 (X64), pid 344", true)]
+    [InlineData("crash", "daemon", ">>> падение: фоновое действие update", true)]
+    public void Important_view_keeps_what_matters(string level, string component, string message, bool important) =>
+        Assert.Equal(important, Log.IsImportant(new LogEntry(DateTime.Now, level, component, message)));
 }

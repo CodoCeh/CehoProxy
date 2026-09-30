@@ -142,7 +142,8 @@ public static class Cli
             ("Other", [
                 ("chp doctor [fix]", "check everything; fix repairs what it can"),
                 (sudo + "chp engine", "download the sing-box engine (engine update — refresh it)"),
-                ("chp log [engine|crash|clear]", "the journal: the program, the engine and crashes"),
+                ("chp log [important|engine|crash|clear]", "the journal: what matters, the program, the engine and crashes"),
+                ("chp export FILE · chp import FILE", "move all settings to another computer, encrypted with a password"),
                 ("chp detect", "find installed AI tools"),
                 ("chp apply", "rebuild the rules"),
                 ("chp update · update-status · version", "update, handoff status and version"),
@@ -186,7 +187,8 @@ public static class Cli
             ("Прочее", [
                 ("chp doctor [fix]", "проверить всё; fix — починить, что чинится"),
                 (sudo + "chp engine", "скачать движок sing-box (engine update — обновить)"),
-                ("chp log [движок|падения|очистить]", "журнал: программа, движок и падения"),
+                ("chp log [важное|движок|падения|очистить]", "журнал: важное, программа, движок и падения"),
+                ("chp export ФАЙЛ · chp import ФАЙЛ", "перенос всех настроек на другой компьютер, файл под паролем"),
                 ("chp detect", "найти установленные ИИ-инструменты"),
                 ("chp apply", "пересобрать правила"),
                 ("chp update · update-status · version", "обновление, его итог и версия"),

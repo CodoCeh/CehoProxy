@@ -78,8 +78,34 @@ public static class DaemonControl
         return true;
     }
 
+    public static string StartingPath(string root) => Path.Combine(root, "starting");
+
+    public static void MarkStarting(string root, bool recovering)
+    {
+        try { File.WriteAllText(StartingPath(root), recovering ? "recover" : "start"); } catch { }
+    }
+
+    public static void ClearStarting(string root)
+    {
+        try { File.Delete(StartingPath(root)); } catch { }
+    }
+
+    private static string? StartingMark(string root)
+    {
+        try
+        {
+            var path = StartingPath(root);
+            if (!File.Exists(path) || DateTime.UtcNow - File.GetLastWriteTimeUtc(path) > TimeSpan.FromMinutes(15)) return null;
+            return File.ReadAllText(path).Trim();
+        }
+        catch { return null; }
+    }
+
+    public static bool IsRecovering(string root) => StartingMark(root) == "recover";
+
     public static bool IsStarting(string root, TimeSpan? gracePeriod = null)
     {
+        if (StartingMark(root) is not null) return true;
         try
         {
             if (!File.Exists(PidPath(root))) return false;
@@ -159,6 +185,7 @@ public static class DaemonControl
     public static void ClearRunning(string root)
     {
         try { File.Delete(PidPath(root)); } catch { }
+        ClearStarting(root);
     }
 
     public static bool WaitForExit(string root, int timeoutMs = 20000)
