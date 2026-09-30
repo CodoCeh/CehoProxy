@@ -46,7 +46,8 @@ public static class InstalledAppCatalog
 
         var self = Environment.ProcessPath;
         var detected = entries
-            .Where(e => e.Name.Length > 0 && e.Path.Length > 0 && !IsOwn(e.Path, self, Os.IsWindows))
+            .Where(e => e.Name.Length > 0 && e.Path.Length > 0 && !IsOwn(e.Path, self, Os.IsWindows)
+                && !e.Name.StartsWith("CehoProxy", StringComparison.OrdinalIgnoreCase))
             .GroupBy(e => NormalizePath(e.Path), Os.IsLinux
                 ? StringComparer.Ordinal
                 : StringComparer.OrdinalIgnoreCase)
