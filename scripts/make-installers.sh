@@ -14,16 +14,18 @@ ISCC="${ISCC:-$HOME/.wine/drive_c/Program Files (x86)/Inno Setup 6/ISCC.exe}"
 
 rm -rf "$WORK" "$OUT"; mkdir -p "$WORK" "$OUT"
 
-gh release download "$TAG" -D "$WORK" \
+for try in 1 2 3 4; do gh release download "$TAG" -D "$WORK" --clobber \
   -p cehoproxy-win-x64.exe -p cehoproxy-tray-win-x64.exe -p libcronet.dll \
   -p cehoproxy-linux-x64 -p cehoproxy-linux-arm64 \
   -p "CehoProxy-$VERSION-macos-apple.zip" -p "CehoProxy-$VERSION-macos-intel.zip" \
-  -p "CehoProxy-$VERSION-windows.zip" -p "CehoProxy-$VERSION-SHA256SUMS.txt"
+  -p "CehoProxy-$VERSION-windows.zip" -p "CehoProxy-$VERSION-SHA256SUMS.txt" && break; sleep 5; done
+[ -f "$WORK/libcronet.dll" ] || { echo "не скачался libcronet.dll"; exit 1; }
 
 cp "$WORK/cehoproxy-win-x64.exe" "$REPO/publish/cehoproxy.exe"
 cp "$WORK/cehoproxy-tray-win-x64.exe" "$REPO/publish/cehoproxy-tray.exe"
 cp "$WORK/libcronet.dll" "$REPO/publish/libcronet.dll"
-(cd "$HERE" && wine64 "$ISCC" /Q cehoproxy.iss 2>&1 | grep -v fixme | tail -2)
+(cd "$HERE" && wine64 "$ISCC" /Q cehoproxy.iss 2>&1 | { grep -v fixme || true; } | tail -2)
+[ -f "$HERE/Output/CehoProxy-Setup-$VERSION.exe" ] || { echo "Setup не собрался"; exit 1; }
 cp "$HERE/Output/CehoProxy-Setup-$VERSION.exe" "$OUT/"
 
 for kind in apple intel; do
