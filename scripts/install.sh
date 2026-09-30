@@ -107,7 +107,7 @@ if [ -f "$ROOT/config.json" ]; then
   echo "  chp             # состояние"
   echo "  chp subs        # подписки, сроки и трафик"
   echo "  chp log         # журнал и падения"
-elif { : < /dev/tty; } 2>/dev/null; then
+elif ( : < /dev/tty ) 2>/dev/null; then
   "$BIN" setup < /dev/tty
 else
   echo "Терминала для вопросов нет, поэтому настройка не запущена."

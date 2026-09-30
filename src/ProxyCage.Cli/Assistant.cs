@@ -210,7 +210,7 @@ public static class Assistant
         }
     }
 
-    private static string SuggestName(CehoConfig cfg, string url)
+    public static string SuggestName(CehoConfig cfg, string url)
     {
         var host = Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : "";
         var baseName = System.Net.IPAddress.TryParse(host, out _)
@@ -242,9 +242,11 @@ public static class Assistant
                     Path.GetFileName(found[i].Interpreter!), AiTools.SuggestedCommand(found[i])));
         }
 
-        var hint = (found.Count > 0 ? Cli.S(cfg, "ask_or_path") + ", " : "") + Cli.S(cfg, "ask_skip");
+        var hint = (found.Count > 0 ? Cli.S(cfg, "ask_all") + ", " + Cli.S(cfg, "ask_or_path") + ", " : "") + Cli.S(cfg, "ask_skip");
         var answer = Cli.Ask("  " + Cli.S(cfg, "ask_choose") + " (" + hint + ")");
         if (answer.Length == 0) return false;
+        if (found.Count > 0 && IsAll(answer))
+            answer = string.Join(",", Enumerable.Range(1, found.Count));
 
         var added = false;
         foreach (var part in answer.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -270,6 +272,28 @@ public static class Assistant
             if (AddApp(cfg, path)) added = true;
         }
         if (added) Console.WriteLine("  " + Cli.S(cfg, "hint_after_add"));
+        return added;
+    }
+
+    public static bool IsAll(string answer) =>
+        answer.Trim().ToLowerInvariant() is "все" or "всё" or "all" or "*" or "a" or "в";
+
+    public static bool AddAllFound(CehoConfig cfg)
+    {
+        var added = false;
+        foreach (var tool in AiTools.Detect().Where(t => !AppCoverage.IsToolCovered(cfg, t)))
+        {
+            if (tool.Kind == AiTools.ToolKind.Script)
+            {
+                var command = AiTools.SuggestedCommand(tool);
+                var error = Cli.Wrap(command, out var note);
+                if (error is not null) { Console.WriteLine("  " + Cli.S(cfg, "wrap_failed", error)); continue; }
+                Console.WriteLine("  " + Cli.S(cfg, "wrap_done", command));
+                if (note is not null) Console.WriteLine("  " + note);
+                added = true;
+            }
+            else if (AddApp(cfg, tool.Path)) added = true;
+        }
         return added;
     }
 

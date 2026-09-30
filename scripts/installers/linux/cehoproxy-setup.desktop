@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=CehoProxy setup
+Name[ru]=CehoProxy: настройка
+Comment=Subscription link and programs for the tunnel
+Comment[ru]=Ссылка на подписку и программы для туннеля
+Exec=/usr/lib/cehoproxy/setup-gui.sh
+Icon=cehoproxy
+Terminal=false
+Categories=Network;Utility;

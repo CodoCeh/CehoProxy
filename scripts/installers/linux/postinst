@@ -1,0 +1,37 @@
+#!/bin/sh
+
+case "$1" in
+  configure) ;;
+  *) exit 0 ;;
+esac
+
+STAGE=/usr/lib/cehoproxy
+
+if ! "$STAGE/install.sh" "$STAGE/cehoproxy" </dev/null; then
+  echo "CehoProxy: установка не завершена. Повторите: sudo /usr/lib/cehoproxy/install.sh /usr/lib/cehoproxy/cehoproxy"
+  exit 0
+fi
+rm -f "$STAGE/cehoproxy"
+
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t /usr/share/icons/hicolor 2>/dev/null || true
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q 2>/dev/null || true
+
+grep -q '"SetupDone": *true' /var/lib/cehoproxy/config.json 2>/dev/null && exit 0
+
+command -v loginctl >/dev/null 2>&1 || exit 0
+for S in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
+  [ "$(loginctl show-session "$S" -p Active --value 2>/dev/null)" = yes ] || continue
+  TYPE="$(loginctl show-session "$S" -p Type --value 2>/dev/null)"
+  case "$TYPE" in x11|wayland) ;; *) continue ;; esac
+  U="$(loginctl show-session "$S" -p Name --value 2>/dev/null)"
+  UID_NUM="$(id -u "$U" 2>/dev/null)" || continue
+  [ -x /usr/bin/pkexec ] || exit 0
+  ( runuser -u "$U" -- env \
+      DISPLAY="${DISPLAY:-$(loginctl show-session "$S" -p Display --value 2>/dev/null)}" \
+      XDG_RUNTIME_DIR="/run/user/$UID_NUM" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$UID_NUM/bus" \
+      WAYLAND_DISPLAY=wayland-0 \
+      timeout 600 /usr/lib/cehoproxy/setup-gui.sh >/dev/null 2>&1 & ) 
+  break
+done
+exit 0

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=CehoProxy
+Name[ru]=CehoProxy
+Comment=Only chosen programs go through your VPN
+Comment[ru]=Через VPN ходят только выбранные программы
+Exec=/usr/lib/cehoproxy/open-panel.sh
+Icon=cehoproxy
+Terminal=false
+Categories=Network;Utility;

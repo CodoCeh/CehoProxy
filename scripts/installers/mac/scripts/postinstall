@@ -1,0 +1,58 @@
+#!/bin/bash
+
+STAGE="/usr/local/share/cehoproxy-setup"
+BIN=/usr/local/bin/cehoproxy
+LOG=/var/log/cehoproxy-install.log
+ROOT="/Library/Application Support/CehoProxy"
+
+USER_NAME="$(stat -f%Su /dev/console 2>/dev/null)"
+[ -n "$USER_NAME" ] && [ "$USER_NAME" != "root" ] || USER_NAME=""
+
+export SUDO_USER="$USER_NAME"
+if ! "$STAGE/install.sh" "$STAGE/cehoproxy" >"$LOG" 2>&1; then
+  rm -rf "$STAGE"
+  exit 1
+fi
+rm -rf "$STAGE"
+
+[ -n "$USER_NAME" ] || exit 0
+UID_NUM="$(id -u "$USER_NAME")"
+as_user() { launchctl asuser "$UID_NUM" sudo -u "$USER_NAME" "$@"; }
+
+case "$(defaults read /Library/Preferences/.GlobalPreferences AppleLanguages 2>/dev/null | sed -n 2p)" in
+  *ru*) LANG_CODE=ru ;;
+  *) LANG_CODE=en ;;
+esac
+
+if [ "$LANG_CODE" = ru ]; then
+  T_LINK="Вставьте ссылку на подписку от вашего VPN-сервиса. Её можно пропустить и добавить позже в панели."
+  T_SKIP="Пропустить"; T_NEXT="Продолжить"
+  T_APPS="Отправить в туннель все найденные на этом Mac программы из рекомендуемых?"
+  T_NO="Нет, выберу сам"; T_YES="Да, все найденные"
+else
+  T_LINK="Paste the subscription link from your VPN service. You can skip it and add it later in the panel."
+  T_SKIP="Skip"; T_NEXT="Continue"
+  T_APPS="Send all recommended programs found on this Mac through the tunnel?"
+  T_NO="No, I will choose"; T_YES="Yes, all found"
+fi
+
+if [ ! -f "$ROOT/config.json" ] || ! grep -q '"SetupDone": *true' "$ROOT/config.json" 2>/dev/null; then
+  ARGS=(setup --lang "$LANG_CODE")
+
+  ANSWER="$(as_user osascript \
+    -e "set r to display dialog \"$T_LINK\" default answer \"\" with title \"CehoProxy\" buttons {\"$T_SKIP\", \"$T_NEXT\"} default button \"$T_NEXT\"" \
+    -e 'if button returned of r is "'"$T_NEXT"'" then return text returned of r' 2>/dev/null)"
+  LINK="$(printf '%s' "$ANSWER" | tr -d '"' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  [ -n "$LINK" ] && ARGS+=(--sub "$LINK")
+
+  PICK="$(as_user osascript \
+    -e "button returned of (display dialog \"$T_APPS\" with title \"CehoProxy\" buttons {\"$T_NO\", \"$T_YES\"} default button \"$T_YES\")" 2>/dev/null)"
+  [ "$PICK" = "$T_YES" ] && ARGS+=(--all-apps)
+  [ -n "$LINK" ] && ARGS+=(--autostart)
+
+  "$BIN" "${ARGS[@]}" >>"$LOG" 2>&1
+fi
+
+PORT="$(awk '{print $1}' "$ROOT/panel.port" 2>/dev/null)"
+as_user open "http://127.0.0.1:${PORT:-8899}" >/dev/null 2>&1
+exit 0

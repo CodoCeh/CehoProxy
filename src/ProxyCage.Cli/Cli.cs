@@ -116,7 +116,7 @@ public static class Cli
             ]),
             ("Setup", [
                 ("chp setup", "go through the setup again"),
-                ("chp add-app [path]", "isolate a program (no path — pick from a list)"),
+                ("chp add-app [path|all]", "isolate a program (no path — pick from a list, all — everything found)"),
                 ("chp apps · chp remove-app · chp rename-app", "list, remove, rename an app"),
                 ("chp tunnel", "pick nodes per app"),
                 ("chp no-internet <index|path> [on|off]", "cut an app off the internet"),
@@ -161,7 +161,7 @@ public static class Cli
             ]),
             ("Настройка", [
                 ("chp setup", "пройти настройку заново"),
-                ("chp add-app [путь]", "изолировать программу (без пути — выбор из списка)"),
+                ("chp add-app [путь|все]", "изолировать программу (без пути — выбор из списка, все — всё найденное)"),
                 ("chp apps · chp remove-app · chp rename-app", "список, удаление, своё имя"),
                 ("chp tunnel", "ноды для программы"),
                 ("chp no-internet <номер|путь> [on|off]", "выключить программе интернет"),
@@ -883,6 +883,66 @@ public static class Cli
                 ? "       " + c.Fix
                 : "       " + (Lang(cfg) == "en" ? "What to do: " : "Что делать: ") + c.Fix);
         }
+    }
+
+    public static async Task<int> SetupFromFlagsAsync(string configPath, string[] args)
+    {
+        string? Value(string flag)
+        {
+            var i = Array.IndexOf(args, flag);
+            return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        }
+
+        var cfg = CehoConfig.Load(configPath);
+        if (Value("--lang") is { } lang) cfg.Language = Strings.Normalize(lang);
+
+        var code = 0;
+        if (Value("--sub") is { Length: > 0 } url)
+        {
+            if (NaiveProxyHelper.TryParseUri(url, out var naive) && naive is not null)
+                url = NaiveProxyHelper.BuildUri(naive);
+            var name = Assistant.SuggestName(cfg, url);
+            cfg.Subscriptions.Add(new SubscriptionEntry { Name = name, Url = url });
+            cfg.ActiveSubscription ??= name;
+            Ceho.Quiet = true;
+            var count = 0;
+            try { count = (await Ceho.LoadAllNodesAsync(cfg, preferCache: false)).Count; }
+            catch (Exception ex) { Console.WriteLine("  " + ex.Message); }
+            Ceho.Quiet = false;
+            var entry = cfg.Subscriptions.First(x => x.Name == name);
+            entry.LastCheckOk = count > 0;
+            entry.LastCheckedUtc = DateTime.UtcNow.ToString("u");
+            if (count > 0) Console.WriteLine("  " + S(cfg, "sub_parsed", count));
+            else
+            {
+                Console.WriteLine("  " + S(cfg, "sub_bad"));
+                cfg.Subscriptions.RemoveAll(x => x.Name == name);
+                cfg.ActiveSubscription = cfg.Subscriptions.FirstOrDefault()?.Name;
+                code = 2;
+            }
+        }
+
+        if (args.Contains("--all-apps")) Assistant.AddAllFound(cfg);
+
+        cfg.SetupDone = true;
+        cfg.Save(configPath);
+        Auth.RestrictConfigAccess(configPath);
+
+        if (cfg.Subscriptions.Count > 0 && cfg.Apps.Count > 0)
+        {
+            try { Console.WriteLine("  " + await Ceho.ApplyAsync()); }
+            catch (Exception ex) { Console.WriteLine("  " + ex.Message); }
+        }
+
+        if (args.Contains("--autostart"))
+        {
+            var err = Autostart.Enable(Ceho.OwnExecutablePath, Ceho.Root);
+            if (err is not null) Console.WriteLine("  " + err);
+            else { Autostart.Restart(); Console.WriteLine("  " + S(cfg, "autostart_state_on")); }
+        }
+
+        Console.WriteLine("  " + Strings.T(cfg.Language, "panel_at", $"http://127.0.0.1:{cfg.WebPort}"));
+        return code;
     }
 
     public static async Task<int> SetupAsync(string configPath)

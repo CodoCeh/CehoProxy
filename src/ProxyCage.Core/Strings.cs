@@ -1287,6 +1287,7 @@ public static class Strings
         ["country_probe"] = new("Определяю страны выходных IP…", "Resolving countries from exit IPs…"),
         ["geoip_attribution"] = new("Геоданные: DB-IP.com", "IP geolocation by DB-IP.com"),
         ["ask_skip"] = new("Enter — пропустить", "Enter to skip"),
+        ["ask_all"] = new("«все» — всё найденное", "\"all\" for everything found"),
         ["ask_or_path"] = new(
             "номера через запятую или путь к программе",
             "numbers separated by commas, or a path to a program"),

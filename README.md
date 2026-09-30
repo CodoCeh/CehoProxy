@@ -62,24 +62,41 @@ iex (irm https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/instal
 и сразу задаёт пять вопросов: язык, ссылка на подписку, какие программы отправить в туннель,
 общий ли это компьютер, запускать ли при старте системы. В конце показывает адрес панели.
 
-### Без командной строки
+### Скачать установщик с окном
 
-Если терминал вам не нужен, возьмите со страницы [релизов](../../releases) один архив
-для своей системы, распакуйте — и запустите установку из папки:
+Обычный установщик: скачали, запустили, ответили на вопросы в окне. Терминал не нужен.
 
-| Система | Что скачать | Что сделать |
+| Система | Скачать | Что делать |
 |---|---|---|
-| Windows | `CehoProxy-Setup-….exe` | Запустить — обычный установщик с окном |
-| Windows | `CehoProxy-…-windows.zip` | Или архивом: распаковать, двойной щелчок по `Установить CehoProxy.cmd` |
-| macOS, Apple silicon | `CehoProxy-…-macos-apple.zip` | `Установить CehoProxy.command` — правая кнопка → «Открыть» |
-| macOS, Intel | `CehoProxy-…-macos-intel.zip` | то же |
-| Linux | `CehoProxy-…-linux-x64.zip` или `-arm64` | `sudo ./install.sh ./cehoproxy` |
+| Windows 10, 11, Server | [CehoProxy-Setup.exe](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-Setup.exe) | Запустить. Окно спросит про ярлык на рабочем столе, ссылку на подписку и программы |
+| macOS, Apple silicon (M1 и новее) | [CehoProxy-macos-apple.pkg](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-apple.pkg) | Правая кнопка, «Открыть». Дальше кнопки «Продолжить» |
+| macOS, Intel | [CehoProxy-macos-intel.pkg](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-intel.pkg) | То же |
+| Ubuntu, Debian, Mint, x86-64 | [CehoProxy-linux-x64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.deb) | Двойной щелчок, «Установить». Окно настройки откроется само |
+| Ubuntu, Debian, Raspberry Pi, ARM | [CehoProxy-linux-arm64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.deb) | То же |
+| Другой Linux | [CehoProxy-linux-x64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.zip) | Распаковать, `sudo ./install.sh ./cehoproxy` |
 
-В архиве лежит сама программа и установщик рядом с ней — больше ничего скачивать не нужно.
-Дальше открывается та же настройка из пяти вопросов.
+Во всех окнах настройка одна и та же: ссылка на подписку, отправить ли в туннель все найденные
+рекомендуемые программы, включить ли защиту сразу. Каждый вопрос можно пропустить и вернуться
+к нему в панели. Контрольные суммы лежат рядом с релизом в файле `CehoProxy-<версия>-SHA256SUMS.txt`.
 
-Правая кнопка на macOS — не прихоть: система не знает нашего разработчика и по двойному
-щелчку файл не откроет. Один раз через «Открыть» — и дальше запускается как обычно.
+На Windows в окне есть галки «Ярлык на рабочем столе» и «Значок в области уведомлений». Для
+установки на много компьютеров сразу: `CehoProxy-Setup.exe /VERYSILENT /SUB="ссылка"`.
+
+Правая кнопка на macOS не прихоть: система не знает нашего разработчика и по двойному щелчку
+файл не откроет. Один раз через «Открыть» — и дальше всё как обычно.
+
+На Linux без графической оболочки (сервер) окно не нужно: после `sudo dpkg -i` запустите
+`sudo chp setup`.
+
+### Архивы
+
+Те же программы одним архивом со страницы [релизов](../../releases), если нужен ручной запуск:
+
+| Система | Архив | Что сделать |
+|---|---|---|
+| Windows | `CehoProxy-…-windows.zip` | Распаковать, двойной щелчок по `Установить CehoProxy.cmd` |
+| macOS | `CehoProxy-…-macos-apple.zip`, `-macos-intel.zip` | `Установить CehoProxy.command`, правая кнопка, «Открыть» |
+| Linux | `CehoProxy-…-linux-x64.zip`, `-arm64.zip` | `sudo ./install.sh ./cehoproxy` |
 
 ### Что понадобится ещё
 
@@ -112,7 +129,8 @@ iex (irm https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/instal
 chp status             состояние и реальный адрес выхода
 chp doctor             осмотреть всё; chp doctor fix — починить, что чинится
 chp verify             доказать, что программа действительно в туннеле
-chp add-app            добавить программу (покажет найденные — выбирайте номером)
+chp add-app            добавить программу (покажет найденные; «все» берёт их сразу всех)
+chp add-app all        отправить в туннель все найденные рекомендуемые программы
 chp no-internet 2      выключить второй программе интернет совсем; off в конце — вернуть
 chp sub-add            добавить подписку (проверит её сразу)
 chp countries          страны выхода, галочками

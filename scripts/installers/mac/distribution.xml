@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>CehoProxy</title>
+  <organization>ru.codoceh</organization>
+  <welcome file="welcome.html" mime-type="text/html"/>
+  <license file="LICENSE" mime-type="text/plain"/>
+  <conclusion file="conclusion.html" mime-type="text/html"/>
+  <background file="background.png" alignment="bottomleft" scaling="none"/>
+  <background-darkAqua file="background.png" alignment="bottomleft" scaling="none"/>
+  <options customize="never" require-scripts="false" hostArchitectures="ARCH_PLACEHOLDER"/>
+  <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+  <choices-outline><line choice="default"><line choice="ru.codoceh.cehoproxy"/></line></choices-outline>
+  <choice id="default"/>
+  <choice id="ru.codoceh.cehoproxy" visible="false"><pkg-ref id="ru.codoceh.cehoproxy"/></choice>
+  <pkg-ref id="ru.codoceh.cehoproxy" version="VERSION_PLACEHOLDER" onConclusion="none">component.pkg</pkg-ref>
+</installer-gui-script>

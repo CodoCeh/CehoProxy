@@ -228,7 +228,10 @@ if (cmd is "engine" or "движок")
     return 0;
 }
 
-if (cmd == "setup") return await Cli.SetupAsync(Ceho.ConfigPath);
+if (cmd == "setup")
+    return args.Any(a => a is "--sub" or "--all-apps" or "--autostart" or "--lang")
+        ? await Cli.SetupFromFlagsAsync(Ceho.ConfigPath, args)
+        : await Cli.SetupAsync(Ceho.ConfigPath);
 
 if (cmd == "version")
 {
@@ -382,6 +385,15 @@ switch (cmd)
 {
     case "add-app":
     {
+        if (args.Length == 2 && (args[1] == "--all" || Assistant.IsAll(args[1])))
+        {
+            var all = CehoConfig.Load(Ceho.ConfigPath);
+            if (!Assistant.AddAllFound(all)) { Console.WriteLine(Cli.S(all, "ask_apps_none_found")); return 0; }
+            all.Save(Ceho.ConfigPath);
+            Auth.RestrictConfigAccess(Ceho.ConfigPath);
+            try { Console.WriteLine(await Ceho.ApplyAsync()); } catch (Exception ex) { Console.WriteLine(ex.Message); }
+            return 0;
+        }
         if (args.Length < 2)
         {
             if (!Assistant.Interactive) { Console.Error.WriteLine(Cli.S(cfg0, "err_need_path")); return 1; }
