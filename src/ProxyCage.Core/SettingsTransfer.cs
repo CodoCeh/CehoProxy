@@ -183,6 +183,7 @@ public static class SettingsTransfer
 
     public static string Describe(ImportResult r, string lang)
     {
+        if (r.Applied == Parts.None) return Strings.T(lang, "transfer_nothing");
         var names = string.Join(", ", PartNames.Where(n => r.Applied.HasFlag(n.Part))
             .Select(n => Strings.T(lang, "transfer_part_" + n.Name)));
         var text = new StringBuilder(Strings.T(lang, "transfer_done_head", names.Length > 0 ? names : "-"));
