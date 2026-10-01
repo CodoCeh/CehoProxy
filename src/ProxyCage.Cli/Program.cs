@@ -1085,7 +1085,8 @@ switch (cmd)
 
             try
             {
-                Console.WriteLine("  " + await Ceho.ApplyAsync());
+                if (cfg.Subscriptions.Count > 0 && cfg.Apps.Count > 0)
+                    Console.WriteLine("  " + await Ceho.ApplyAsync());
             }
             catch (Exception ex)
             {
