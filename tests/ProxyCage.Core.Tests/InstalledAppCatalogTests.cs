@@ -195,6 +195,8 @@ public class InstalledAppCatalogTests
     [InlineData("Firefox ESR", "/usr/bin/firefox-esr", InstalledAppCatalog.Group.Browsers)]
     [InlineData("Microsoft Edge", "/x/msedge.exe", InstalledAppCatalog.Group.Browsers)]
     [InlineData("Opera Stable", "/x/opera.exe", InstalledAppCatalog.Group.Browsers)]
+    [InlineData("Music", @"C:\Users\u\AppData\Local\Programs\YandexMusic\Y.Music.exe", InstalledAppCatalog.Group.Other)]
+    [InlineData("Samsung Browser", "/x/samsunginternet.exe", InstalledAppCatalog.Group.Browsers)]
     [InlineData("Paint", "/x/mspaint.exe", InstalledAppCatalog.Group.Other)]
     [InlineData("Cursorless Notes", "/x/notes.exe", InstalledAppCatalog.Group.Other)]
     public void Programs_are_grouped_by_what_people_usually_tunnel(string name, string path, InstalledAppCatalog.Group group) =>

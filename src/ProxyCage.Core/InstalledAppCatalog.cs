@@ -13,6 +13,12 @@ public static class InstalledAppCatalog
     private static readonly string[] MessengerWords =
         { "telegram", "whatsapp", "discord", "signal", "viber", "slack", "teams", "zoom", "skype", "element", "threema" };
 
+    private static readonly string[] BrowserWords =
+    {
+        "Firefox", "Yandex Browser", "YandexBrowser", "Vivaldi", "Safari", "Tor Browser", "LibreWolf", "Waterfox",
+        "Floorp", "Zen Browser", "Thorium", "Browser",
+    };
+
     private static readonly string[] AiWords =
         { "chatgpt", "claude", "codex", "cursor", "gemini", "copilot", "antigravity", "windsurf", "perplexity", "ollama", "lm studio", "deepseek", "grok" };
 
@@ -22,7 +28,11 @@ public static class InstalledAppCatalog
         bool Word(string w) => System.Text.RegularExpressions.Regex.IsMatch(name, $@"(^|[^\p{{L}}]){System.Text.RegularExpressions.Regex.Escape(w)}($|[^\p{{L}}])");
         if (AiWords.Any(Word)) return Group.Ai;
         if (MessengerWords.Any(Word)) return Group.Messengers;
-        if (AppDetector.IsBrowser(new AppEntry { Name = entry.Name, Folder = entry.Path })) return Group.Browsers;
+        var asApp = new AppEntry { Name = entry.Name, Folder = entry.Path };
+        var exeName = System.IO.Path.GetFileName(entry.Path);
+        if (AppDetector.IsChromiumFamily(asApp) || BrowserWords.Any(w =>
+                entry.Name.Contains(w, StringComparison.OrdinalIgnoreCase) || exeName.Contains(w, StringComparison.OrdinalIgnoreCase)))
+            return Group.Browsers;
         return Group.Other;
     }
     private static readonly object CacheGate = new();
@@ -229,6 +239,8 @@ public static class InstalledAppCatalog
             if (app?.GetValue("SystemComponent") is int system && system == 1) continue;
             var name = WithoutTrailingVersion((app?.GetValue("DisplayName") as string)?.Trim());
             if (string.IsNullOrWhiteSpace(name)) continue;
+            if (name.StartsWith("Windows Driver Package", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("Пакет драйверов Windows", StringComparison.OrdinalIgnoreCase)) continue;
 
             var icon = CleanWindowsExecutable(app?.GetValue("DisplayIcon") as string);
             if (icon is not null && File.Exists(icon))
