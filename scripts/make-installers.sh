@@ -25,9 +25,14 @@ for try in 1 2 3 4; do gh release download "$TAG" -D "$WORK" --clobber \
 cp "$WORK/cehoproxy-win-x64.exe" "$REPO/publish/cehoproxy.exe"
 cp "$WORK/cehoproxy-tray-win-x64.exe" "$REPO/publish/cehoproxy-tray.exe"
 cp "$WORK/libcronet.dll" "$REPO/publish/libcronet.dll"
-(cd "$HERE" && wine64 "$ISCC" /Q cehoproxy.iss 2>&1 | { grep -v fixme || true; } | tail -2)
-[ -f "$HERE/Output/CehoProxy-Setup-$VERSION.exe" ] || { echo "Setup не собрался"; exit 1; }
-cp "$HERE/Output/CehoProxy-Setup-$VERSION.exe" "$OUT/"
+if gh release download "$TAG" -D "$OUT" --clobber -p "CehoProxy-Setup-$VERSION.exe" 2>/dev/null && [ -f "$OUT/CehoProxy-Setup-$VERSION.exe" ]; then
+  echo "Setup взят из релиза: собран в GitHub Actions."
+else
+  echo "В релизе нет Setup из CI, собираю локально."
+  (cd "$HERE" && wine64 "$ISCC" /Q cehoproxy.iss 2>&1 | { grep -v fixme || true; } | tail -2)
+  [ -f "$HERE/Output/CehoProxy-Setup-$VERSION.exe" ] || { echo "Setup не собрался"; exit 1; }
+  cp "$HERE/Output/CehoProxy-Setup-$VERSION.exe" "$OUT/"
+fi
 
 for kind in apple intel; do
   unzip -q -o "$WORK/CehoProxy-$VERSION-macos-$kind.zip" -d "$WORK/mac-$kind"

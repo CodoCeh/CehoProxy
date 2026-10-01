@@ -195,6 +195,75 @@ jobs:
             cehoproxy-tray-osx-*.zip
           retention-days: 7
 
+  setup-windows:
+    name: Установщик Windows
+    needs:
+      - version
+      - binaries
+      - tray-windows
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bin-*win*
+          path: in
+          merge-multiple: true
+
+      - name: Библиотека NaiveProxy из прошлого релиза
+        shell: bash
+        run: |
+          mkdir -p in
+          if gh release download --repo "$RELEASE_REPO" --pattern libcronet.dll --dir in; then
+            echo "libcronet.dll перенесена из прошлого релиза."
+          else
+            echo "::warning::libcronet.dll в прошлом релизе не найдена, установщик соберётся без неё."
+          fi
+
+      - name: Файлы для установщика
+        shell: bash
+        run: |
+          mkdir -p publish
+          cp in/cehoproxy-win-x64.exe publish/cehoproxy.exe
+          cp in/cehoproxy-tray.exe publish/cehoproxy-tray.exe
+          if [ -f in/libcronet.dll ]; then cp in/libcronet.dll publish/libcronet.dll; fi
+          ls -l publish
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe не найден" }
+          Push-Location scripts
+          & $iscc /Q cehoproxy.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC вернул $LASTEXITCODE" }
+          Pop-Location
+          Get-ChildItem scripts\Output\*.exe | Format-Table Name, Length
+
+      - name: Проверка имени установщика
+        shell: bash
+        run: |
+          test -f "scripts/Output/CehoProxy-Setup-$VERSION.exe" || { echo "Нет scripts/Output/CehoProxy-Setup-$VERSION.exe: версия в scripts/cehoproxy.iss не совпадает с Directory.Build.props." >&2; exit 1; }
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: scripts/Output/CehoProxy-Setup-${{ needs.version.outputs.version }}.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: setup-windows
+          path: scripts/Output/CehoProxy-Setup-${{ needs.version.outputs.version }}.exe
+          retention-days: 7
+
   bundles:
     name: Комплекты и проверка имён
     needs:
@@ -276,6 +345,7 @@ jobs:
     needs:
       - version
       - bundles
+      - setup-windows
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
     runs-on: ubuntu-latest
     permissions:
@@ -287,6 +357,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-assets
+          path: release-assets
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: setup-windows
           path: release-assets
 
       - name: Черновик и ассеты
