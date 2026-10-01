@@ -4,6 +4,20 @@
 
 Windows, Linux, macOS. Управление из терминала и из локальной веб-панели.
 
+## Скачать
+
+Скачали, запустили, ответили на вопросы в окне. Терминал не нужен.
+
+| Система | Установщик | Архив для ручной установки |
+|---|---|---|
+| Windows 10, 11, Server | [CehoProxy-Setup.exe](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-Setup.exe) | [windows.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-windows.zip) |
+| macOS, Apple silicon (M1 и новее) | [CehoProxy-macos-apple.pkg](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-apple.pkg) | [macos-apple.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-apple.zip) |
+| macOS, Intel | [CehoProxy-macos-intel.pkg](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-intel.pkg) | [macos-intel.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-intel.zip) |
+| Ubuntu, Debian, Mint (x86-64) | [CehoProxy-linux-x64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.deb) | [linux-x64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.zip) |
+| Ubuntu, Debian, Raspberry Pi (ARM) | [CehoProxy-linux-arm64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.deb) | [linux-arm64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.zip) |
+
+Все ссылки ведут на последнюю версию. Контрольные суммы лежат на странице [релизов](../../releases) в файле `CehoProxy-<версия>-SHA256SUMS.txt`. Что делать после скачивания, написано в разделе [Установка](#установка).
+
 ---
 
 ## Знакомая история
@@ -44,60 +58,35 @@ Claude, Codex, Cursor, Gemini. Их трафик идёт через ваш VPN.
 
 ## Установка
 
+### Через окно установщика
+
+- **Windows.** Запустить `CehoProxy-Setup.exe`. Окно спросит про ярлык на рабочем столе, значок в области уведомлений, ссылку на подписку и программы.
+- **macOS.** Правая кнопка на `.pkg`, «Открыть», дальше «Продолжить». Правая кнопка нужна один раз: система не знает нашего разработчика и по двойному щелчку файл не откроет.
+- **Linux.** Двойной щелчок по `.deb`, «Установить». Окно настройки откроется само. На сервере без графической оболочки: `sudo dpkg -i CehoProxy-linux-x64.deb`, затем `sudo chp setup`.
+
+Настройка везде одна: ссылка на подписку, затем список найденных программ с галочками (рекомендуемые отмечены заранее, остальное можно добавить или снять), включить ли защиту сразу. Любой вопрос можно пропустить и вернуться к нему в панели.
+
+Установка на много компьютеров сразу: `CehoProxy-Setup.exe /VERYSILENT /SUB="ссылка"`. Рекомендуемые программы добавятся сами, `/APPS=none` отключает это.
+
+### Из архива
+
+Windows: распаковать, двойной щелчок по `Установить CehoProxy.cmd`. macOS: `Установить CehoProxy.command`, правая кнопка, «Открыть». Linux: `sudo ./install.sh ./cehoproxy`.
+
 ### Одной командой
 
-Linux и macOS — в терминале:
+Linux и macOS, в терминале:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/install.sh | sudo sh
 ```
 
-Windows — в PowerShell, запущенном от имени администратора:
+Windows, в PowerShell от имени администратора:
 
 ```powershell
 iex (irm https://raw.githubusercontent.com/CodoCeh/CehoProxy/main/scripts/install.ps1)
 ```
 
-Команда скачивает программу для вашей системы, ставит её, заводит короткую команду `chp`
-и сразу задаёт пять вопросов: язык, ссылка на подписку, какие программы отправить в туннель,
-общий ли это компьютер, запускать ли при старте системы. В конце показывает адрес панели.
-
-### Скачать установщик с окном
-
-Обычный установщик: скачали, запустили, ответили на вопросы в окне. Терминал не нужен.
-
-| Система | Скачать | Что делать |
-|---|---|---|
-| Windows 10, 11, Server | [CehoProxy-Setup.exe](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-Setup.exe) | Запустить. Окно спросит про ярлык на рабочем столе, ссылку на подписку и программы |
-| macOS, Apple silicon (M1 и новее) | [CehoProxy-macos-apple.pkg](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-apple.pkg) | Правая кнопка, «Открыть». Дальше кнопки «Продолжить» |
-| macOS, Intel | [CehoProxy-macos-intel.pkg](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-intel.pkg) | То же |
-| Ubuntu, Debian, Mint, x86-64 | [CehoProxy-linux-x64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.deb) | Двойной щелчок, «Установить». Окно настройки откроется само |
-| Ubuntu, Debian, Raspberry Pi, ARM | [CehoProxy-linux-arm64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.deb) | То же |
-| Другой Linux | [CehoProxy-linux-x64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.zip) | Распаковать, `sudo ./install.sh ./cehoproxy` |
-
-Во всех окнах настройка одна и та же: ссылка на подписку, затем список найденных на компьютере
-программ с галочками (рекомендуемые отмечены заранее, остальное можно добавить или снять),
-включить ли защиту сразу. Каждый вопрос можно пропустить и вернуться
-к нему в панели. Контрольные суммы лежат рядом с релизом в файле `CehoProxy-<версия>-SHA256SUMS.txt`.
-
-На Windows в окне есть галки «Ярлык на рабочем столе» и «Значок в области уведомлений». Для
-установки на много компьютеров сразу: `CehoProxy-Setup.exe /VERYSILENT /SUB="ссылка"` (рекомендуемые программы добавятся сами; `/APPS=none` — не добавлять).
-
-Правая кнопка на macOS не прихоть: система не знает нашего разработчика и по двойному щелчку
-файл не откроет. Один раз через «Открыть» — и дальше всё как обычно.
-
-На Linux без графической оболочки (сервер) окно не нужно: после `sudo dpkg -i` запустите
-`sudo chp setup`.
-
-### Архивы
-
-Те же программы одним архивом со страницы [релизов](../../releases), если нужен ручной запуск:
-
-| Система | Архив | Что сделать |
-|---|---|---|
-| Windows | `CehoProxy-…-windows.zip` | Распаковать, двойной щелчок по `Установить CehoProxy.cmd` |
-| macOS | `CehoProxy-…-macos-apple.zip`, `-macos-intel.zip` | `Установить CehoProxy.command`, правая кнопка, «Открыть» |
-| Linux | `CehoProxy-…-linux-x64.zip`, `-arm64.zip` | `sudo ./install.sh ./cehoproxy` |
+Команда ставит программу, заводит короткую команду `chp` и задаёт пять вопросов: язык, ссылка на подписку, какие программы отправить в туннель, общий ли это компьютер, запускать ли при старте системы. В конце показывает адрес панели.
 
 ### Что понадобится ещё
 

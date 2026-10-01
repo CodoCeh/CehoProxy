@@ -18,6 +18,7 @@ for try in 1 2 3 4; do gh release download "$TAG" -D "$WORK" --clobber \
   -p cehoproxy-win-x64.exe -p cehoproxy-tray-win-x64.exe -p libcronet.dll \
   -p cehoproxy-linux-x64 -p cehoproxy-linux-arm64 \
   -p "CehoProxy-$VERSION-macos-apple.zip" -p "CehoProxy-$VERSION-macos-intel.zip" \
+  -p "CehoProxy-$VERSION-linux-x64.zip" -p "CehoProxy-$VERSION-linux-arm64.zip" \
   -p "CehoProxy-$VERSION-windows.zip" -p "CehoProxy-$VERSION-SHA256SUMS.txt" && break; sleep 5; done
 [ -f "$WORK/libcronet.dll" ] || { echo "не скачался libcronet.dll"; exit 1; }
 
@@ -37,7 +38,7 @@ for kind in x64 arm64; do
   python3 "$HERE/build-deb.py" "$VERSION" "$kind" "$WORK/cehoproxy-linux-$kind" "$OUT"
 done
 
-cp "$WORK/CehoProxy-$VERSION-windows.zip" "$OUT/"
+cp "$WORK"/CehoProxy-"$VERSION"-*.zip "$OUT/"
 
 cd "$OUT"
 for f in CehoProxy-*"$VERSION"*; do
@@ -56,6 +57,7 @@ if [ "$UPLOAD" = "--upload" ]; then
   gh release upload "$TAG" --clobber \
     CehoProxy-Setup.exe CehoProxy-macos-apple.pkg CehoProxy-macos-intel.pkg \
     CehoProxy-linux-x64.deb CehoProxy-linux-arm64.deb CehoProxy-windows.zip \
+    CehoProxy-linux-x64.zip CehoProxy-linux-arm64.zip CehoProxy-macos-apple.zip CehoProxy-macos-intel.zip \
     "CehoProxy-$VERSION-macos-apple.pkg" "CehoProxy-$VERSION-macos-intel.pkg" \
     "CehoProxy-$VERSION-linux-x64.deb" "CehoProxy-$VERSION-linux-arm64.deb" \
     "CehoProxy-Setup-$VERSION.exe" "CehoProxy-$VERSION-SHA256SUMS.txt"
