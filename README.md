@@ -16,6 +16,8 @@ Windows, Linux, macOS. Управление из терминала и из ло
 | Ubuntu, Debian, Mint (x86-64) | [CehoProxy-linux-x64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.deb) | [linux-x64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.zip) |
 | Ubuntu, Debian, Raspberry Pi (ARM) | [CehoProxy-linux-arm64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.deb) | [linux-arm64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.zip) |
 
+Установщик пока без цифровой подписи: она платная, а проект бесплатный и открытый. Если Windows пишет «Windows защитила ваш компьютер», нажмите «Подробнее», затем «Выполнить в любом случае». Сверить файл можно по контрольной сумме ниже. Если Защитник всё равно блокирует установщик, поставьте программу командой из раздела «Одной командой» или из архива: они обходятся без скачанного `.exe`.
+
 Все ссылки ведут на последнюю версию. Контрольные суммы лежат на странице [релизов](../../releases) в файле `CehoProxy-<версия>-SHA256SUMS.txt`. Что делать после скачивания, написано в разделе [Установка](#установка).
 
 ---
