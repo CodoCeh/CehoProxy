@@ -909,11 +909,13 @@ public static class Cli
             var name = Assistant.SuggestName(cfg, url);
             cfg.Subscriptions.Add(new SubscriptionEntry { Name = name, Url = url });
             cfg.ActiveSubscription ??= name;
+            cfg.Save(configPath);
             Ceho.Quiet = true;
             var count = 0;
             try { count = (await Ceho.LoadAllNodesAsync(cfg, preferCache: false)).Count; }
             catch (Exception ex) { Console.WriteLine("  " + ex.Message); }
             Ceho.Quiet = false;
+            cfg = CehoConfig.Load(configPath);
             var entry = cfg.Subscriptions.First(x => x.Name == name);
             entry.LastCheckedUtc = DateTime.UtcNow.ToString("u");
             if (entry.LastCheckOk == true) Console.WriteLine("  " + S(cfg, "sub_parsed", count));
