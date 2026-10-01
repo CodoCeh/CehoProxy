@@ -1696,7 +1696,10 @@ switch (cmd)
             }.ToJsonString());
             return running ? 0 : 1;
         }
-        Console.WriteLine(running ? Cli.Paint(Cli.S(cfg, "state_on"), Preflight.Level.Ok)
+        string? exitCountry = null, exitIp = null;
+        if (running) (exitCountry, exitIp) = await Ceho.ProbeExitAsync(cfg.MixedPort);
+        Console.WriteLine(running && exitIp is null ? Cli.Paint(Cli.S(cfg, "hero_no_exit"), Preflight.Level.Blocker)
+            : running ? Cli.Paint(Cli.S(cfg, "state_on"), Preflight.Level.Ok)
             : daemon && DaemonControl.IsRecovering(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_recovering"), Preflight.Level.Warning)
             : daemon && DaemonControl.IsStarting(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_starting"), Preflight.Level.Warning)
             : LeakGuard.IsActive(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)
@@ -1720,10 +1723,11 @@ switch (cmd)
         if (!Auth.HasPassword(cfg)) Console.WriteLine(Cli.S(cfg, "auth_no_password"));
         if (running)
         {
-            var (country, ip) = await Ceho.ProbeExitAsync(cfg.MixedPort);
-            Console.WriteLine(ip is null
+            Console.WriteLine(exitIp is null
                 ? Cli.S(cfg, "state_no_exit")
-                : Strings.T(cfg.Language, "exit_is", country ?? "?", ip));
+                : Strings.T(cfg.Language, "exit_is", exitCountry ?? "?", exitIp));
+            if (exitIp is null)
+                Console.WriteLine(Cli.S(cfg, "no_exit_todo_title") + ": " + Cli.S(cfg, "no_exit_todo"));
         }
         return 0;
     }

@@ -1502,6 +1502,10 @@ public sealed class WebServer
         sb.Append("</form></div></section>");
 
         sb.Append("<section>");
+        if (power is null && st.Running && st.Probed && st.ExitIp is null)
+            sb.Append("<div class=\"flash err\"><b>").Append(E(S("no_exit_todo_title", []))).Append("</b> ")
+              .Append(E(S("no_exit_todo", []))).Append("<br><a href=\"/?tab=doctor\"><b>")
+              .Append(E(S("no_exit_open_check", []))).Append("</b></a></div>");
         if (!Auth.HasPassword(cfg))
             sb.Append("<div class=\"flash warn\">").Append(E(S("auth_no_password", [])))
               .Append(" <a href=\"").Append(cfg.SimplePanel ? "#settings" : "/?tab=access").Append("\">")

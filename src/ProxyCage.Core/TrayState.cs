@@ -114,7 +114,7 @@ public static class TrayState
     public static string? Hint(string? lang, TrayLook look, int waitSeconds = 0) => look switch
     {
         TrayLook.Stopped => Strings.T(lang, "tray_no_service_hint", Os.IsWindows ? "" : "sudo "),
-        TrayLook.Trouble => Strings.T(lang, "state_no_exit"),
+        TrayLook.Trouble => Strings.T(lang, "state_no_exit") + ". " + Strings.T(lang, "tray_no_exit_todo"),
         TrayLook.Locked => Strings.T(lang, waitSeconds > 0 ? "tray_wait_hint" : "tray_password_hint"),
         _ => null,
     };

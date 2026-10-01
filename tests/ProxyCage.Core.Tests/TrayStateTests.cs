@@ -224,4 +224,15 @@ public class TrayStateTests
         Assert.Contains(Strings.T("ru", "state_recovering"), TrayState.Tooltip("ru", look, snap, limit: 0));
         Assert.Equal(Strings.T("ru", "state_starting"), TrayState.StateText("ru", look));
     }
+
+    [Theory]
+    [InlineData("ru")]
+    [InlineData("en")]
+    public void Trouble_hint_says_what_is_wrong_and_where_to_look(string lang)
+    {
+        var hint = TrayState.Hint(lang, TrayLook.Trouble);
+
+        Assert.Contains(Strings.T(lang, "state_no_exit"), hint);
+        Assert.Contains(Strings.T(lang, "tray_no_exit_todo"), hint);
+    }
 }

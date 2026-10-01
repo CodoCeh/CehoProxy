@@ -616,6 +616,14 @@ public static class Strings
         ["hero_on"] = new("Защищено", "Protected"),
         ["hero_busy"] = new("Подождите несколько секунд.", "Wait a few seconds."),
         ["hero_no_exit"] = new("Нет связи с VPN", "No connection to the VPN"),
+        ["no_exit_todo_title"] = new("Что сделать", "What to do"),
+        ["no_exit_todo"] = new(
+            "Откройте «Проверка» (или выполните chp doctor): там будет причина. Частые причины: узел недоступен из этой сети (оператор или Wi-Fi режет нужный порт или UDP), не находится адрес узла (сломан DNS), узел выключен у вашего VPN-сервиса. Программы в изоляции остаются без интернета, пока связи нет: так задумано, чтобы трафик не ушёл мимо VPN.",
+            "Open “Check” (or run chp doctor): it shows the cause. Common causes: the node is unreachable from this network (an operator or Wi-Fi blocks the port or UDP), the node address cannot be resolved (broken DNS), or the node is switched off by your VPN service. Isolated apps stay offline while there is no connection: that is by design, so traffic never leaks around the VPN."),
+        ["no_exit_open_check"] = new("Найти причину", "Find the cause"),
+        ["tray_no_exit_todo"] = new(
+            "Откройте панель: раздел «Проверка» покажет причину",
+            "Open the panel: the “Check” section shows the cause"),
         ["hero_no_exit_detail"] = new(
             "Серверы не отвечают, у программ в изоляции сейчас нет интернета.",
             "The servers do not respond; isolated apps have no internet right now."),
