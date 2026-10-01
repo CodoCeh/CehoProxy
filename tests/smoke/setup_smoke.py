@@ -13,6 +13,8 @@ import sys
 import tempfile
 import threading
 
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 NODE = "vless://11111111-1111-1111-1111-111111111111@127.0.0.1:443?type=tcp&security=none#smoke"
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 exe_arg = sys.argv[1] if len(sys.argv) > 1 else None
@@ -44,7 +46,8 @@ def chp(home, *args):
     else:
         cmd = ["dotnet", "run", "--project", os.path.join(ROOT, "src", "ProxyCage.Cli"),
                "-c", "Release", "--no-build", "--", *args]
-    proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180, stdin=subprocess.DEVNULL)
+    proc = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=180, stdin=subprocess.DEVNULL)
     return proc.returncode, proc.stdout + proc.stderr
 
 
