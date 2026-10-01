@@ -64,6 +64,9 @@ with sync_playwright() as p:
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
 
     go(page, base + "/")
+    if "Простой" not in page.content():
+        print("Интерфейс не на русском: сценарий написан под русский текст. Включите его командой `chp lang ru` и верните `chp lang en` после проверки.")
+        sys.exit(2)
     check("главная открывается", "CehoProxy" in page.title(), page.title())
 
     # Режим: запоминаем и возвращаем.
