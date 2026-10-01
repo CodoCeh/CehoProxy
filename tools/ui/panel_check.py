@@ -2,8 +2,9 @@
 """Проверка панели CehoProxy реальными кликами в Chrome.
 
 Запуск: tools/ui/.venv/bin/python tools/ui/panel_check.py http://127.0.0.1:8899 [--shots папка]
-Только лабораторные машины. Состояние не меняется: ошибочные формы отклоняются,
-режим (простой/профи) возвращается как был. Код возврата 1, если что-то не прошло.
+Работает на русском и английском интерфейсе (язык берётся со страницы). Только лабораторные машины.
+Состояние не меняется: ошибочные формы отклоняются, режим (простой/профи) возвращается как был.
+Код возврата 1, если что-то не прошло.
 """
 import re
 import sys
@@ -17,6 +18,12 @@ if shots:
     shots.mkdir(parents=True, exist_ok=True)
 failures = []
 BAD = re.compile(r"\{\d\}|undefined|NaN")
+MSG = {
+    "ru": {"mismatch": "не совпали", "no_parts": "Отметьте, что переносить", "no_path": "Такого пути нет",
+           "bad_link": "не похоже на ссылку"},
+    "en": {"mismatch": "do not match", "no_parts": "Choose what to move", "no_path": "No such path",
+           "bad_link": "does not look like a link"},
+}
 
 
 def check(name, ok, detail=""):
@@ -64,15 +71,17 @@ with sync_playwright() as p:
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
 
     go(page, base + "/")
-    if "Простой" not in page.content():
-        print("Интерфейс не на русском: сценарий написан под русский текст. Включите его командой `chp lang ru` и верните `chp lang en` после проверки.")
-        sys.exit(2)
+    lang = page.evaluate("document.documentElement.lang") or "ru"
+    lang = "en" if lang.startswith("en") else "ru"
+    M = MSG[lang]
+    print(f"язык интерфейса: {lang}")
     check("главная открывается", "CehoProxy" in page.title(), page.title())
 
     # Режим: запоминаем и возвращаем.
-    start_pro = page.locator("button:has-text('Для профи')").first.get_attribute("class") or ""
+    modes = page.locator("form[action='/mode'] button")
+    start_pro = modes.nth(1).get_attribute("class") or ""
     was_pro = "on" in start_pro.split() or "active" in start_pro
-    page.locator("button:has-text('Для профи')").first.click()
+    modes.nth(1).click()
     page.wait_for_load_state()
     tabs_pro = set(re.findall(r'href="/\?tab=([a-z]+)', page.content()))
     check("режим профи показывает вкладки «sites», «exit», «doctor», «access»",
@@ -91,17 +100,17 @@ with sync_playwright() as p:
     # Тема.
     go(page, base + "/")
     before = page.evaluate("document.documentElement.getAttribute('data-theme')")
-    page.locator("button[aria-label^='Тема'], button:has-text('Тема')").first.click()
+    page.locator("button[aria-label^='Тема'], button[aria-label^='Theme']").first.click()
     after = page.evaluate("document.documentElement.getAttribute('data-theme')")
     check("кнопка темы меняет тему", before != after, (before, after))
     page.evaluate("localStorage.removeItem('ceho-theme')")
 
     # Пароль: несовпадение.
     go(page, base + "/?tab=access")
-    page.fill("input[placeholder='Пароль']", "abc12345")
-    page.locator("input[placeholder='Повторите пароль']").first.fill("different")
-    submit(page, lambda: page.locator("button:has-text('Сохранить')").first.click())
-    check("пароли не совпали: сообщение", "не совпали" in page.content(), page.url)
+    page.fill("form[action='/password'] input[name=password]", "abc12345")
+    page.fill("form[action='/password'] input[name=password2]", "different")
+    submit(page, lambda: page.locator("form[action='/password'] button").first.click())
+    check("пароли не совпали: сообщение", M["mismatch"] in page.content(), page.url)
 
     # Перенос: без выбранных частей, и галочки переживают перезагрузку.
     go(page, base + "/?tab=access")
@@ -110,25 +119,25 @@ with sync_playwright() as p:
     for i in range(n):
         boxes.nth(i).uncheck()
     boxes.nth(0).check()
-    page.locator("input[placeholder^='Пароль файла']").first.fill("filepass1")
-    page.locator("input[placeholder='Повторите пароль']").nth(1).fill("otherpass")
-    submit(page, lambda: page.locator("button:has-text('Скачать файл')").first.click())
+    page.fill("form[action='/settings/export'] input[name=password]", "filepass1")
+    page.fill("form[action='/settings/export'] input[name=password2]", "otherpass")
+    submit(page, lambda: page.locator("form[action='/settings/export'] button[type=submit], form[action='/settings/export'] button").last.click())
     boxes = page.locator(".transfer-parts").first.locator("input[type=checkbox]")
     state = [boxes.nth(i).is_checked() for i in range(boxes.count())]
     check("перенос: галочки сохранились после ошибки", state == [True] + [False] * (n - 1), state)
 
     # Программы: несуществующий путь.
     go(page, base + "/?tab=apps")
-    page.fill("input[placeholder*='program.exe']", r"C:\net\takogo\net.exe")
-    submit(page, lambda: page.locator("button:has-text('Добавить')").first.click())
-    check("программа по несуществующему пути отклонена", "Такого пути нет" in page.content(), page.url)
+    page.fill("form[action='/apps/add'] input[name=path]", r"C:\net\takogo\net.exe")
+    submit(page, lambda: page.locator("form[action='/apps/add'] button").first.click())
+    check("программа по несуществующему пути отклонена", M["no_path"] in page.content(), page.url)
 
     # Подписки: не ссылка.
     go(page, base + "/?tab=subs")
-    page.locator("input[placeholder='Моя подписка']").fill("Проверка")
-    page.locator("input[placeholder='https://…']").last.fill("not a url")
-    submit(page, lambda: page.keyboard.press("Enter"))
-    check("подписка «not a url» отклонена понятным текстом", "не похоже на ссылку" in page.content(), page.url)
+    page.fill("form[action='/subs/add'] input[name=name]", "Проверка")
+    page.fill("form[action='/subs/add'] input[name=url]", "not a url")
+    submit(page, lambda: page.locator("form[action='/subs/add'] input[name=url]").press("Enter"))
+    check("подписка «not a url» отклонена понятным текстом", M["bad_link"] in page.content(), page.url)
 
     # Журнал: фильтры.
     go(page, base + "/?tab=log")
@@ -147,7 +156,7 @@ with sync_playwright() as p:
     # Режим обратно.
     if not was_pro:
         go(page, base + "/")
-        page.locator("button:has-text('Простой')").first.click()
+        page.locator("form[action='/mode'] button").nth(0).click()
 
     check("в консоли браузера нет ошибок", not [e for e in errors if "favicon" not in e], errors[:3])
     browser.close()
