@@ -57,6 +57,10 @@ jobs:
             --logger "trx;LogFileName=tests.trx" \
             --results-directory artifacts/tests
 
+      - name: Дымовой тест первой настройки
+        shell: bash
+        run: python3 tests/smoke/setup_smoke.py || python tests/smoke/setup_smoke.py
+
       - name: Сборка значка macOS
         if: matrix.os == 'macos-latest'
         run: scripts/build-tray-mac.sh arm64 "$RUNNER_TEMP/tray"

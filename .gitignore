@@ -30,3 +30,5 @@ docs/AI-AGENT-PROMPT.md
 scripts/Output/
 lab/
 TestResults/
+
+tools/ui/.venv/

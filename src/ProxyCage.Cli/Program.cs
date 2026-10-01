@@ -1179,7 +1179,7 @@ switch (cmd)
         }
         var installed = InstalledAppCatalog.Detect(Strings.Normalize("ru"));
         foreach (var t in AiTools.Detect()) Line('R', t.Name, t.Path);
-        foreach (var e in installed.Where(e => InstalledAppCatalog.GroupOf(e) == InstalledAppCatalog.Group.Ai)) Line('R', e.Name, e.Path);
+        foreach (var e in InstalledAppCatalog.Recommended()) Line('R', e.Name, e.Path);
         foreach (var e in installed)
             Line(InstalledAppCatalog.GroupOf(e) switch
             {
@@ -2267,7 +2267,7 @@ if (cmd is "daemon" or "web")
 
         if (!clean)
         {
-            Log.Warn("движок не завершился по-хорошему, снимаю следы");
+            Log.Info("движок не успел завершиться сам, завершаю принудительно и снимаю следы");
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
             Thread.Sleep(800);
         }

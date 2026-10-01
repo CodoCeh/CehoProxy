@@ -503,6 +503,25 @@ public static class WebUi
     </script>
     """;
 
+    public const string TransferPartsScript = """
+    <script>
+    (function(){
+      document.querySelectorAll('.transfer-parts').forEach(function(block,i){
+        var key='ceho-parts-'+i,boxes=block.querySelectorAll('input[type=checkbox]');
+        try{
+          var saved=sessionStorage.getItem(key);
+          if(saved)boxes.forEach(function(b,n){b.checked=saved.charAt(n)==='1'});
+        }catch(e){}
+        boxes.forEach(function(b){
+          b.addEventListener('change',function(){
+            try{sessionStorage.setItem(key,Array.prototype.map.call(boxes,function(x){return x.checked?'1':'0'}).join(''))}catch(e){}
+          });
+        });
+      });
+    })();
+    </script>
+    """;
+
     public const string AppFilterScript = """
     <script>
     (function(){

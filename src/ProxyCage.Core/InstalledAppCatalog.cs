@@ -40,6 +40,10 @@ public static class InstalledAppCatalog
     private static DateTime _cachedAtUtc;
     private static string? _cachedLang;
 
+    /// <summary>Рекомендуемые для туннеля программы из каталога. Язык не зависит от настроек: один список для мастера, detect-apps и add-app all.</summary>
+    public static IReadOnlyList<Entry> Recommended() =>
+        Detect("ru").Where(e => GroupOf(e) == Group.Ai).ToList();
+
     public static IReadOnlyList<Entry> Detect(string lang = "ru", bool fresh = false)
     {
         lock (CacheGate)

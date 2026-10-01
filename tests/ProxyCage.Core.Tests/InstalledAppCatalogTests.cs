@@ -201,4 +201,16 @@ public class InstalledAppCatalogTests
     [InlineData("Cursorless Notes", "/x/notes.exe", InstalledAppCatalog.Group.Other)]
     public void Programs_are_grouped_by_what_people_usually_tunnel(string name, string path, InstalledAppCatalog.Group group) =>
         Assert.Equal(group, InstalledAppCatalog.GroupOf(new InstalledAppCatalog.Entry(name, path, "test")));
+
+    [Fact]
+    public void Recommended_programs_are_exactly_the_ai_group_of_the_catalog()
+    {
+        var recommended = InstalledAppCatalog.Recommended();
+        var expected = InstalledAppCatalog.Detect("ru")
+            .Where(e => InstalledAppCatalog.GroupOf(e) == InstalledAppCatalog.Group.Ai)
+            .Select(e => e.Path);
+
+        Assert.Equal(expected, recommended.Select(e => e.Path));
+        Assert.All(recommended, e => Assert.Equal(InstalledAppCatalog.Group.Ai, InstalledAppCatalog.GroupOf(e)));
+    }
 }

@@ -1421,6 +1421,7 @@ public sealed class WebServer
         if (job is { Running: true }) sb.Append(WebUi.JobScript);
         if (tab == "subs" && cfg.Subscriptions.Count > 0) sb.Append(WebUi.SubModalScript);
         if (tab is "apps" or "state") sb.Append(WebUi.AppFilterScript);
+        if (tab == "access") sb.Append(WebUi.TransferPartsScript);
         if (tab is "state" or "doctor" && job is not { Running: true }) sb.Append(WebUi.StateRefreshScript);
         sb.Append("</body></html>");
         return sb.ToString();
