@@ -1163,13 +1163,18 @@ switch (cmd)
 
     case "detect-apps":
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var outFile = args.Length >= 3 && args[1] == "--out" ? args[2] : null;
-        var lines = new List<string>();
+        var rows = new List<(char Kind, string Name, string Path)>();
+        string Trim(string path) => path.TrimEnd('/', '\\');
+        bool Nested(string a, string b) =>
+            Trim(a).Equals(Trim(b), StringComparison.OrdinalIgnoreCase)
+            || Trim(a).StartsWith(Trim(b) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || Trim(b).StartsWith(Trim(a) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         void Line(char kind, string name, string path)
         {
-            if (!seen.Add(path)) return;
-            lines.Add($"{kind}\t{name.Replace('\t', ' ')}\t{path}");
+            name = name.Replace('\t', ' ').Trim();
+            if (rows.Any(r => r.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && Nested(r.Path, path))) return;
+            rows.Add((kind, name, path));
         }
         var installed = InstalledAppCatalog.Detect(Strings.Normalize("ru"));
         foreach (var t in AiTools.Detect()) Line('R', t.Name, t.Path);
@@ -1181,6 +1186,19 @@ switch (cmd)
                 InstalledAppCatalog.Group.Messengers => 'M',
                 _ => 'O',
             }, e.Name, e.Path);
+        var lines = rows.Select(r =>
+        {
+            var same = rows.Count(x => x.Name.Equals(r.Name, StringComparison.OrdinalIgnoreCase));
+            var label = r.Name;
+            if (same > 1)
+            {
+                var leaf = Path.GetFileName(Trim(r.Path));
+                if (leaf.Length == 0 || leaf.Equals(r.Name, StringComparison.OrdinalIgnoreCase))
+                    leaf = Path.GetFileName(Trim(Path.GetDirectoryName(Trim(r.Path)) ?? ""));
+                label = leaf.Length > 0 ? $"{r.Name} ({leaf})" : r.Name;
+            }
+            return $"{r.Kind}\t{label}\t{r.Path}";
+        }).ToList();
         if (outFile is not null) File.WriteAllLines(outFile, lines, new System.Text.UTF8Encoding(true));
         else foreach (var l in lines) Console.WriteLine(l);
         return 0;

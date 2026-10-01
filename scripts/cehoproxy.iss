@@ -24,6 +24,7 @@ OutputBaseFilename=CehoProxy-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+DisableWelcomePage=no
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 LicenseFile=..\LICENSE
@@ -260,7 +261,7 @@ begin
         AddGroupHeader(Kind);
         Header := True;
       end;
-      Idx := AppList.AddCheckBox(Name, Path, 1, Kind = 'R', True, False, False, nil);
+      Idx := AppList.AddCheckBox(Name, '', 1, Kind = 'R', True, False, False, nil);
       AppPaths[Idx] := Path;
       Any := True;
     end;
