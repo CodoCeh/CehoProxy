@@ -110,4 +110,23 @@ public class SubscriptionParserTests
         Assert.True(SubscriptionParser.LooksLikeHwidGate(wrapped));
         Assert.Empty(SubscriptionParser.Parse(wrapped));
     }
+
+    [Theory]
+    [InlineData("https://example.com/sub/abc", true)]
+    [InlineData("http://example.com/sub", true)]
+    [InlineData("naive://u:p@host.example:8443", true)]
+    [InlineData("vless://id@host.example:443?type=tcp", true)]
+    [InlineData("not a url", false)]
+    [InlineData("ftp://example.com/sub", false)]
+    [InlineData("example.com/sub", false)]
+    public void Only_links_and_files_are_accepted_as_a_subscription_source(string source, bool accepted) =>
+        Assert.Equal(accepted, SubscriptionParser.IsAcceptableSource(source));
+
+    [Fact]
+    public void An_existing_file_is_accepted_as_a_subscription_source()
+    {
+        var file = Path.GetTempFileName();
+        try { Assert.True(SubscriptionParser.IsAcceptableSource(file)); }
+        finally { File.Delete(file); }
+    }
 }

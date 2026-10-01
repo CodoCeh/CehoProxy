@@ -872,6 +872,9 @@ public static class Strings
         ["browser_note"] = new(
             "Прокси работает, только пока защита включена.",
             "The proxy works only while protection is on."),
+        ["sub_url_bad"] = new(
+            "Это не похоже на ссылку. Ссылка подписки начинается с https://, ссылка на узел — с naive://, vless:// и подобного.",
+            "That does not look like a link. A subscription link starts with https://, a node link with naive://, vless:// and similar."),
         ["naive_uri_bad"] = new(
             "Строка naive:// не распознана. Проверьте формат: naive://user:pass@host:8443?sni=…",
             "Could not parse naive:// line. Expected: naive://user:pass@host:8443?sni=…"),

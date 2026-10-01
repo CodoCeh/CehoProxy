@@ -150,7 +150,7 @@ public static class WebUi
     table.t-apps th:nth-child(1){width:25%}
     table.t-apps th:nth-child(3){width:198px}
     table.t-own th:nth-child(1){width:auto}
-    table.t-own th:nth-child(2){width:198px}
+    table.t-own th:nth-child(2){width:300px}
     table.t-apps td,table.t-own td{vertical-align:top}
     table.t-subs th:nth-child(1){width:118px}
     table.t-subs th:nth-child(3){width:108px}

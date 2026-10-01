@@ -2756,6 +2756,11 @@ public sealed class WebServer
                 return false;
             }
         }
+        else if (!SubscriptionParser.IsAcceptableSource(url))
+        {
+            errorKey = "sub_url_bad";
+            return false;
+        }
 
         return true;
     }

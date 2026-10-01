@@ -26,6 +26,11 @@ public static class SubscriptionParser
         Schemes.Any(x => text.TrimStart().StartsWith(x.Scheme, StringComparison.OrdinalIgnoreCase))
         || NaiveProxyHelper.IsNaiveUri(text);
 
+    public static bool IsAcceptableSource(string source) =>
+        LooksLikeNodeUri(source)
+        || (Uri.TryCreate(source, UriKind.Absolute, out var web) && web.Scheme is "http" or "https")
+        || File.Exists(source);
+
     public static IReadOnlyList<ProxyNode> Parse(string subscriptionBody, string lang = "ru")
     {
         var text = Decode(subscriptionBody);
