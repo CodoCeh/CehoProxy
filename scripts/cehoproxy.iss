@@ -25,6 +25,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 DisableWelcomePage=no
+UsePreviousTasks=no
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 LicenseFile=..\LICENSE
@@ -65,6 +66,12 @@ ru.Protect=Включить защиту сразу и запускать её �
 ru.StatusSetup=Проверяем подписку и настраиваем программы...
 ru.RunPanel=Открыть панель CehoProxy
 ru.RunSetup=Настроить сейчас
+ru.ReadySub=Ссылка на подписку: %1
+ru.ReadyNoSub=Ссылка на подписку: не указана, добавите в панели
+ru.ReadyApps=Программы в туннеле:
+ru.ReadyNoApps=Программы в туннеле: не выбраны, добавите в панели
+ru.ReadyProtectOn=Защита: включить сразу и запускать при старте системы
+ru.ReadyProtectOff=Защита: не включать сейчас
 en.TaskDesktop=CehoProxy panel shortcut on the desktop
 en.TaskTray=CehoProxy tray icon at sign-in
 en.TaskGroup=Additional options:
@@ -85,6 +92,12 @@ en.Protect=Turn protection on now and start it with the system
 en.StatusSetup=Checking the subscription and setting up programs...
 en.RunPanel=Open the CehoProxy panel
 en.RunSetup=Set up now
+en.ReadySub=Subscription link: %1
+en.ReadyNoSub=Subscription link: not set, you can add it in the panel
+en.ReadyApps=Programs in the tunnel:
+en.ReadyNoApps=Programs in the tunnel: none chosen, you can add them in the panel
+en.ReadyProtectOn=Protection: turn on now and start with the system
+en.ReadyProtectOff=Protection: do not turn on now
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:TaskDesktop}"; GroupDescription: "{cm:TaskGroup}"
@@ -378,6 +391,35 @@ begin
       if (AppList.ItemLevel[I] = 1) and AppList.Checked[I] then
         Result := Result + ' --app "' + AppPaths[I] + '"';
   if ProtectBox.Checked then Result := Result + ' --autostart';
+end;
+
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+var
+  I: Integer;
+  Apps: String;
+begin
+  Result := '';
+  if MemoTasksInfo <> '' then Result := MemoTasksInfo + NewLine + NewLine;
+
+  if CleanLink <> '' then
+    Result := Result + FmtMessage(ExpandConstant('{cm:ReadySub}'), [CleanLink]) + NewLine
+  else
+    Result := Result + ExpandConstant('{cm:ReadyNoSub}') + NewLine;
+
+  Apps := '';
+  if AppsLoaded then
+    for I := 0 to AppList.Items.Count - 1 do
+      if (AppList.ItemLevel[I] = 1) and AppList.Checked[I] then
+        Apps := Apps + Space + Space + AppList.ItemCaption[I] + NewLine;
+  if Apps <> '' then
+    Result := Result + ExpandConstant('{cm:ReadyApps}') + NewLine + Apps
+  else
+    Result := Result + ExpandConstant('{cm:ReadyNoApps}') + NewLine;
+
+  if ProtectBox.Checked then
+    Result := Result + ExpandConstant('{cm:ReadyProtectOn}')
+  else
+    Result := Result + ExpandConstant('{cm:ReadyProtectOff}');
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
