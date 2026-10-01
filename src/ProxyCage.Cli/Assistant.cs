@@ -295,7 +295,7 @@ public static class Assistant
             else if (AddApp(cfg, tool.Path)) added = true;
         }
 
-        foreach (var app in InstalledAppCatalog.Detect(cfg.Language)
+        foreach (var app in InstalledAppCatalog.Detect(Strings.Normalize("ru"))
                      .Where(e => InstalledAppCatalog.GroupOf(e) == InstalledAppCatalog.Group.Ai
                                  && !AppCoverage.IsPathCovered(cfg, e.Path)))
             if (AddApp(cfg, app.Path)) added = true;
