@@ -386,6 +386,11 @@ public static class Cli
         }
 
         if (status == 0) { Console.Error.WriteLine(body); return 1; }
+        if (status == 401 && password is null)
+        {
+            Console.Error.WriteLine(Strings.T(lang, "auth_needed_cli"));
+            return 1;
+        }
 
         try
         {
