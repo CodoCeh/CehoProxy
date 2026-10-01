@@ -148,7 +148,7 @@ public static class Ceho
             : await DirectDnsResolver.ResolveAsync(host, cancellationToken, tunAddress);
 
         var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-        var bind = Os.PhysicalBindAddress(tunAddress);
+        var bind = addresses.All(IPAddress.IsLoopback) ? null : Os.PhysicalBindAddress(tunAddress);
         if (bind is not null)
             socket.Bind(new IPEndPoint(bind, 0));
         try
