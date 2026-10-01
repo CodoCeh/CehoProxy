@@ -35,8 +35,9 @@ cp "$REPO/LICENSE" "$WORK/res/LICENSE"
 python3 - "$REPO/assets/cehoproxy.png" "$WORK/res/background.png" <<'PY'
 import sys
 from PIL import Image
-logo = Image.open(sys.argv[1]).convert("RGBA").resize((120, 120), Image.LANCZOS)
-bg = Image.new("RGBA", (120, 120), (16, 21, 18, 255))
+size = 168
+logo = Image.open(sys.argv[1]).convert("RGBA").resize((size, size), Image.LANCZOS)
+bg = Image.new("RGBA", (size, size), (0, 0, 0, 0))
 bg.paste(logo, (0, 0), logo)
 bg.save(sys.argv[2])
 PY
