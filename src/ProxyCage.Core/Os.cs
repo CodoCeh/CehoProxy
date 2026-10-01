@@ -156,7 +156,9 @@ public static class Os
             .Distinct()
             .ToList();
 
-        var physical = candidates.Where(a => !LooksLikeTunnelAddress(a)).Where(Answers).ToList();
+        var physical = candidates
+            .Where(a => !LooksLikeTunnelAddress(a) && !IsOverlayResolver(a))
+            .Where(Answers).ToList();
         if (physical.Count > 0) return physical.Take(2).ToList();
 
         return new List<string> { PublicResolver };
@@ -225,6 +227,18 @@ public static class Os
         if (!address.StartsWith("172.", StringComparison.Ordinal)) return false;
         var second = address.Split('.').ElementAtOrDefault(1);
         return int.TryParse(second, out var octet) && octet is >= 16 and <= 31;
+    }
+
+    /// <summary>
+    /// Резолверы оверлейных сетей (Tailscale 100.64.0.0/10, клиенты с fake-ip 198.18.0.0/15) отвечают
+    /// только через свой интерфейс. Запрос, привязанный к адресу Wi-Fi или Ethernet, до них не доходит,
+    /// и движок не находит адрес узла.
+    /// </summary>
+    internal static bool IsOverlayResolver(string address)
+    {
+        if (!IPAddress.TryParse(address, out var ip) || ip.AddressFamily != AddressFamily.InterNetwork) return false;
+        var b = ip.GetAddressBytes();
+        return (b[0] == 100 && b[1] >= 64 && b[1] <= 127) || (b[0] == 198 && (b[1] == 18 || b[1] == 19));
     }
 
     private static bool Answers(string server)

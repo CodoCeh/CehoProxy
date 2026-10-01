@@ -41,4 +41,19 @@ public class PhysicalBindTests
             "one.one.one.one", tunAddress: CehoConfig.DefaultTunAddress);
         Assert.NotEmpty(addresses);
     }
+
+    [Theory]
+    [InlineData("100.100.100.100", true)]
+    [InlineData("100.64.0.1", true)]
+    [InlineData("100.127.255.254", true)]
+    [InlineData("100.63.255.255", false)]
+    [InlineData("100.128.0.1", false)]
+    [InlineData("198.18.0.2", true)]
+    [InlineData("198.19.255.1", true)]
+    [InlineData("198.20.0.1", false)]
+    [InlineData("1.1.1.1", false)]
+    [InlineData("192.168.0.1", false)]
+    [InlineData("10.0.0.1", false)]
+    public void IsOverlayResolver_catches_tailscale_and_fake_ip_ranges(string address, bool expected) =>
+        Assert.Equal(expected, Os.IsOverlayResolver(address));
 }
