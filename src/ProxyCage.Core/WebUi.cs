@@ -255,6 +255,13 @@ public static class WebUi
     button:active{transform:translateY(1px)}
     button.ghost{background:transparent;color:var(--text);border-color:var(--line);font-weight:500}
     button.ghost:hover{background:var(--panel2)}
+    .filepick{position:relative;display:inline-flex;align-items:center;gap:10px;cursor:pointer;min-width:0}
+    .filepick input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+    .filepick .fp-btn{display:inline-flex;align-items:center;min-height:40px;padding:10px 18px;border:1px solid var(--line);
+      border-radius:10px;color:var(--text);font-size:var(--fs-s);font-weight:500;white-space:nowrap;transition:background .18s ease}
+    .filepick:hover .fp-btn{background:var(--panel2)}
+    .filepick:focus-within .fp-btn{outline:2px solid var(--brand-ink);outline-offset:2px}
+    .filepick .fp-name{color:var(--muted);font-size:var(--fs-s);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
     button.danger{background:transparent;color:var(--danger-ink);border-color:var(--line);font-weight:500}
     button.danger:hover{background:rgba(179,58,49,.09)}
     form.stack,div.stack{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:12px 0}
@@ -499,6 +506,10 @@ public static class WebUi
       var form=document.getElementById('settings-import');
       if(!form)return;
       var file=document.getElementById('settings-file'),data=document.getElementById('settings-data');
+      var shown=form.querySelector('.fp-name');
+      file.addEventListener('change',function(){
+        if(shown)shown.textContent=file.files&&file.files[0]?file.files[0].name:shown.getAttribute('data-none');
+      });
       form.addEventListener('submit',function(e){
         if(data.value)return;
         e.preventDefault();

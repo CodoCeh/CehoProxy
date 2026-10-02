@@ -3052,7 +3052,9 @@ public sealed class WebServer
         sb.Append("<h3>").Append(E(S("transfer_import", []))).Append("</h3>");
         sb.Append("<form class=row method=post action=/settings/import id=settings-import><input type=hidden name=tab value=").Append(tab).Append(">");
         AppendTransferParts(sb, S);
-        sb.Append("<input type=file id=settings-file accept=\".chps,text/plain\" required>");
+        sb.Append("<label class=filepick><input type=file id=settings-file accept=\".chps,text/plain\" required>")
+          .Append("<span class=fp-btn>").Append(E(S("file_choose", []))).Append("</span><span class=fp-name data-none=\"")
+          .Append(E(S("file_none", []))).Append("\">").Append(E(S("file_none", []))).Append("</span></label>");
         sb.Append("<input type=hidden name=data id=settings-data>");
         sb.Append("<input type=password name=password autocomplete=off required placeholder=\"")
           .Append(E(S("transfer_password", []))).Append("\">");

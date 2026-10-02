@@ -748,6 +748,8 @@ public static class Strings
         ["pending_toast"] = new(
             "Внесены изменения, нажмите на кнопку «Применить», чтобы изменения вступили в силу и защита перезапустилась.",
             "Changes were made. Press Apply so they take effect and protection restarts."),
+        ["file_choose"] = new("Выбрать файл", "Choose file"),
+        ["file_none"] = new("Файл не выбран", "No file chosen"),
         ["btn_close"] = new("Закрыть", "Close"),
         ["btn_apply_pending"] = new("Применить", "Apply"),
         ["apps_installed_all_added"] = new(
