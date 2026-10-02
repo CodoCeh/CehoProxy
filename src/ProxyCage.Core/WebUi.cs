@@ -132,7 +132,7 @@ public static class WebUi
       border-radius:var(--radius);background:var(--surface)}
     .line > span:first-child{flex:1 1 200px;display:inline-flex;align-items:center;gap:8px}
     .line form{margin:0}
-    .line button{min-height:36px;padding:7px 14px}
+    .line button{min-height:36px;padding:7px 14px;white-space:nowrap}
     a.button{display:inline-flex;align-items:center;min-height:44px;padding:10px 18px;border-radius:10px;
       background:var(--brand-ink);color:#fff;text-decoration:none;font-weight:600;margin-top:4px}
     .flash a{color:inherit;text-decoration:underline;text-underline-offset:2px;font-weight:600}
