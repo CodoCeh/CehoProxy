@@ -31,7 +31,8 @@ public class UpdateRelaunchTests
     [Fact]
     public void Panel_waits_for_the_interface_instead_of_reloading_into_a_dead_port()
     {
-        Assert.Contains("location.replace('/?tab=state')", WebUi.JobScript);
+        Assert.Contains("go('/?tab=state')", WebUi.JobScript);
+        Assert.Contains("function go(url)", WebUi.JobScript);
         Assert.Contains("j.relaunch", WebUi.JobScript);
         Assert.Contains("waitPanel", WebUi.JobScript);
         Assert.Contains("sawDown", WebUi.JobScript);

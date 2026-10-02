@@ -308,6 +308,9 @@ public static class WebUi
       margin-bottom:16px;background:var(--surface)}
     .flash.err{border-color:var(--danger-ink);color:var(--danger-ink)}
     .flash.ok{border-color:var(--ok-ink);color:var(--ok-ink)}
+    .pending{position:sticky;top:0;z-index:5;display:flex;gap:12px;align-items:center;justify-content:space-between;
+      flex-wrap:wrap;padding:12px 15px;margin:0 0 12px;border:1px solid var(--warn-ink);border-radius:var(--radius);
+      background:var(--bg);color:var(--warn-ink)}
     .flash.warn{border-color:var(--warn-ink);color:var(--warn-ink)}
     .flash b{display:block;margin-bottom:2px}
     .flash form{margin:10px 0 0}
@@ -550,6 +553,18 @@ public static class WebUi
           stage=document.getElementById('js'),num=document.getElementById('jn'),
           time=document.getElementById('jt'),
           fails=0, waiting=false;
+      function go(url){
+        var tries=0;
+        (function probe(){
+          fetch('/job?id=-',{cache:'no-store'})
+            .then(function(){location.replace(url)})
+            .catch(function(){
+              tries++;
+              if(tries>75){location.replace(url);return}
+              setTimeout(probe,800);
+            });
+        })();
+      }
       function finish(result){
         var q=new URLSearchParams(location.search);
         q.delete('job');
@@ -558,7 +573,7 @@ public static class WebUi
           q.set('m',before&&before!==result?before+' '+result:result);
           q.set('e','0');
         }
-        location.replace(location.pathname+'?'+q.toString());
+        go(location.pathname+'?'+q.toString());
       }
       function waitPanel(){
         if(waiting)return;
@@ -570,7 +585,7 @@ public static class WebUi
           fetch('/?tab=state',{cache:'no-store'})
             .then(function(r){
               if(!r.ok){sawDown=true;setTimeout(probe,800);return}
-              if(sawDown||Date.now()-started>25000){location.replace('/?tab=state');return}
+              if(sawDown||Date.now()-started>25000){go('/?tab=state');return}
               setTimeout(probe,800);
             })
             .catch(function(){sawDown=true;setTimeout(probe,800)});
@@ -591,12 +606,12 @@ public static class WebUi
             if(j.state==='gone'){finish('');return}
             if(j.state==='failed'&&box.dataset.relaunch){
               var tab=new URLSearchParams(location.search).get('tab')||'state';
-              location.replace('/?tab='+encodeURIComponent(tab)+'&m='+encodeURIComponent(j.result||'Обновление не удалось.')+'&e=1');
+              go('/?tab='+encodeURIComponent(tab)+'&m='+encodeURIComponent(j.result||'Обновление не удалось.')+'&e=1');
               return;
             }
             if((j.relaunch||box.dataset.relaunch)&&!j.isError){waitPanel();return}
             if(j.state==='done'&&!j.isError){finish(j.result||'');return}
-            location.reload();
+            go(location.href);
           })
           .catch(function(){
             fails++;

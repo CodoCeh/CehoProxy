@@ -723,6 +723,14 @@ public static class Strings
             "Choose an app and its path and rule scope will be detected automatically."),
         ["apps_installed_choose"] = new("Выберите приложение…", "Choose an app…"),
         ["apps_pick_search"] = new("Поиск по названию", "Search by name"),
+        ["pending_title"] = new("Не применено изменений: {0}.", "Changes not applied yet: {0}."),
+        ["pending_hint"] = new(
+            "Защита ещё работает по старым правилам. Внесите все нужные правки и нажмите «Применить»: правила пересчитаются один раз.",
+            "Protection still runs with the old rules. Make all the changes you need, then press Apply: the rules are rebuilt once."),
+        ["btn_apply_pending"] = new("Применить", "Apply"),
+        ["apps_installed_all_added"] = new(
+            "Все найденные приложения уже в списке.",
+            "All detected apps are already in the list."),
         ["apps_installed_none"] = new(
             "Установленные приложения не найдены. Можно выбрать файл или указать путь вручную.",
             "No installed apps were found. Choose a file or enter its path manually."),

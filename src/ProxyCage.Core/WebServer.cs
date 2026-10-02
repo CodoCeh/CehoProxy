@@ -434,7 +434,22 @@ public sealed class WebServer
         ctx.Response.Close();
     }
 
-    private Job ApplyJob(CehoConfig cfg, string? doneMessage = null, bool restartIfRunning = false) =>
+    private int _pending;
+
+    private string? ApplyOrDefer(CehoConfig cfg, string? doneMessage = null, bool restartIfRunning = false)
+    {
+        if (!_state().Running) return ApplyJob(cfg, doneMessage, restartIfRunning).Id;
+        Interlocked.Increment(ref _pending);
+        return null;
+    }
+
+    private Job ApplyJob(CehoConfig cfg, string? doneMessage = null, bool restartIfRunning = false)
+    {
+        Interlocked.Exchange(ref _pending, 0);
+        return StartApplyJob(cfg, doneMessage, restartIfRunning);
+    }
+
+    private Job StartApplyJob(CehoConfig cfg, string? doneMessage, bool restartIfRunning) =>
         Jobs.Start(JobApply, Strings.T(cfg.Language, restartIfRunning && _state().Running ? "job_restart" : "job_apply"), async p =>
         {
             if (restartIfRunning && _state().Running && OnRestart is not null)
@@ -489,7 +504,7 @@ public sealed class WebServer
                         SingleFile = d.SingleFile,
                     });
                     Save(cfg);
-                    return ($"{S("added_name", name)}. {d.Explanation}", false, ApplyJob(cfg, restartIfRunning: true).Id);
+                    return ($"{S("added_name", name)}. {d.Explanation}", false, ApplyOrDefer(cfg, restartIfRunning: true));
                 }
 
                 case "/apps/installed":
@@ -516,7 +531,7 @@ public sealed class WebServer
                     });
                     Save(cfg);
                     return ($"{S("added_name", known.Name)}. {d.Explanation}", false,
-                        ApplyJob(cfg, restartIfRunning: true).Id);
+                        ApplyOrDefer(cfg, restartIfRunning: true));
                 }
 
                 case "/apps/bounce":
@@ -534,7 +549,7 @@ public sealed class WebServer
                     cfg.Apps.RemoveAll(a => a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
                     Save(cfg);
                     var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
-                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        ? ApplyOrDefer(cfg, restartIfRunning: true)
                         : _state().Running && OnStop is not null ? StopJob(cfg).Id : null;
                     return (S("removed"), false, job);
                 }
@@ -551,7 +566,7 @@ public sealed class WebServer
                     cfg.SiteMode = next;
                     Save(cfg);
                     var modeJob = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
-                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        ? ApplyOrDefer(cfg, restartIfRunning: true)
                         : null;
                     return (S("site_mode_set", S(next == CehoConfig.SiteModeOnly ? "sites_mode_only" : "sites_mode_except")), false, modeJob);
                 }
@@ -567,7 +582,7 @@ public sealed class WebServer
                     if (country is not null) cfg.SiteCountries[host] = country;
                     Save(cfg);
                     var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
-                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        ? ApplyOrDefer(cfg, restartIfRunning: true)
                         : null;
                     return (S("site_added", host), false, job);
                 }
@@ -579,7 +594,7 @@ public sealed class WebServer
                     cfg.DirectSites.AddRange(fresh);
                     Save(cfg);
                     var presetJob = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
-                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        ? ApplyOrDefer(cfg, restartIfRunning: true)
                         : null;
                     return (S("sites_preset_added", fresh.Count), false, presetJob);
                 }
@@ -605,7 +620,7 @@ public sealed class WebServer
                         cfg.SiteCountries[host] = country;
                     Save(cfg);
                     var countryJob = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
-                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        ? ApplyOrDefer(cfg, restartIfRunning: true)
                         : null;
                     var label = country is null
                         ? S(cfg.SitesOnly ? "sites_exit_pool" : "sites_exit_direct", [])
@@ -622,7 +637,7 @@ public sealed class WebServer
                         cfg.SiteCountries.Remove(key);
                     Save(cfg);
                     var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
-                        ? ApplyJob(cfg, restartIfRunning: true).Id
+                        ? ApplyOrDefer(cfg, restartIfRunning: true)
                         : null;
                     return (S("removed"), false, job);
                 }
@@ -640,7 +655,7 @@ public sealed class WebServer
                         var fresh = CehoConfig.Load(_configPath);
                         var text = SettingsTransfer.Describe(result, fresh.Language);
                         Log.Info(text);
-                        return (text, false, ApplyJob(fresh, restartIfRunning: true).Id);
+                        return (text, false, ApplyOrDefer(fresh, restartIfRunning: true));
                     }
                     catch (SettingsTransfer.WrongPasswordException) { return (S("transfer_wrong_password"), true, null); }
                     catch (InvalidDataException) { return (S("transfer_bad_file"), true, null); }
@@ -692,7 +707,7 @@ public sealed class WebServer
                     var msg = keep.Count == 0
                         ? S("app_tunnel_cleared", app.Label)
                         : S("app_tunnel_saved", app.Label, keep.Count);
-                    return (msg, false, ApplyJob(cfg, restartIfRunning: true).Id);
+                    return (msg, false, ApplyOrDefer(cfg, restartIfRunning: true));
                 }
 
                 case "/apps/offline":
@@ -705,7 +720,7 @@ public sealed class WebServer
                     app.NoInternet = f.ContainsKey("enable");
                     Save(cfg);
                     return (S(app.NoInternet ? "app_offline_saved" : "app_offline_cleared", app.Label),
-                        false, ApplyJob(cfg, restartIfRunning: true).Id);
+                        false, ApplyOrDefer(cfg, restartIfRunning: true));
                 }
 
                 case "/subs/add":
@@ -722,7 +737,7 @@ public sealed class WebServer
                     cfg.ActiveSubscription ??= name;
                     Save(cfg);
                     _pool = null;
-                    return (S("sub_added", name), false, ApplyJob(cfg).Id);
+                    return (S("sub_added", name), false, ApplyOrDefer(cfg));
                 }
 
                 case "/subs/save":
@@ -752,7 +767,7 @@ public sealed class WebServer
                     entry.Url = url!;
                     Save(cfg);
                     _pool = null;
-                    return (S("sub_saved", name), false, ApplyJob(cfg).Id);
+                    return (S("sub_saved", name), false, ApplyOrDefer(cfg));
                 }
 
                 case "/subs/check":
@@ -780,7 +795,7 @@ public sealed class WebServer
                     entry.Enabled = wanted;
                     Save(cfg);
                     _pool = null;
-                    return (S(wanted ? "sub_turned_on" : "sub_turned_off", name), false, ApplyJob(cfg).Id);
+                    return (S(wanted ? "sub_turned_on" : "sub_turned_off", name), false, ApplyOrDefer(cfg));
                 }
 
                 case "/subs/remove":
@@ -1084,8 +1099,12 @@ public sealed class WebServer
                         : (err, true, null);
                 }
 
+                case "/apply":
+                    return (null, false, ApplyJob(cfg, restartIfRunning: true).Id);
+
                 case "/control/start":
                 {
+                    Interlocked.Exchange(ref _pending, 0);
                     var job = Jobs.Start(JobPower, S("job_start"), async p =>
                     {
                         var err = OnStart is null ? "no control" : await OnStart(p);
@@ -1103,6 +1122,7 @@ public sealed class WebServer
 
                 case "/control/restart":
                 {
+                    Interlocked.Exchange(ref _pending, 0);
                     var job = Jobs.Start(JobPower, S("job_restart"), async p =>
                     {
                         string? err;
@@ -1200,7 +1220,7 @@ public sealed class WebServer
             Launch = File.Exists(raw) ? raw : null,
         });
         Save(cfg);
-        return ($"{S("added_name", d.Name)}. {d.Explanation}", false, ApplyJob(cfg, restartIfRunning: true).Id);
+        return ($"{S("added_name", d.Name)}. {d.Explanation}", false, ApplyOrDefer(cfg, restartIfRunning: true));
     }
 
     private static async Task<Dictionary<string, string>> ReadFormAsync(HttpListenerRequest req)
@@ -1268,6 +1288,12 @@ public sealed class WebServer
     private static void RenderInstalledPicker(StringBuilder sb, Func<string, object[], string> S,
         IReadOnlyList<InstalledAppCatalog.Entry> installed, string tab, string? wizardStep)
     {
+        if (installed.Count == 0)
+        {
+            sb.Append("<p class=empty>").Append(E(S("apps_installed_all_added", []))).Append("</p>");
+            return;
+        }
+
         sb.Append("<form class=app-pick method=post action=/apps/installed>")
           .Append("<input type=hidden name=tab value=").Append(tab).Append('>');
         if (wizardStep is not null)
@@ -1390,6 +1416,7 @@ public sealed class WebServer
               .Append(E(flash)).Append("</div>");
 
         RenderJob(sb, cfg, job, tab, S);
+        RenderPending(sb, tab, job, S);
 
         switch (tab)
         {
@@ -1425,6 +1452,16 @@ public sealed class WebServer
         if (tab is "state" or "doctor" && job is not { Running: true }) sb.Append(WebUi.StateRefreshScript);
         sb.Append("</body></html>");
         return sb.ToString();
+    }
+
+    private void RenderPending(StringBuilder sb, string tab, Job? job, Func<string, object[], string> S)
+    {
+        var count = Volatile.Read(ref _pending);
+        if (count == 0 || job is { Running: true } || !_state().Running) return;
+        sb.Append("<form class=pending method=post action=/apply><input type=hidden name=tab value=\"")
+          .Append(E(tab)).Append("\"><span><b>").Append(E(S("pending_title", new object[] { count })))
+          .Append("</b> ").Append(E(S("pending_hint", []))).Append("</span><button>")
+          .Append(E(S("btn_apply_pending", []))).Append("</button></form>");
     }
 
     /// <summary>Полоса и этап: видно, что операция идёт и на чём именно она стоит.</summary>
@@ -1681,7 +1718,8 @@ public sealed class WebServer
         }
         else if (step == 2)
         {
-            var installed = InstalledAppCatalog.Detect(cfg.Language);
+            var installed = InstalledAppCatalog.Detect(cfg.Language)
+                .Where(e => !AppCoverage.IsPathCovered(cfg, e.Path)).ToList();
             if (installed.Count > 0)
             {
                 RenderInstalledPicker(sb, S, installed, "state", "3");
@@ -2183,7 +2221,7 @@ public sealed class WebServer
         if (installed.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("apps_installed_none", []))).Append("</p>");
         else
-            RenderInstalledPicker(sb, S, installed, "apps", null);
+            RenderInstalledPicker(sb, S, installed.Where(e => !AppCoverage.IsPathCovered(cfg, e.Path)).ToList(), "apps", null);
         sb.Append("</div><div class=app-entry><h3>").Append(E(S("apps_manual_title", []))).Append("</h3>");
 
         var placeholder = S(Os.Kind switch
