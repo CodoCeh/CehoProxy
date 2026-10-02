@@ -307,6 +307,9 @@ public static class WebUi
       color:var(--text);text-decoration:none;font-weight:500;font-size:var(--fs-s);line-height:18px;
       box-sizing:border-box}
     td.actions a.ghost:hover{background:var(--panel2)}
+    a.btnlink{display:inline-flex;align-items:center;min-height:36px;padding:7px 14px;border:1px solid var(--line);
+      border-radius:10px;color:var(--text);text-decoration:none;font-weight:500;font-size:var(--fs-s);box-sizing:border-box}
+    a.btnlink:hover{background:var(--panel2)}
     .flash{padding:12px 15px;border:1px solid var(--line);border-radius:var(--radius);
       margin-bottom:16px;background:var(--surface)}
     .flash.err{border-color:var(--danger-ink);color:var(--danger-ink)}

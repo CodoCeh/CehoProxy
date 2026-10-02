@@ -1876,7 +1876,7 @@ public sealed class WebServer
         sb.Append("<div class=\"line ").Append(cls).Append("\"><span><span class=dot></span> ")
           .Append(E(found.Count == 0 ? S("check_ok", []) : S("check_found", [found.Count]))).Append("</span>");
         if (found.Count > 0 && !cfg.SimplePanel)
-            sb.Append("<a href=\"/?tab=doctor\">").Append(E(S("check_open", []))).Append("</a>");
+            sb.Append("<a class=\"btnlink\" href=\"/?tab=doctor\">").Append(E(S("check_open", []))).Append("</a>");
         sb.Append("</div>");
         if (found.Count > 0 && cfg.SimplePanel)
         {
