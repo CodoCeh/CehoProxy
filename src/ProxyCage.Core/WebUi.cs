@@ -311,6 +311,13 @@ public static class WebUi
     .pending{position:sticky;top:0;z-index:5;display:flex;gap:12px;align-items:center;justify-content:space-between;
       flex-wrap:wrap;padding:12px 15px;margin:0 0 12px;border:1px solid var(--warn-ink);border-radius:var(--radius);
       background:var(--bg);color:var(--warn-ink)}
+    .toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:20;display:flex;gap:12px;
+      align-items:center;max-width:min(640px,calc(100vw - 32px));padding:12px 14px;border:1px solid var(--warn-ink);
+      border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:0 6px 24px rgba(0,0,0,.25);
+      animation:toast-in .25s ease-out}
+    .toast[hidden]{display:none}
+    @keyframes toast-in{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+    @media (prefers-reduced-motion:reduce){.toast{animation:none}}
     .flash.warn{border-color:var(--warn-ink);color:var(--warn-ink)}
     .flash b{display:block;margin-bottom:2px}
     .flash form{margin:10px 0 0}
@@ -539,6 +546,21 @@ public static class WebUi
             g.hidden=!g.querySelector('button.app-card:not([hidden])');
           });
         });
+      });
+    })();
+    </script>
+    """;
+
+    public const string ToastScript = """
+    <script>
+    (function(){
+      var t=document.getElementById('toast'),x=document.getElementById('toast-x');
+      if(!t)return;
+      var key='ceho-toast-'+t.dataset.count;
+      try{if(sessionStorage.getItem(key))t.hidden=true}catch(e){}
+      if(x)x.addEventListener('click',function(){
+        t.hidden=true;
+        try{sessionStorage.setItem(key,'1')}catch(e){}
       });
     })();
     </script>

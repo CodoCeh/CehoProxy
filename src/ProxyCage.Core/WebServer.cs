@@ -1462,6 +1462,12 @@ public sealed class WebServer
           .Append(E(tab)).Append("\"><span><b>").Append(E(S("pending_title", new object[] { count })))
           .Append("</b> ").Append(E(S("pending_hint", []))).Append("</span><button>")
           .Append(E(S("btn_apply_pending", []))).Append("</button></form>");
+        sb.Append("<div class=toast id=toast data-count=").Append(count).Append(" role=status><span>")
+          .Append(E(S("pending_toast", []))).Append("</span><form method=post action=/apply>")
+          .Append("<input type=hidden name=tab value=\"").Append(E(tab)).Append("\"><button>")
+          .Append(E(S("btn_apply_pending", []))).Append("</button></form>")
+          .Append("<button type=button class=ghost id=toast-x aria-label=\"").Append(E(S("btn_close", [])))
+          .Append("\">×</button></div>").Append(WebUi.ToastScript);
     }
 
     /// <summary>Полоса и этап: видно, что операция идёт и на чём именно она стоит.</summary>

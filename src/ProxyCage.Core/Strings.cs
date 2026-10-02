@@ -727,6 +727,10 @@ public static class Strings
         ["pending_hint"] = new(
             "Защита ещё работает по старым правилам. Внесите все нужные правки и нажмите «Применить»: правила пересчитаются один раз.",
             "Protection still runs with the old rules. Make all the changes you need, then press Apply: the rules are rebuilt once."),
+        ["pending_toast"] = new(
+            "Внесены изменения, нажмите на кнопку «Применить», чтобы изменения вступили в силу и защита перезапустилась.",
+            "Changes were made. Press Apply so they take effect and protection restarts."),
+        ["btn_close"] = new("Закрыть", "Close"),
         ["btn_apply_pending"] = new("Применить", "Apply"),
         ["apps_installed_all_added"] = new(
             "Все найденные приложения уже в списке.",
