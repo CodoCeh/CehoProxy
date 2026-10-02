@@ -7,6 +7,10 @@ public static class Installer
 
     public const string CronetFileName = "libcronet.dll";
 
+    public const int GoneChecksToQuit = 3;
+
+    public static bool IsGone(string root) => !File.Exists(BinaryPath(root));
+
     /// <summary>Naive outbound on Windows needs libcronet.dll next to ceho-engine.exe.</summary>
     public static bool MissingCronetDll(string root) =>
         Os.IsWindows
@@ -422,6 +426,8 @@ public static class Installer
         if (!Os.IsMac) return;
 
         var user = Environment.GetEnvironmentVariable("SUDO_USER");
+        if (string.IsNullOrWhiteSpace(user) || user == "root")
+            user = Os.Run("stat", "-f %Su /dev/console").Output.Trim();
         if (!string.IsNullOrWhiteSpace(user) && user != "root")
         {
             var uid = Os.Run("id", $"-u {user}").Output.Trim();

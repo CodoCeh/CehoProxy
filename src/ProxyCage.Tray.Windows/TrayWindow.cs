@@ -15,6 +15,7 @@ internal sealed class TrayWindow : IDisposable
     private const int IdSignIn = 5;
 
     private readonly PanelLink _link;
+    private readonly string _root;
     private readonly Win32.WindowProc _proc;
     private readonly IntPtr _window;
     private readonly CancellationTokenSource _stop = new();
@@ -29,12 +30,14 @@ internal sealed class TrayWindow : IDisposable
     private string? _balloon;
     private readonly TrayNotifier _notifier = new();
     private int _working;
+    private int _goneChecks;
     private readonly string? _exe = Environment.ProcessPath;
     private readonly DateTime _built = Environment.ProcessPath is { } exe ? File.GetLastWriteTimeUtc(exe) : default;
 
     public TrayWindow(string root)
     {
         _link = new PanelLink(root);
+        _root = root;
         _proc = Handle;
 
         var instance = Win32.GetModuleHandle(null);
@@ -167,8 +170,11 @@ internal sealed class TrayWindow : IDisposable
                 _langKnown = false;
                 _snapshot = null;
                 _look = TrayLook.Stopped;
+                if (Installer.IsGone(_root) && ++_goneChecks >= Installer.GoneChecksToQuit)
+                    Win32.PostMessage(_window, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
                 break;
         }
+        if (reading.Outcome != PanelLink.Outcome.Unreachable) _goneChecks = 0;
         if (_notifier.Next(_lang, _look, _snapshot) is { } notice) _balloon = notice;
     }
 

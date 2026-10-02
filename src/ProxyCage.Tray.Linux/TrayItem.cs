@@ -30,6 +30,8 @@ internal sealed class TrayItem : IDisposable
     private readonly DBusConnection _connection;
     private readonly PanelLink _link;
     private readonly CancellationTokenSource _stop = new();
+    private readonly string _root;
+    private int _goneChecks;
     private readonly object _gate = new();
     private readonly Dictionary<TrayLook, (int Size, byte[] Argb)[]> _icons = new();
     private readonly string _itemName = $"org.kde.StatusNotifierItem-{Environment.ProcessId}-1";
@@ -52,6 +54,7 @@ internal sealed class TrayItem : IDisposable
     {
         _connection = connection;
         _link = new PanelLink(root);
+        _root = root;
 
         using var stream = typeof(TrayItem).Assembly.GetManifestResourceStream("cehoproxy.png")
             ?? throw new InvalidOperationException("cehoproxy.png");
@@ -187,8 +190,10 @@ internal sealed class TrayItem : IDisposable
                     _langKnown = false;
                     _snapshot = null;
                     _look = TrayLook.Stopped;
+                    if (Installer.IsGone(_root) && ++_goneChecks >= Installer.GoneChecksToQuit) _stop.Cancel();
                     break;
             }
+            if (reading.Outcome != PanelLink.Outcome.Unreachable) _goneChecks = 0;
             if (_notifier.Next(_lang, _look, _snapshot) is { } notice) Notify(notice);
         }
     }

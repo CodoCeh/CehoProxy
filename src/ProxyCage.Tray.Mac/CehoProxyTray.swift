@@ -242,8 +242,11 @@ final class Tray: NSObject, NSMenuDelegate {
     private var failure: String?
     private var working = false
     private var timer: Timer?
+    private let root: String
+    private var goneChecks = 0
 
     init(root: String) {
+        self.root = root
         link = PanelLink(root: root)
         super.init()
         menu.delegate = self
@@ -336,7 +339,12 @@ final class Tray: NSObject, NSMenuDelegate {
                 self.langKnown = false
                 self.snapshot = nil
                 self.look = .stopped
+                if !FileManager.default.fileExists(atPath: self.root + "/cehoproxy") {
+                    self.goneChecks += 1
+                    if self.goneChecks >= 3 { DispatchQueue.main.async { NSApp.terminate(nil) } }
+                }
             }
+            if case .unreachable = reading.outcome {} else { self.goneChecks = 0 }
             if let notice = self.nextNotice() { Tray.notify(notice) }
             self.paint()
         }
