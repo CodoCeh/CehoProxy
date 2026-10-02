@@ -27,6 +27,17 @@ public class DirectSiteTests
         Assert.Contains("yandex.ru", DirectSites.Preset(throughTunnel: false));
     }
 
+    [Fact]
+    public void Russian_preset_covers_the_services_people_ask_for()
+    {
+        foreach (var host in new[] { "playerok.com", "gosuslugi.ru", "max.ru", "vk.com", "sberbank.ru", "ozon.ru", "госуслуги.рф" })
+            Assert.Contains(host, DirectSites.RussianSites);
+        Assert.Equal(DirectSites.RussianSites.Length,
+            DirectSites.RussianSites.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        foreach (var host in DirectSites.RussianSites)
+            Assert.Equal(host, DirectSites.Normalize(host));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("not a site")]
