@@ -38,4 +38,11 @@ public class UpdateRelaunchTests
         Assert.Contains("sawDown", WebUi.JobScript);
         Assert.Contains("fails>=3", WebUi.JobScript);
     }
+
+    [Fact]
+    public void Live_refresh_swaps_blocks_without_replaying_the_fade_in()
+    {
+        Assert.Contains("replaceWith(next)", WebUi.StateRefreshScript);
+        Assert.Contains("next.style.animation='none'", WebUi.StateRefreshScript);
+    }
 }

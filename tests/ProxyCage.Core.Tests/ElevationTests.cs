@@ -124,4 +124,23 @@ public sealed class ElevationTests
     [InlineData("Happ", false)]
     public void Only_known_harmless_overlays_are_not_a_warning(string name, bool harmless) =>
         Assert.Equal(harmless, Doctor.IsHarmlessOverlay(name));
+
+    [Fact]
+    public void Doctor_page_shows_the_elevate_button_only_for_rights_problems()
+    {
+        var render = typeof(WebServer).GetMethod("RenderChecks",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        string Html(params Preflight.Check[] checks)
+        {
+            var sb = new System.Text.StringBuilder();
+            render.Invoke(null, new object[] { sb, checks, (Func<string, object[], string>)((k, a) => Strings.T("ru", k, a)) });
+            return sb.ToString();
+        }
+
+        var with = Html(new Preflight.Check(Preflight.Level.Blocker, "Нужны права", "d", "f", Repair.Elevate));
+        var without = Html(new Preflight.Check(Preflight.Level.Blocker, "Порт занят", "d", "f", Repair.PanelPort));
+        Assert.Contains("action=/elevate", with);
+        Assert.Contains(Strings.T("ru", "btn_elevate"), with);
+        Assert.DoesNotContain("/elevate", without);
+    }
 }

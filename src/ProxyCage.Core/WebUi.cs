@@ -522,7 +522,12 @@ public static class WebUi
             var doc=new DOMParser().parseFromString(html,'text/html');
             document.querySelectorAll('[data-live]').forEach(function(now){
               var fresh=doc.querySelector('[data-live="'+now.getAttribute('data-live')+'"]');
-              if(fresh&&fresh.outerHTML!==now.outerHTML)now.outerHTML=fresh.outerHTML;
+              if(!fresh||fresh.outerHTML===now.outerHTML)return;
+              var box=document.createElement('div');
+              box.innerHTML=fresh.outerHTML;
+              var next=box.firstElementChild;
+              next.style.animation='none';
+              now.replaceWith(next);
             });
           }).catch(function(){});
       },10000);
