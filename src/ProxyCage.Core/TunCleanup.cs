@@ -148,6 +148,7 @@ public static class TunCleanup
         var recorded = Ours(root);
         var lookup = Adapter(tunAddress);
         var cleaned = 0;
+        var quarantined = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
             if (attempt > 1)
@@ -167,6 +168,7 @@ public static class TunCleanup
             var allGone = true;
             foreach (var id in WintunDevices())
             {
+                if (quarantined.Contains(id)) continue;
                 var nic = lookup(id);
                 if (!ShouldRemove(id, recorded, nic, ourIp, aggressive, beforeStart)) continue;
 
@@ -176,6 +178,7 @@ public static class TunCleanup
                 if (!QuarantineDevice(id, nic?.Name, log))
                     continue;
 
+                quarantined.Add(id);
                 removed++;
                 cleaned++;
                 if (!WaitUntilGone(id) || (nic is not null && !WaitUntilInterfaceGone(nic.Name)))
@@ -189,7 +192,7 @@ public static class TunCleanup
 
             if (removed > 0) Thread.Sleep(allGone ? 1000 : 4000);
 
-            if (!AnyOursLeft(recorded, lookup, ourIp, aggressive) && !TunnelAddressBusy(ourIp))
+            if (!AnyOursLeft(recorded, lookup, ourIp, aggressive, quarantined) && !TunnelAddressBusy(ourIp))
             {
                 ClearOursFile(root);
                 LastReleaseClean = true;
@@ -439,10 +442,12 @@ public static class TunCleanup
         IReadOnlyCollection<string> recorded,
         Func<string, Nic?> lookup,
         string? ourIp,
-        bool aggressive)
+        bool aggressive,
+        IReadOnlySet<string>? quarantined = null)
     {
         foreach (var id in WintunDevices())
         {
+            if (quarantined?.Contains(id) == true) continue;
             if (ShouldRemove(id, recorded, lookup(id), ourIp, aggressive, beforeStart: null))
                 return true;
         }

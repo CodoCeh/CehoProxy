@@ -14,8 +14,8 @@ public static class NodeProbe
     /// Прямой TCP-замер имеет смысл только когда наш движок не поднят:
     /// иначе TUN принимает соединения локально и цифры врут.
     /// </summary>
-    public static bool MeasureBlocked(string tunAddress, bool engineRunning) =>
-        engineRunning && TunnelIsUp(tunAddress);
+    public static bool MeasureBlocked(string tunAddress, bool engineRunning, Func<string, bool>? tunnelUp = null) =>
+        engineRunning && (tunnelUp ?? TunnelIsUp)(tunAddress);
 
     public static int? LatencyFor(
         ProxyNode node,

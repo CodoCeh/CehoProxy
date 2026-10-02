@@ -52,7 +52,8 @@ public class NodeProbeTests
     [Fact]
     public void Measure_blocked_only_when_engine_and_tunnel_are_up()
     {
-        Assert.False(NodeProbe.MeasureBlocked(CehoConfig.DefaultTunAddress, engineRunning: false));
-        Assert.False(NodeProbe.MeasureBlocked(CehoConfig.DefaultTunAddress, engineRunning: true));
+        Assert.False(NodeProbe.MeasureBlocked(CehoConfig.DefaultTunAddress, engineRunning: false, tunnelUp: _ => true));
+        Assert.False(NodeProbe.MeasureBlocked(CehoConfig.DefaultTunAddress, engineRunning: true, tunnelUp: _ => false));
+        Assert.True(NodeProbe.MeasureBlocked(CehoConfig.DefaultTunAddress, engineRunning: true, tunnelUp: _ => true));
     }
 }

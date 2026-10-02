@@ -20,10 +20,22 @@ public class DoctorTests : IDisposable
 
     private string ConfigPath => Path.Combine(_root, "config.json");
 
+    private static int FreePort()
+    {
+        var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+        return port;
+    }
+
     private CehoConfig Config()
     {
         var cfg = new CehoConfig
         {
+            TunAddress = "198.51.100.1/30",
+            WebPort = FreePort(),
+            MixedPort = FreePort(),
             Apps = { new AppEntry { Name = "app", Folder = Os.IsWindows ? @"C:\Games\App" : "/tmp" } },
             Subscriptions = { new SubscriptionEntry { Name = "sub", Url = "https://example.invalid/sub" } },
         };
@@ -116,7 +128,7 @@ public class DoctorTests : IDisposable
         var report = await Doctor.HealAsync(cfg, ConfigPath, _root, Tools(
             rebuild: _ => throw new InvalidOperationException("подписка пустая")));
 
-        Assert.Empty(report.Done);
+        Assert.True(report.Done.Count == 0, string.Join(" | ", report.Done));
         Assert.Contains(report.Left, line => line.Contains("подписка пустая"));
     }
 
