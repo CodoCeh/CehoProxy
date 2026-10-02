@@ -139,6 +139,8 @@ public sealed class CehoConfig
 
     public bool SetupDone { get; set; }
 
+    public bool AutostartOffered { get; set; }
+
     public string UpdateRepo { get; set; } = "CodoCeh/CehoProxy";
 
     public string CheckUrl { get; set; } = "https://www.gstatic.com/generate_204";

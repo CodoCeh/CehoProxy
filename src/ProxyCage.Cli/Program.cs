@@ -2068,6 +2068,21 @@ if (cmd is "daemon" or "web")
     long cleanedAt = 0;
     IReadOnlyList<string>? cleanedDevices = null;
 
+    void EnableAutostartOnFirstStart()
+    {
+        try
+        {
+            var current = CehoConfig.Load(Ceho.ConfigPath);
+            if (current.AutostartOffered) return;
+            current.AutostartOffered = true;
+            current.Save(Ceho.ConfigPath);
+            if (Autostart.IsEnabled()) return;
+            var err = Autostart.Enable(Ceho.OwnExecutablePath, Ceho.Root);
+            Log.Info(err is null ? "автозапуск включён при первом запуске защиты" : "автозапуск не включился: " + err);
+        }
+        catch (Exception ex) { Log.Info("автозапуск при первом запуске: " + ex.Message); }
+    }
+
     async Task<string?> StartTunnel(IStageReport? report)
     {
         using (EngineMutex.Acquire(Ceho.Root))
@@ -2298,7 +2313,12 @@ if (cmd is "daemon" or "web")
         return await StartTunnel(report);
     }
 
-    web.OnStart = StartTunnel;
+    web.OnStart = async report =>
+    {
+        var err = await StartTunnel(report);
+        if (err is null) EnableAutostartOnFirstStart();
+        return err;
+    };
     web.OnAppsLive = () =>
     {
         var c = CehoConfig.Load(Ceho.ConfigPath);

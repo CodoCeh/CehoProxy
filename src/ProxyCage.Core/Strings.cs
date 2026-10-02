@@ -1740,9 +1740,9 @@ public static class Strings
         ["engine_rolled_back"] = new(
             "Новый движок не запустился, вернул прежний: {0}",
             "The new engine did not start, the old one is back: {0}"),
-        ["engine_auto_on"] = new("Движок обновляется сам до проверенной версии", "The engine updates itself to the tested version"),
+        ["engine_auto_on"] = new("Движок обновляется автоматически до проверенной версии", "The engine updates automatically to the tested version"),
         ["engine_auto_off"] = new("Движок обновляется только вручную", "The engine updates by hand only"),
-        ["engine_auto_add"] = new("Обновлять движок само", "Update the engine by itself"),
+        ["engine_auto_add"] = new("Обновлять движок автоматически", "Update the engine automatically"),
         ["engine_auto_del"] = new("Обновлять движок вручную", "Update the engine by hand"),
         ["engine_auto_state_on"] = new(
             "Когда вместе с CehoProxy приходит новая проверенная версия движка, служба поставит её сама. " +
@@ -1754,9 +1754,9 @@ public static class Strings
             "The engine does not update itself: you install a new version with «Update the engine» or chp engine update."),
         ["engine_auto_starting"] = new("обновляю движок до {0} сам", "updating the engine to {0} by itself"),
         ["engine_auto_failed"] = new("обновить движок самому не удалось: {0}", "could not update the engine by itself: {0}"),
-        ["upd_auto_on"] = new("Обновляется само", "Updates by itself"),
+        ["upd_auto_on"] = new("Обновляется автоматически", "Updates automatically"),
         ["upd_auto_off"] = new("Обновление только вручную", "Updates by hand only"),
-        ["upd_auto_add"] = new("Обновлять само", "Update by itself"),
+        ["upd_auto_add"] = new("Обновлять автоматически", "Update automatically"),
         ["upd_auto_del"] = new("Обновлять вручную", "Update by hand"),
         ["upd_auto_state_on"] = new(
             "CehoProxy будет сам проверять обновления раз в 6 часов и ставить их. " +
