@@ -10,6 +10,7 @@ public enum Repair
     PanelPort,
     ProxyPort,
     Service,
+    Elevate,
 }
 
 /// <summary>
@@ -38,7 +39,7 @@ public static class Doctor
         public int Blockers => Checks.Count(c => c.Level == Preflight.Level.Blocker);
         public int Warnings => Checks.Count(c => c.Level == Preflight.Level.Warning);
         public bool Healthy => Blockers == 0;
-        public bool Fixable => Checks.Any(c => c.Repair != Repair.None);
+        public bool Fixable => Checks.Any(c => c.Repair != Repair.None && c.Repair != Repair.Elevate);
     }
 
     public static async Task<Result> CheckAsync(
@@ -243,6 +244,7 @@ public static class Doctor
         Repair.PanelPort => "doc_name_panel_port",
         Repair.ProxyPort => "doc_name_proxy_port",
         Repair.Service => "doc_name_service",
+        Repair.Elevate => "doc_name_elevate",
         _ => "doc_name_none",
     };
 
@@ -404,9 +406,16 @@ public static class Doctor
 
         var ours = TunCleanup.InterfaceWithAddress(cfg.TunAddress);
         foreach (var alien in SystemProxy.OtherTunnels(ours))
-            yield return new Preflight.Check(Preflight.Level.Warning,
-                S("doc_alien_tun", alien), S("doc_alien_tun_detail"), null);
+            yield return IsHarmlessOverlay(alien)
+                ? new Preflight.Check(Preflight.Level.Ok,
+                    S("doc_alien_tun_ok", alien), S("doc_alien_tun_ok_detail"), null)
+                : new Preflight.Check(Preflight.Level.Warning,
+                    S("doc_alien_tun", alien), S("doc_alien_tun_detail"), null);
     }
+
+    internal static bool IsHarmlessOverlay(string name) =>
+        name.Contains("tailscale", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("zerotier", StringComparison.OrdinalIgnoreCase);
 
     private static IEnumerable<Preflight.Check> StuckWintun(CehoConfig cfg, string root, string l)
     {

@@ -24,7 +24,8 @@ public static class Preflight
             checks.Add(new Check(Level.Blocker,
                 S(Os.IsWindows ? "pf_rights_need_win" : "pf_rights_need_unix"),
                 S("pf_rights_detail"),
-                S(Os.IsWindows ? "pf_rights_fix_win" : "pf_rights_fix_unix")));
+                S(Os.IsWindows ? "pf_rights_fix_win" : "pf_rights_fix_unix"),
+                Repair.Elevate));
 
         var singBox = Os.ResolveSingBox(root);
         if (singBox is not null)
@@ -101,7 +102,8 @@ public static class Preflight
             : new Check(Level.Blocker,
                 Strings.T(lang, "pf_dir_bad"),
                 $"{root}: {why}",
-                Strings.T(lang, Os.IsWindows ? "pf_dir_fix_win" : "pf_dir_fix_unix"));
+                Strings.T(lang, Os.IsWindows ? "pf_dir_fix_win" : "pf_dir_fix_unix"),
+                Os.IsElevated() ? Repair.None : Repair.Elevate);
 
     public static int NextFreePort(int from)
     {

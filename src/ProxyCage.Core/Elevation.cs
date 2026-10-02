@@ -36,7 +36,7 @@ public static class Elevation
 
     internal static RightsAsk Way(OsKind kind, bool hasTerminal)
     {
-        if (kind == OsKind.Windows) return RightsAsk.None;
+        if (kind == OsKind.Windows) return Os.FindOnPath("powershell") is not null ? RightsAsk.Window : RightsAsk.None;
         if (hasTerminal && Os.FindOnPath("sudo") is not null) return RightsAsk.Terminal;
         if (kind == OsKind.Mac) return RightsAsk.Window;
         return Os.FindOnPath("pkexec") is not null ? RightsAsk.Window : RightsAsk.None;
@@ -79,6 +79,19 @@ public static class Elevation
             var sudo = new ProcessStartInfo("sudo") { UseShellExecute = false };
             foreach (var a in SudoArguments(exe, args, home)) sudo.ArgumentList.Add(a);
             return sudo;
+        }
+
+        if (Os.IsWindows)
+        {
+            static string Q(string v) => v.Replace("'", "''");
+            var list = string.Join(",", args.Select(a => $"'{Q(a)}'"));
+            var argPart = args.Count == 0 ? "" : $" -ArgumentList {list}";
+            var script = $"$p = Start-Process -FilePath '{Q(exe)}'{argPart} -Verb RunAs -Wait -PassThru; exit $p.ExitCode";
+            var ps = new ProcessStartInfo("powershell") { UseShellExecute = false, CreateNoWindow = true };
+            ps.ArgumentList.Add("-NoProfile");
+            ps.ArgumentList.Add("-Command");
+            ps.ArgumentList.Add(script);
+            return ps;
         }
 
         if (Os.IsMac)

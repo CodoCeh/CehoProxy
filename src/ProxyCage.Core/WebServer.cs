@@ -49,6 +49,8 @@ public sealed class WebServer
 
     public Func<bool, IStageReport, Task<string>>? OnUpdate { get; set; }
 
+    public Func<Task<string?>>? OnElevate { get; set; }
+
     public Func<IStageReport, Task<string>>? OnEngineUpdate { get; set; }
 
     public Func<IStageReport, Task<string>>? OnCheckSubs { get; set; }
@@ -1102,6 +1104,19 @@ public sealed class WebServer
                 case "/apply":
                     return (null, false, ApplyJob(cfg, restartIfRunning: true).Id);
 
+                case "/elevate":
+                {
+                    if (OnElevate is null) return (S("elevate_no_way"), true, null);
+                    var job = Jobs.Start(JobUpdate, S("job_elevate"), async p =>
+                    {
+                        var err = await OnElevate();
+                        if (err is not null) throw new InvalidOperationException(err);
+                        return S("elevate_done");
+                    });
+                    job.RelaunchPanel = true;
+                    return (null, false, job.Id);
+                }
+
                 case "/control/start":
                 {
                     Interlocked.Exchange(ref _pending, 0);
@@ -2034,10 +2049,14 @@ public sealed class WebServer
             sb.Append("<li class=").Append(cls).Append("><span class=mk>").Append(mark)
               .Append("</span><div><b>").Append(E(c.Title)).Append("</b>");
             if (c.Detail is not null) sb.Append("<span class=why>").Append(E(c.Detail)).Append("</span>");
+            var selfFix = c.Repair != Repair.None && c.Repair != Repair.Elevate;
             if (c.Fix is not null)
-                sb.Append("<span class=\"why").Append(c.Repair != Repair.None ? " can" : "").Append("\">")
-                  .Append(E(c.Repair != Repair.None ? c.Fix : S("doc_what_to_do", [c.Fix])))
+                sb.Append("<span class=\"why").Append(selfFix ? " can" : "").Append("\">")
+                  .Append(E(selfFix ? c.Fix : S("doc_what_to_do", [c.Fix])))
                   .Append("</span>");
+            if (c.Repair == Repair.Elevate)
+                sb.Append("<form method=post action=/elevate><input type=hidden name=tab value=doctor><button>")
+                  .Append(E(S("btn_elevate", []))).Append("</button></form>");
             sb.Append("</div></li>");
         }
         sb.Append("</ul>");

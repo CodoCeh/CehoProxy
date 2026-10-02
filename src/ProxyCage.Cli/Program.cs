@@ -2497,6 +2497,16 @@ if (cmd is "daemon" or "web")
 
     web.OnUpdate = UpdateAsync;
 
+    web.OnElevate = () =>
+    {
+        if (Os.IsElevated()) return Task.FromResult<string?>(Strings.T(cfg.Language, "elevate_already"));
+        var way = Elevation.Way();
+        if (way == RightsAsk.None) return Task.FromResult<string?>(Strings.T(cfg.Language, "elevate_no_way"));
+        var exe = Environment.ProcessPath ?? Ceho.OwnExecutablePath;
+        _ = Task.Run(() => Elevation.Run(way, exe, new[] { "restart" }));
+        return Task.FromResult<string?>(null);
+    };
+
     bool RollBackAfterBadUpdate(string reason)
     {
         var exe = Ceho.OwnExecutablePath;

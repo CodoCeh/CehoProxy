@@ -285,6 +285,7 @@ public static class Strings
         ["doc_name_panel_port"] = new("порт панели", "the panel port"),
         ["doc_name_proxy_port"] = new("порт прокси", "the proxy port"),
         ["doc_name_service"] = new("служба", "the service"),
+        ["doc_name_elevate"] = new("запрос прав администратора", "administrator rights request"),
         ["doc_name_none"] = new("ничего", "nothing"),
         ["doc_engine_runs"] = new("Движок запускается: {0}", "The engine starts: {0}"),
         ["doc_app_system_folder"] = new(
@@ -415,6 +416,23 @@ public static class Strings
         ["doc_alien_tun"] = new(
             "Рядом работает другой туннель: {0}",
             "Another tunnel is running alongside: {0}"),
+        ["doc_alien_tun_ok"] = new(
+            "Рядом работает {0}, это нормально",
+            "{0} is running alongside, which is fine"),
+        ["doc_alien_tun_ok_detail"] = new(
+            "Его адаптер мы не трогаем, а маршруты у него свои: CehoProxy с ним не мешает друг другу.",
+            "We leave its adapter alone and it keeps its own routes: the two do not get in each other's way."),
+        ["btn_elevate"] = new("Запустить с правами администратора", "Restart with administrator rights"),
+        ["job_elevate"] = new("Запрашиваю права администратора", "Asking for administrator rights"),
+        ["elevate_done"] = new(
+            "Подтвердите запрос системы на права администратора. После этого панель откроется снова.",
+            "Confirm the system prompt for administrator rights. The panel then opens again."),
+        ["elevate_already"] = new(
+            "У программы уже есть права администратора, запрашивать их не нужно.",
+            "The program already has administrator rights, no need to ask."),
+        ["elevate_no_way"] = new(
+            "Права администратора отсюда запросить нечем. Откройте программу от имени администратора.",
+            "Cannot ask for administrator rights from here. Open the program as administrator."),
         ["doc_alien_tun_detail"] = new(
             "Его адаптер мы не трогаем, но два туннеля разом делят маршруты — если сеть ведёт себя "
             + "странно, оставьте один.",

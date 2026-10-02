@@ -50,7 +50,7 @@ public sealed class ElevationTests
     [Fact]
     public void Windows_never_pretends_it_can_ask_for_a_password()
     {
-        Assert.Equal(RightsAsk.None, Elevation.Way(OsKind.Windows, hasTerminal: true));
+        Assert.Equal(OperatingSystem.IsWindows() ? RightsAsk.Window : RightsAsk.None, Elevation.Way(OsKind.Windows, hasTerminal: true));
         Assert.Equal(RightsAsk.None, Elevation.Way(OsKind.Windows, hasTerminal: false));
     }
 
@@ -107,4 +107,21 @@ public sealed class ElevationTests
         Assert.Contains("\\\"", script);
         Assert.DoesNotContain("/tmp/ceho\"odd", script);
     }
+
+    [Fact]
+    public void Missing_rights_come_with_a_button_not_just_advice()
+    {
+        if (Os.IsElevated()) return;
+        var root = Path.Combine(Path.GetTempPath(), "ceho-el-" + Guid.NewGuid().ToString("N")[..8]);
+        var checks = Preflight.Run(new CehoConfig(), root);
+        Assert.Contains(checks, c => c.Level == Preflight.Level.Blocker && c.Repair == Repair.Elevate);
+        Assert.False(new Doctor.Result(checks.Where(c => c.Repair == Repair.Elevate).ToList(), [], []).Fixable);
+    }
+
+    [Theory]
+    [InlineData("Tailscale", true)]
+    [InlineData("ZeroTier One", true)]
+    [InlineData("Happ", false)]
+    public void Only_known_harmless_overlays_are_not_a_warning(string name, bool harmless) =>
+        Assert.Equal(harmless, Doctor.IsHarmlessOverlay(name));
 }
