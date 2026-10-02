@@ -59,6 +59,9 @@ public static class WebUi
     header form.mode button.on{background:var(--brand-ink);color:#f4fbf7;font-weight:600}
     header button.theme{min-height:34px;min-width:34px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;
       background:var(--panel);color:var(--subtext);font-size:var(--fs-s);font-weight:500}
+    header button.theme{display:inline-flex;align-items:center;justify-content:center;padding:6px;width:34px}
+    header button.theme svg{display:none}
+    header button.theme[data-now=dark] .ico-sun,header button.theme[data-now=light] .ico-moon{display:block}
     header button.theme:hover{background:var(--panel2);color:var(--text)}
     nav.tabs{display:flex;gap:2px;flex-wrap:wrap;margin:0 0 20px;padding-top:14px}
     nav.tabs a{display:inline-flex;align-items:center;min-height:44px;padding:9px 13px;border-radius:9px;color:var(--subtext);text-decoration:none;
@@ -456,21 +459,32 @@ public static class WebUi
     public const string ThemeEarlyScript =
         "<script>try{var t=localStorage.getItem('ceho-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>";
 
+    public const string ThemeIcons =
+        "<svg class=ico-sun viewBox=\"0 0 24 24\" width=18 height=18 fill=none stroke=currentColor stroke-width=2 stroke-linecap=round aria-hidden=true>"
+        + "<circle cx=12 cy=12 r=4 /><path d=\"M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4\" /></svg>"
+        + "<svg class=ico-moon viewBox=\"0 0 24 24\" width=18 height=18 fill=none stroke=currentColor stroke-width=2 stroke-linecap=round stroke-linejoin=round aria-hidden=true>"
+        + "<path d=\"M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z\" /></svg>";
+
     public const string ThemeScript = """
     <script>
     (function(){
       var btn=document.getElementById('theme');
       if(!btn)return;
-      var order=['auto','light','dark'];
-      function now(){return document.documentElement.getAttribute('data-theme')||'auto'}
-      function paint(){btn.textContent=btn.getAttribute('data-'+now());btn.setAttribute('aria-label',btn.getAttribute('data-label')+': '+btn.textContent)}
+      var mq=window.matchMedia('(prefers-color-scheme: dark)');
+      function now(){return document.documentElement.getAttribute('data-theme')||(mq.matches?'dark':'light')}
+      function paint(){
+        var dark=now()==='dark';
+        btn.setAttribute('data-now',dark?'dark':'light');
+        var label=btn.getAttribute(dark?'data-light':'data-dark');
+        btn.setAttribute('aria-label',label);btn.title=label;
+      }
       btn.addEventListener('click',function(){
-        var next=order[(order.indexOf(now())+1)%order.length];
-        if(next==='auto')document.documentElement.removeAttribute('data-theme');
-        else document.documentElement.setAttribute('data-theme',next);
-        try{if(next==='auto')localStorage.removeItem('ceho-theme');else localStorage.setItem('ceho-theme',next)}catch(e){}
+        var next=now()==='dark'?'light':'dark';
+        document.documentElement.setAttribute('data-theme',next);
+        try{localStorage.setItem('ceho-theme',next)}catch(e){}
         paint();
       });
+      if(mq.addEventListener)mq.addEventListener('change',paint);
       paint();
     })();
     </script>

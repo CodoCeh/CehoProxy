@@ -100,7 +100,7 @@ with sync_playwright() as p:
     # Тема.
     go(page, base + "/")
     before = page.evaluate("document.documentElement.getAttribute('data-theme')")
-    page.locator("button[aria-label^='Тема'], button[aria-label^='Theme']").first.click()
+    page.locator("#theme").click()
     after = page.evaluate("document.documentElement.getAttribute('data-theme')")
     check("кнопка темы меняет тему", before != after, (before, after))
     page.evaluate("localStorage.removeItem('ceho-theme')")

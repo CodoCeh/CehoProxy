@@ -1380,9 +1380,9 @@ public sealed class WebServer
               .Append(cfg.PanelMode == mode ? " class=on aria-pressed=true" : " aria-pressed=false").Append('>')
               .Append(E(S(key))).Append("</button>");
         sb.Append("</form>");
-        sb.Append("<button type=button id=theme class=theme data-label=\"").Append(E(S("theme_label")))
-          .Append("\" data-auto=\"").Append(E(S("theme_auto"))).Append("\" data-light=\"").Append(E(S("theme_light")))
-          .Append("\" data-dark=\"").Append(E(S("theme_dark"))).Append("\">").Append(E(S("theme_auto"))).Append("</button>");
+        sb.Append("<button type=button id=theme class=theme data-light=\"").Append(E(S("theme_to_light")))
+          .Append("\" data-dark=\"").Append(E(S("theme_to_dark"))).Append("\">")
+          .Append(WebUi.ThemeIcons).Append("</button>");
         sb.Append(WebUi.ThemeScript);
         sb.Append("</header>");
 
