@@ -369,4 +369,14 @@ public class PlatformTests
         }
         finally { Directory.Delete(root, true); }
     }
+
+    [Fact]
+    public void Installed_bundle_entry_counts_as_covered_by_its_folder()
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        var cfg = new CehoConfig();
+        cfg.Apps.Add(new AppEntry { Name = "Foo", Folder = "/Applications/Foo.app" });
+        Assert.True(AppCoverage.IsEntryCovered(cfg, "/Applications/Foo.app"));
+        Assert.False(AppCoverage.IsEntryCovered(cfg, "/Applications/Bar.app"));
+    }
 }

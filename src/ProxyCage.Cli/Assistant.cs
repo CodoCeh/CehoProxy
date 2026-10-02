@@ -296,7 +296,7 @@ public static class Assistant
         }
 
         foreach (var app in InstalledAppCatalog.Recommended()
-                     .Where(e => !AppCoverage.IsPathCovered(cfg, e.Path)))
+                     .Where(e => !AppCoverage.IsEntryCovered(cfg, e.Path)))
             if (AddApp(cfg, app.Path)) added = true;
         return added;
     }

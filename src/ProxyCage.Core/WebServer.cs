@@ -1725,7 +1725,7 @@ public sealed class WebServer
         else if (step == 2)
         {
             var installed = InstalledAppCatalog.Detect(cfg.Language)
-                .Where(e => !AppCoverage.IsPathCovered(cfg, e.Path)).ToList();
+                .Where(e => !AppCoverage.IsEntryCovered(cfg, e.Path)).ToList();
             if (installed.Count > 0)
             {
                 RenderInstalledPicker(sb, S, installed, "state", "3");
@@ -2227,7 +2227,7 @@ public sealed class WebServer
         if (installed.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("apps_installed_none", []))).Append("</p>");
         else
-            RenderInstalledPicker(sb, S, installed.Where(e => !AppCoverage.IsPathCovered(cfg, e.Path)).ToList(), "apps", null);
+            RenderInstalledPicker(sb, S, installed.Where(e => !AppCoverage.IsEntryCovered(cfg, e.Path)).ToList(), "apps", null);
         sb.Append("</div><div class=app-entry><h3>").Append(E(S("apps_manual_title", []))).Append("</h3>");
 
         var placeholder = S(Os.Kind switch

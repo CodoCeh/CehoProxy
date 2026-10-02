@@ -20,6 +20,10 @@ public static class AppCoverage
         return false;
     }
 
+    public static bool IsEntryCovered(CehoConfig cfg, string entryPath) =>
+        IsPathCovered(cfg, entryPath)
+        || IsPathCovered(cfg, entryPath.TrimEnd('\\', '/') + Path.DirectorySeparatorChar + "x");
+
     public static bool IsToolCovered(CehoConfig cfg, AiTools.Found tool)
     {
         if (IsPathCovered(cfg, tool.Path)) return true;
