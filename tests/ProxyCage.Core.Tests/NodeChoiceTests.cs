@@ -11,14 +11,13 @@ public sealed class NodeChoiceTests
     };
 
     [Theory]
-    [InlineData("[TOP 03] Албания-1 G+", true)]
-    [InlineData("Finland Gemini", true)]
-    [InlineData("Antigravity-DE", true)]
-    [InlineData("Германия-4", false)]
-    [InlineData("EG+X", false)]
-    [InlineData("Google", false)]
-    public void Provider_marks_for_google_services_are_recognised(string remark, bool expected) =>
-        Assert.Equal(expected, NodeChoice.IsGoogleMarked(Node("n", "AL", remark)));
+    [InlineData("Албания-1 G+", "g+", true)]
+    [InlineData("Finland Gemini", "GEMINI", true)]
+    [InlineData("Германия-4", "g+", false)]
+    [InlineData("Германия-4", "", false)]
+    [InlineData("Германия-4", "я", false)]
+    public void Word_filter_matches_the_node_name_only_for_a_real_word(string remark, string word, bool expected) =>
+        Assert.Equal(expected, NodeChoice.ByWord([Node("n", "AL", remark)], word).Count == 1);
 
     [Fact]
     public void Next_skips_current_unsuitable_and_blocked_nodes_and_prefers_another_country()
@@ -67,12 +66,13 @@ public sealed class NodeChoiceTests
                 if (!page.Contains("action=/apps/node-next")) await Task.Delay(50);
             }
             Assert.Contains("action=/apps/node-next", page);
-            Assert.Contains("action=/apps/node-tag", page);
+            Assert.Contains("action=/apps/node-word", page);
 
             Task<HttpResponseMessage> Post(string path) => http.PostAsync(path, new FormUrlEncodedContent(new Dictionary<string, string>
             { ["tab"] = "apps", ["folder"] = folder }));
 
-            using (var tag = await Post("/apps/node-tag"))
+            using (var tag = await http.PostAsync("/apps/node-word", new FormUrlEncodedContent(new Dictionary<string, string>
+            { ["tab"] = "apps", ["folder"] = folder, ["word"] = "G+" })))
             {
                 Assert.Equal(HttpStatusCode.SeeOther, tag.StatusCode);
                 Assert.Equal([nodes[1].Key], CehoConfig.Load(configPath).Apps[0].AllowedNodes);

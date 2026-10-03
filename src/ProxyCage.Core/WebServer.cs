@@ -796,7 +796,7 @@ public sealed partial class WebServer
                 }
 
                 case "/apps/node-next":
-                case "/apps/node-tag":
+                case "/apps/node-word":
                 case "/apps/node-reset":
                 {
                     var folder = f.GetValueOrDefault("folder", "");
@@ -812,13 +812,14 @@ public sealed partial class WebServer
                         return (S("node_reset_done", app.Label), false, ApplyOrDefer(cfg, restartIfRunning: true));
                     }
                     if (pool.Count == 0) return (S("node_pool_empty"), true, null);
-                    if (path == "/apps/node-tag")
+                    if (path == "/apps/node-word")
                     {
-                        var marked = NodeChoice.GoogleMarked(pool.Where(n => !cfg.BlockedNodes.Contains(n.Key, StringComparer.OrdinalIgnoreCase))).ToList();
-                        if (marked.Count == 0) return (S("node_tag_none"), true, null);
-                        app.AllowedNodes = marked.Select(n => n.Key).ToList();
+                        var word = f.GetValueOrDefault("word", "").Trim();
+                        var matched = NodeChoice.ByWord(pool.Where(n => !cfg.BlockedNodes.Contains(n.Key, StringComparer.OrdinalIgnoreCase)), word);
+                        if (matched.Count == 0) return (S("node_word_none", word), true, null);
+                        app.AllowedNodes = matched.Select(n => n.Key).ToList();
                         Save(cfg);
-                        return (S("node_tag_set", app.Label, marked.Count), false, ApplyOrDefer(cfg, restartIfRunning: true));
+                        return (S("node_word_set", app.Label, word, matched.Count), false, ApplyOrDefer(cfg, restartIfRunning: true));
                     }
                     var next = NodeChoice.Next(app, pool, cfg);
                     if (next is null) return (S("node_none_left"), true, null);
@@ -2240,7 +2241,6 @@ public sealed partial class WebServer
         var usable = pool.Where(n => !n.IsMeta && !cfg.BlockedNodes.Contains(n.Key, StringComparer.OrdinalIgnoreCase)).ToList();
         if (usable.Count < 2) return;
         var pinned = usable.Where(n => app.AllowedNodes.Contains(n.Key, StringComparer.OrdinalIgnoreCase)).ToList();
-        var marked = NodeChoice.GoogleMarked(usable);
         void Form(string action, string label, string cls = "ghost") =>
             sb.Append("<form method=post action=").Append(action).Append("><input type=hidden name=tab value=apps><input type=hidden name=folder value=\"")
               .Append(E(app.Folder)).Append("\"><button class=").Append(cls).Append('>').Append(E(label)).Append("</button></form>");
@@ -2250,9 +2250,10 @@ public sealed partial class WebServer
               : S("node_help_now", string.Join(", ", pinned.Take(3).Select(n => n.Remark.Length > 0 ? n.Remark : n.Tag)) + (pinned.Count > 3 ? " …" : ""))))
           .Append("</p><div class=node-help-actions>");
         Form("/apps/node-next", S("node_next_btn"));
-        if (marked.Count > 0) Form("/apps/node-tag", S("node_tag_btn", marked.Count));
         if (pinned.Count > 0 || app.UnsuitableNodes.Count > 0) Form("/apps/node-reset", S("node_reset_btn"));
-        sb.Append("</div>");
+        sb.Append("</div><form class=node-word method=post action=/apps/node-word><input type=hidden name=tab value=apps><input type=hidden name=folder value=\"")
+          .Append(E(app.Folder)).Append("\"><input type=text name=word minlength=2 maxlength=40 required placeholder=\"").Append(E(S("node_word_ph")))
+          .Append("\"><button class=ghost>").Append(E(S("node_word_btn"))).Append("</button></form>");
         if (app.UnsuitableNodes.Count > 0)
             sb.Append("<p class=hint>").Append(E(S("node_unsuitable", app.UnsuitableNodes.Count))).Append("</p>");
         sb.Append("</details>");

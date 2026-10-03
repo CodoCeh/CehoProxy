@@ -1,19 +1,18 @@
-using System.Text.RegularExpressions;
-
 namespace ProxyCage.Core;
 
 /// <summary>Подбор отдельной ноды для программы, которой общая нода не подошла.</summary>
 public static class NodeChoice
 {
-    private static readonly Regex GoogleMark = new(@"(?<![\p{L}\p{N}])(G\+|Gemini|Antigravity)(?![\p{L}\p{N}])",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+    public const int MinWordLength = 2;
 
-    /// <summary>Провайдер пометил ноду как рабочую с сервисами Google (в названии «G+», «Gemini» или «Antigravity»).</summary>
-    public static bool IsGoogleMarked(ProxyNode node) =>
-        !node.IsMeta && GoogleMark.IsMatch((node.Remark ?? "") + " " + node.Tag);
-
-    public static List<ProxyNode> GoogleMarked(IEnumerable<ProxyNode> pool) =>
-        pool.Where(IsGoogleMarked).ToList();
+    /// <summary>Ноды, в названии которых есть слово. Слово задаёт пользователь: пометки у провайдеров разные и работу не гарантируют.</summary>
+    public static List<ProxyNode> ByWord(IEnumerable<ProxyNode> pool, string? word)
+    {
+        var w = (word ?? "").Trim();
+        if (w.Length < MinWordLength) return [];
+        return pool.Where(n => !n.IsMeta
+            && ((n.Remark ?? "").Contains(w, StringComparison.OrdinalIgnoreCase) || (n.Tag ?? "").Contains(w, StringComparison.OrdinalIgnoreCase))).ToList();
+    }
 
     /// <summary>
     /// Следующая нода для программы: не выключенная вручную, не отмеченная как неподходящая, не текущая.

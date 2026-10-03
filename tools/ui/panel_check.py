@@ -342,7 +342,7 @@ with sync_playwright() as p:
 
     # Туннель: каталог, поиск, окно подтверждения открывается и закрывается без добавления.
     go(page, base + "/?tab=apps")
-    cards = page.locator("form.app-pick button.app-card")
+    cards = page.locator("form.app-pick button.app-card:not([hidden])")
     n_cards = cards.count()
     if n_cards:
         page.fill("#tunnel-search", "zzzzqqqq")
