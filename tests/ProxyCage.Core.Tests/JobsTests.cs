@@ -292,7 +292,7 @@ public class JobTelemetryTests
         Assert.Equal(37, after.Seconds);
         Assert.Equal(2, after.StageSeconds);
         Assert.False(after.IsSlow);
-        Assert.False(after.Indeterminate);
+        Assert.True(after.Indeterminate);
         Assert.Equal(100, after.Percent);
         Assert.DoesNotContain("Ready", before.Steps);
     }
@@ -307,7 +307,7 @@ public class JobTelemetryTests
         Assert.Equal(JobState.Failed, view.State);
         Assert.True(view.IsError);
         Assert.Equal(0, view.Percent);
-        Assert.False(view.Indeterminate);
+        Assert.True(view.Indeterminate);
         Assert.False(view.Waiting);
         Assert.NotNull(view.FinishedUtc);
     }

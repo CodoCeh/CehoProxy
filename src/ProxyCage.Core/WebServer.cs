@@ -1629,8 +1629,16 @@ public sealed partial class WebServer
               .Append("\"").Append(i == snapshot.StartupStep && snapshot.State == JobState.Running ? " aria-current=step" : "")
               .Append("><span class=step-number>").Append(i).Append("</span>").Append(E(stepLabels[i - 1])).Append("</li>");
         sb.Append("</ol>");
+        var metric = snapshot.Indeterminate
+            ? snapshot.State switch
+            {
+                JobState.Running => cfg.Language == "ru" ? "Выполняется" : "In progress",
+                JobState.Failed => cfg.Language == "ru" ? "Не удалось" : "Failed",
+                _ => cfg.Language == "ru" ? "Готово" : "Done",
+            }
+            : snapshot.Percent + "%";
         sb.Append("<div class=job-head><b>").Append(E(job.Title)).Append("</b>")
-          .Append("<span class=job-num id=jn>").Append(snapshot.Indeterminate && snapshot.State == JobState.Running ? (cfg.Language == "ru" ? "Выполняется" : "In progress") : snapshot.Percent + "%").Append("</span></div>");
+          .Append("<span class=job-num id=jn>").Append(E(metric)).Append("</span></div>");
         sb.Append("<div class=\"bar").Append(snapshot.Indeterminate && snapshot.State == JobState.Running ? " indeterminate" : "").Append("\" role=progressbar aria-label=\"").Append(E(job.Title)).Append("\" aria-valuemin=0 aria-valuemax=100><span id=jf style=\"transform:scaleX(")
           .Append((job.Percent / 100.0).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(")\"></span></div>");
         sb.Append("<div class=job-stage id=js>").Append(E(job.Stage)).Append("</div>");

@@ -134,7 +134,9 @@ public sealed class Job
             _finishedTimestamp = _updatedTimestamp = _clock.GetTimestamp();
             _result = _stage = result;
             _isError = failed;
-            _indeterminate = _waiting = false;
+            // Keep unknown-duration provenance after completion. A terminal label
+            // must not reinterpret the unused percent field as measured progress.
+            _waiting = false;
             if (!failed) _percent = 100;
             AddStep(result);
             // Publish terminal state only once result and finish time are available.

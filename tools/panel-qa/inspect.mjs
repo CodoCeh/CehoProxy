@@ -46,13 +46,61 @@ try {
           if (state === 'settings') await page.locator('#settings > summary').click();
           await expect(page.locator('html')).toHaveAttribute('lang', language);
           await expect(page.locator('.fixture-banner')).toBeVisible();
+          // Actual geometry catches SVG intrinsic grid sizing that can overlap the
+          // live status even when the document has no horizontal overflow.
+          const layout = await page.evaluate(() => {
+            const box = element => {
+              const { top, right, bottom, left, width, height } = element.getBoundingClientRect();
+              return { top, right, bottom, left, width, height };
+            };
+            const stage = document.querySelector('#tunnel-stage');
+            const portal = stage?.querySelector('.tunnel-portal svg');
+            const status = document.querySelector('#tunnel-status');
+            const rgb = color => (color.match(/[\d.]+/g) || []).map(Number);
+            const luminance = color => {
+              const values = rgb(color).slice(0, 3).map(value => {
+                const channel = value / 255;
+                return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+              });
+              return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+            };
+            const background = element => {
+              for (let current = element; current; current = current.parentElement) {
+                const color = getComputedStyle(current).backgroundColor;
+                const channels = rgb(color);
+                if (channels.length === 3 || channels[3] === 1) return color;
+              }
+              throw new Error('No opaque background for body link');
+            };
+            const links = Array.from(document.querySelectorAll('.protection-summary a, #added-apps > a, .app-card-actions > a, .route-details > a, #tunnel-existing-link'))
+              .filter(link => link.getClientRects().length > 0)
+              .map(link => {
+                const foreground = getComputedStyle(link).color, behind = background(link);
+                const light = luminance(foreground), dark = luminance(behind);
+                return { text: link.textContent.trim(), foreground, background: behind,
+                  contrast: (Math.max(light, dark) + 0.05) / (Math.min(light, dark) + 0.05) };
+              });
+            return { tunnel: stage && portal && status ? { stage: box(stage), portal: box(portal), status: box(status),
+              portalOverflow: getComputedStyle(portal).overflow } : null, links };
+          });
+          if (layout.tunnel) {
+            const { stage, portal, status, portalOverflow } = layout.tunnel;
+            expect(stage.height, 'Tunnel stage has reserved layout height').toBeGreaterThan(200);
+            expect(portal.top, 'Portal stays inside stage top').toBeGreaterThanOrEqual(stage.top - 1);
+            expect(portal.left, 'Portal stays inside stage left').toBeGreaterThanOrEqual(stage.left - 1);
+            expect(portal.right, 'Portal stays inside stage right').toBeLessThanOrEqual(stage.right + 1);
+            expect(portal.bottom, 'Portal stays inside stage bottom').toBeLessThanOrEqual(stage.bottom + 1);
+            expect(status.top, 'Status text must not overlap the portal').toBeGreaterThanOrEqual(portal.bottom - 1);
+            expect(portalOverflow, 'SVG paint is contained').toBe('hidden');
+          }
+          for (const link of layout.links) expect(link.contrast, `Body link contrast: ${link.text}`).toBeGreaterThanOrEqual(4.5);
           const overflow = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
           await page.screenshot({ path: path.join(out, `${name}.png`), fullPage: true, animations: 'disabled' });
           expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.width);
           expect(pageErrors).toEqual([]);
           expect(routes.errors).toEqual([]);
           expect(routes.unexpected).toEqual([]);
-          results.push({ name, status: 'passed', file: `${name}.png`, ...overflow });
+          results.push({ name, status: 'passed', file: `${name}.png`, ...overflow, layout });
         } catch (error) {
           results.push({ name, status: 'failed', error: String(error), pageErrors, routingErrors: routes.errors, unexpectedRequests: routes.unexpected });
           await page.screenshot({ path: path.join(out, `${name}-failure.png`), fullPage: true, animations: 'disabled' }).catch(() => {});

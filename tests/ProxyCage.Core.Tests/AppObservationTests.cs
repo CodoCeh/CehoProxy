@@ -352,12 +352,26 @@ public sealed class VerifiedPanelRenderTests : IDisposable
                     System.Text.Json.JsonSerializer.Serialize(payload, new System.Text.Json.JsonSerializerOptions
                     { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
             }
-            SaveJob("job");
-            SaveJob("startup-progress");
-            clock.Advance(TimeSpan.FromSeconds(42));
-            SaveJob("startup-delayed");
-            fakeJob.Complete(language == "ru" ? "Пример: время ожидания запуска истекло" : "Fixture: engine readiness timed out", failed: true);
-            SaveJob("startup-error"); // Synthetic Job only: no operation has been started.
+            // Register only this in-memory fixture so RenderState sees the same active
+            // operation as RenderJob. A startup fixture must not retain a green tunnel
+            // from the earlier connected-state example. No operation delegate runs.
+            _state = new(false, null, null, null, false);
+            var jobsGate = typeof(Jobs).GetField("Gate", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            var jobs = (Dictionary<string, Job>)typeof(Jobs).GetField("All", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            lock (jobsGate) jobs.Add(fakeJob.Id, fakeJob);
+            try
+            {
+                Assert.Contains("class=\"hero wait\"", Render(job: fakeJob));
+                SaveJob("job");
+                SaveJob("startup-progress");
+                clock.Advance(TimeSpan.FromSeconds(42));
+                SaveJob("startup-delayed");
+                fakeJob.Complete(language == "ru" ? "Пример: время ожидания запуска истекло" : "Fixture: engine readiness timed out", failed: true);
+                Assert.DoesNotContain("class=\"hero on\"", Render(job: fakeJob));
+                SaveJob("startup-error");
+            }
+            finally { lock (jobsGate) jobs.Remove(fakeJob.Id); }
+            _state = new(true, "NL", "203.0.113.9", null, true);
             _samples = new[] { new WebServer.AppLive(_cfg.Apps[0].Folder, 1, 1, 2) };
             Refresh();
             Save("leak", Render());

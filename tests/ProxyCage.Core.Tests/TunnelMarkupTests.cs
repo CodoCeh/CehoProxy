@@ -62,6 +62,24 @@ public class TunnelMarkupTests
     }
 
     [Fact]
+    public void Portal_has_a_definite_nonshrinking_containing_box()
+    {
+        Assert.Contains(".tunnel-stage{position:relative;isolation:isolate;flex:0 0 auto;", TunnelUi.Css);
+        Assert.Contains(".tunnel-portal{position:absolute;inset:0;overflow:hidden;", TunnelUi.Css);
+        Assert.Contains(".tunnel-portal svg{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:hidden}", TunnelUi.Css);
+    }
+
+    [Fact]
+    public void Default_body_links_use_theme_colors_before_component_overrides()
+    {
+        Assert.Contains("a{color:var(--brand-ink);text-underline-offset:3px}", WebUi.Css);
+        Assert.Contains("a:hover{color:var(--brand-strong)}", WebUi.Css);
+        Assert.True(WebUi.Css.IndexOf("a{color:var(--brand-ink)", StringComparison.Ordinal)
+            < WebUi.Css.IndexOf("nav.tabs a{", StringComparison.Ordinal));
+        Assert.Contains("background:var(--button-bg);color:var(--button-text)", WebUi.Css);
+    }
+
+    [Fact]
     public void Visual_motion_is_bounded_and_respects_reduced_motion()
     {
         Assert.Contains("@media(prefers-reduced-motion:reduce)", TunnelUi.Css);

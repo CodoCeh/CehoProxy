@@ -126,9 +126,9 @@ public static partial class TunnelUi
     .tunnel-panel{display:flex;flex-direction:column;align-items:center;text-align:center}
     .tunnel-panel h2{font-size:30px;line-height:1.2;letter-spacing:-.025em;align-self:flex-start;text-align:left;margin-bottom:8px}
     .tunnel-panel>.lede{align-self:flex-start;text-align:left;margin:0;color:var(--muted)}
-    .tunnel-stage{position:relative;isolation:isolate;width:min(100%,500px);height:258px;margin:0 auto;border:2px solid transparent;border-radius:22px;transition:background .18s,border-color .18s}
-    .tunnel-portal{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
-    .tunnel-portal svg{width:100%;height:100%;overflow:visible}
+    .tunnel-stage{position:relative;isolation:isolate;flex:0 0 auto;width:min(100%,500px);height:258px;margin:0 auto;border:2px solid transparent;border-radius:22px;transition:background .18s,border-color .18s}
+    .tunnel-portal{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+    .tunnel-portal svg{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:hidden}
     .tunnel-rim{transition:filter .16s,opacity .16s;opacity:.75}
     .tunnel-stage[data-phase=hover]{border-color:color-mix(in srgb,var(--brand-ink) 30%,transparent);background:color-mix(in srgb,var(--brand-ink) 4%,transparent)}
     .tunnel-stage[data-phase=hover] .tunnel-rim{filter:drop-shadow(0 0 7px #08b98260);opacity:1}

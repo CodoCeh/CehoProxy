@@ -32,6 +32,9 @@ public static class WebUi
       font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
       font-size:var(--fs-m); line-height:1.55;
     }
+    /* Unstyled body links must remain readable in both themes; component rules below retain their colors. */
+    a{color:var(--brand-ink);text-underline-offset:3px}
+    a:hover{color:var(--brand-strong)}
     .wrap{max-width:900px;margin:0 auto;padding:28px 20px 72px}
 
     /* Появление только прозрачностью. Страница перерисовывается сама, пока идёт операция,
@@ -716,10 +719,10 @@ public static class WebUi
           elapsed=Number(j.seconds||0);lastReply=Date.now();if(retry)retry.hidden=true;
           confirmedStep=Math.max(confirmedStep,Number(j.startupStep||0));
           if(steps&&confirmedStep>0){steps.hidden=false;steps.querySelectorAll('[data-step]').forEach(function(item){var n=Number(item.dataset.step),complete=n<confirmedStep||j.state==='done';item.classList.toggle('complete',complete);item.classList.toggle('current',n===confirmedStep&&j.state==='running');if(n===confirmedStep&&j.state==='running')item.setAttribute('aria-current','step');else item.removeAttribute('aria-current')})}
-          var indefinite=!!j.indeterminate&&j.state==='running';
-          if(bar){bar.classList.toggle('indeterminate',indefinite);bar.setAttribute('aria-valuetext',j.stage||'');if(indefinite)bar.removeAttribute('aria-valuenow');else bar.setAttribute('aria-valuenow',Math.max(0,Math.min(100,j.percent||0)))}
+          var unknownDuration=!!j.indeterminate,indefinite=unknownDuration&&j.state==='running';
+          if(bar){bar.classList.toggle('indeterminate',indefinite);bar.setAttribute('aria-valuetext',j.stage||'');if(unknownDuration)bar.removeAttribute('aria-valuenow');else bar.setAttribute('aria-valuenow',Math.max(0,Math.min(100,j.percent||0)))}
           if(fill&&!indefinite)fill.style.transform='scaleX('+Math.max(0,Math.min(100,j.percent||0))/100+')';
-          if(num)num.textContent=indefinite?api.text('Выполняется','In progress'):(j.percent||0)+'%';
+          if(num)num.textContent=unknownDuration?(j.state==='failed'||j.isError?api.text('Не удалось','Failed'):j.state==='done'?api.text('Готово','Done'):api.text('Выполняется','In progress')):(j.percent||0)+'%';
           if(stage)stage.textContent=j.stage||j.phase||'';
           if(j.state==='running'){
             message(j.isSlow?api.text('Этап ещё выполняется. Служба отвечает; ожидаем результат.','This phase is still running. The service is responding; waiting for its result.'):api.text('Можно перейти на другую вкладку. Операция продолжится в фоне.','You can use another tab. The operation continues in the background.'),j.isSlow?'warn':'');

@@ -29,6 +29,22 @@ test('genuine phase is indeterminate and slow stage is explained',async()=>{
 test('failed operation stays failed and exposes actual error',async()=>{
  let calls=0;const h=harness(job,async()=>{calls++;return response(running({state:'failed',isError:true,result:'Engine readiness timed out'}))});h.run('JobScript');await h.settle();assert.match(h.w.document.querySelector('#job-status').textContent,/readiness timed out/);await h.advance(5000);assert.equal(calls,1);assert.equal(h.w.document.querySelector('#jp').className,'job err');h.close();
 });
+for(const [state,english,russian] of [['running','In progress','Выполняется'],['failed','Failed','Не удалось'],['done','Done','Готово']])
+ for(const [language,expected] of [['en',english],['ru',russian]])test('unknown-duration '+state+' metric is a state label in '+language,async()=>{
+  const h=harness(job,async()=>response(running({state,isError:state==='failed',percent:state==='done'?100:0})));
+  h.w.document.documentElement.lang=language;h.run('InteractionScript');
+  h.w.document.querySelector('.bar').setAttribute('aria-valuenow','0');
+  h.run('JobScript');await h.settle();
+  assert.equal(h.w.document.querySelector('#jn').textContent,expected);
+  assert.equal(h.w.document.querySelector('.bar').hasAttribute('aria-valuenow'),false);
+  assert.equal(h.w.document.querySelector('.bar').classList.contains('indeterminate'),state==='running');h.close();
+ });
+for(const [state,percent] of [['running',45],['failed',45],['done',100]])test('determinate '+state+' metric preserves measured percent',async()=>{
+ const h=harness(job,async()=>response(running({state,isError:state==='failed',indeterminate:false,percent})));
+ h.run('JobScript');await h.settle();assert.equal(h.w.document.querySelector('#jn').textContent,percent+'%');
+ assert.equal(h.w.document.querySelector('.bar').getAttribute('aria-valuenow'),String(percent));
+ assert.equal(h.w.document.querySelector('.bar').classList.contains('indeterminate'),false);h.close();
+});
 test('older status cannot overwrite newer phase and pagehide stops polling',async()=>{
  let calls=0;const h=harness(job,async()=>response(calls++===0?running({stage:'New phase',lastUpdatedUtc:'2026-10-03T00:00:10Z'}):running({stage:'Old phase'})));
  h.run('JobScript');await h.settle();await h.advance(1000);assert.equal(h.w.document.querySelector('#js').textContent,'New phase');h.w.dispatchEvent(new h.w.Event('pagehide'));const count=calls;await h.advance(20000);assert.equal(calls,count);h.close();
