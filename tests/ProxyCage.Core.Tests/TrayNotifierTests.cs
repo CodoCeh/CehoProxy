@@ -26,7 +26,7 @@ public class TrayNotifierTests
         Assert.Equal(Strings.T("ru", "state_recovering"), n.Next("ru", TrayLook.Starting, Healing));
         Assert.Null(n.Next("ru", TrayLook.Starting, Healing));
         Assert.Null(n.Next("ru", TrayLook.Off, Off));
-        Assert.StartsWith(Strings.T("ru", "state_on"), n.Next("ru", TrayLook.Protected, On("US")));
+        Assert.StartsWith(Strings.T("ru", "notice_back"), n.Next("ru", TrayLook.Protected, On("US")));
         Assert.Null(n.Next("ru", TrayLook.Protected, On("US")));
     }
 

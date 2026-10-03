@@ -217,6 +217,32 @@ def full_scenario(pg, M):
         reload_tab("state")
         check("страница состояния говорит, что заменить ничего не нужно", "undefined" not in body())
 
+        reload_tab("apps")
+        card = pg.locator("article.app-card").filter(has_text=label_of(paths[0])).first
+        picker = card.locator("form.country-form select")
+        if wait_for(lambda: (reload_tab("apps"), card.locator("form.country-form select").count() > 0)[1], 90, 5) and \
+                card.locator("form.country-form select option[value]:not([value=''])").count():
+            pick = card.locator("form.country-form select option[value]:not([value=''])").first
+            code = pick.get_attribute("value")
+            with pg.expect_navigation(wait_until="load", timeout=30000):
+                card.locator("form.country-form select").select_option(code)
+            reload_tab("apps")
+            card = pg.locator("article.app-card").filter(has_text=label_of(paths[0])).first
+            check("страна выхода: выбор страны сохраняется",
+                  card.locator("form.country-form select").input_value() == code, code)
+            check("страна выхода: после выбора видно «Применить»", pg.locator("form.pending").count() > 0)
+            with pg.expect_navigation(wait_until="load", timeout=30000):
+                card.locator("form.country-form select").select_option("")
+            reload_tab("apps")
+            card = pg.locator("article.app-card").filter(has_text=label_of(paths[0])).first
+            check("страна выхода: «Любая страна» возвращает общий маршрут",
+                  card.locator("form.country-form select").input_value() == "")
+        else:
+            print("страна выхода: у машины меньше двух стран в нодах, проверка пропущена")
+        if was_running:
+            if pg.locator("form.pending").count():
+                check("применение после выбора страны", apply_pending(), body()[:300])
+                check("после выбора страны туннель подключён", connected())
         if was_running:
             reload_tab("state")
             pg.locator("button[formaction='/control/stop']").click()

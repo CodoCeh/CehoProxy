@@ -783,6 +783,38 @@ public sealed partial class WebServer
                     return (msg, false, ApplyOrDefer(cfg, restartIfRunning: true));
                 }
 
+                case "/apps/add-recommended":
+                {
+                    var added = 0;
+                    foreach (var entry in InstalledAppCatalog.Recommended().Where(e => !AppCoverage.IsEntryCovered(cfg, e.Path)).ToList())
+                    {
+                        var res = AddAppCore(cfg, "/apps/installed", new Dictionary<string, string>
+                        { ["path"] = entry.Path, ["intent"] = "tunnel", ["confirm_add"] = "1" });
+                        if (res.Status == "added") added++;
+                    }
+                    return added > 0 ? (S("rec_added", added), false, null) : (S("rec_none"), false, null);
+                }
+
+                case "/apps/country":
+                {
+                    var folder = f.GetValueOrDefault("folder", "");
+                    var app = cfg.Apps.FirstOrDefault(a => AppIdentity.SameConfiguredPath(a.Folder, folder));
+                    if (app is null) return (S("app_tunnel_missing"), true, null);
+                    var code = f.GetValueOrDefault("country", "").Trim();
+                    if (code.Length == 0)
+                    {
+                        app.AllowedNodes = [];
+                        Save(cfg);
+                        return (S("app_tunnel_cleared", app.Label), false, ApplyOrDefer(cfg, restartIfRunning: true));
+                    }
+                    var nodes = (_pool ?? []).Where(n => !n.IsMeta
+                        && string.Equals(n.CountryCode ?? CountryResolver.Unknown, code, StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (nodes.Count == 0) return (S("country_missing"), true, null);
+                    app.AllowedNodes = nodes.Select(n => n.Key).ToList();
+                    Save(cfg);
+                    return (S("country_set", app.Label, nodes[0].CountryName ?? code), false, ApplyOrDefer(cfg, restartIfRunning: true));
+                }
+
                 case "/apps/offline":
                 {
                     var folder = f.GetValueOrDefault("folder", "");
@@ -2081,6 +2113,7 @@ public sealed partial class WebServer
         {
             sb.Append("<p class=lede>").Append(E(S("live_no_apps", []))).Append("</p>")
               .Append("<a class=button href=\"/?tab=apps\">").Append(E(S("live_add_app", []))).Append("</a></section>");
+            RenderRecommended(sb, cfg, S, tab);
             return;
         }
 
@@ -2097,7 +2130,7 @@ public sealed partial class WebServer
               .Append("\" tabindex=-1 class=\"app-observation ").Append(result.Css).Append("\"><div class=app-identity><span class=dot aria-hidden=true></span>");
             AppIcon(sb, AppIcons.Source(app, catalog), app.Label);
             sb.Append("<b>").Append(E(app.Label)).Append("</b></div>");
-            RenderAppObservation(sb, cfg, app, info, result);
+            RenderAppObservation(sb, cfg, app, info, result, st);
             AppendAppRecheck(sb, cfg, app, tab);
             sb.Append("</li>");
         }
@@ -2105,16 +2138,20 @@ public sealed partial class WebServer
           .Append("<a href=\"/?tab=apps\">").Append(E(AppObservation.Text(cfg, "Все программы →", "All apps →"))).Append("</a></section>");
     }
 
-    private void RenderAppObservation(StringBuilder sb, CehoConfig cfg, AppEntry app, AppLive? info, AppObservation.Result result)
+    private void RenderAppObservation(StringBuilder sb, CehoConfig cfg, AppEntry app, AppLive? info, AppObservation.Result result,
+        ControlState? exit = null, bool withCountry = false)
     {
         string T(string ru, string en) => AppObservation.Text(cfg, ru, en);
         sb.Append("<div class=app-observation-body><span class=\"observation-badge ").Append(result.Css)
           .Append("\" data-observation=\"").Append(result.Kind).Append("\">").Append(E(result.Title))
           .Append("</span>");
+        if (result.Verified && exit?.ExitIp is { Length: > 0 } proofIp)
+            sb.Append("<p class=app-proof>").Append(E(Strings.T(cfg.Language, "app_proof", exit.ExitCountry ?? "?", proofIp))).Append("</p>");
         if (app.NoInternet || !app.Enabled || app.AllowedNodes.Count > 0)
             sb.Append("<p class=configured-route>").Append(E(T("Настроено: ", "Configured: ") + AppObservation.ConfiguredRoute(cfg, app))).Append("</p>");
-        sb.Append("<p class=hint>").Append(E(result.Advice)).Append("</p>")
-          .Append("<details class=route-details><summary>").Append(E(T("Подробности", "Details")))
+        sb.Append("<p class=hint>").Append(E(result.Advice)).Append("</p>");
+        if (withCountry) RenderCountryPicker(sb, cfg, app);
+        sb.Append("<details class=route-details><summary>").Append(E(T("Подробности", "Details")))
           .Append("</summary><dl class=kv><dt>").Append(E(T("Путь", "Path"))).Append("</dt><dd class=path>").Append(E(app.Folder)).Append("</dd>");
         if (info is not null)
         {
@@ -2125,6 +2162,54 @@ public sealed partial class WebServer
               .Append("<dt>").Append(E(T("Напрямую по правилам", "Direct by rules"))).Append("</dt><dd>").Append(info.EngineDirect).Append("</dd>");
         }
         sb.Append("</dl></details></div>");
+    }
+
+    private void RenderCountryPicker(StringBuilder sb, CehoConfig cfg, AppEntry app)
+    {
+        if (app.NoInternet || !app.Enabled) return;
+        string S(string key) => Strings.T(cfg.Language, key);
+        var pool = _pool;
+        if (pool is null)
+        {
+            if (cfg.Subscriptions.Any(x => x.Enabled) && Jobs.Active(JobPool) is null) StartPoolJob(cfg);
+            return;
+        }
+        var groups = pool.Where(n => !n.IsMeta).GroupBy(n => n.CountryCode ?? CountryResolver.Unknown)
+            .Where(g => g.Key != CountryResolver.Unknown).OrderByDescending(g => g.Count()).ToList();
+        if (groups.Count < 2) return;
+        string? current = null;
+        var mixed = false;
+        if (app.AllowedNodes.Count > 0)
+        {
+            var codes = pool.Where(n => app.AllowedNodes.Contains(n.Key, StringComparer.OrdinalIgnoreCase))
+                .Select(n => n.CountryCode ?? CountryResolver.Unknown).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (codes.Count == 1) current = codes[0]; else mixed = true;
+        }
+        sb.Append("<form class=country-form method=post action=/apps/country><input type=hidden name=tab value=apps>")
+          .Append("<input type=hidden name=folder value=\"").Append(E(app.Folder)).Append("\">")
+          .Append("<label>").Append(E(S("country_label"))).Append(" <select name=country onchange=\"this.form.submit()\">")
+          .Append("<option value=\"\"").Append(current is null && !mixed ? " selected" : "").Append('>').Append(E(S("country_any"))).Append("</option>");
+        if (mixed) sb.Append("<option selected disabled>").Append(E(S("country_mixed"))).Append("</option>");
+        foreach (var g in groups)
+            sb.Append("<option value=\"").Append(E(g.Key)).Append('"').Append(string.Equals(current, g.Key, StringComparison.OrdinalIgnoreCase) ? " selected" : "")
+              .Append('>').Append(E(CountryResolver.Flag(g.Key) + " " + (g.First().CountryName ?? g.Key))).Append("</option>");
+        sb.Append("</select></label><noscript><button class=ghost>").Append(E(Strings.T(cfg.Language, "btn_save"))).Append("</button></noscript></form>");
+    }
+
+    private void RenderRecommended(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S, string tab)
+    {
+        List<InstalledAppCatalog.Entry> todo;
+        try
+        {
+            todo = InstalledAppCatalog.Recommended()
+                .Where(e => AppIdentity.Find(cfg.Apps, e.Path) is null && !AppCoverage.IsEntryCovered(cfg, e.Path)).ToList();
+        }
+        catch { return; }
+        if (todo.Count == 0) return;
+        var names = string.Join(", ", todo.Take(6).Select(e => e.Name)) + (todo.Count > 6 ? " …" : "");
+        sb.Append("<section class=recommend><h2>").Append(E(S("rec_title", []))).Append("</h2><p class=lede>")
+          .Append(E(S("rec_lede", [names]))).Append("</p><form method=post action=/apps/add-recommended><input type=hidden name=tab value=")
+          .Append(E(tab)).Append("><button class=big>").Append(E(S("rec_btn", [todo.Count]))).Append("</button></form></section>");
     }
 
     private static void AppendAppRecheck(StringBuilder sb, CehoConfig cfg, AppEntry app, string tab, string? wizard = null)
@@ -2524,6 +2609,7 @@ public sealed partial class WebServer
 
         var installed = PanelInstalledApps(cfg);
         var state = _state();
+        RenderRecommended(sb, cfg, S, "apps");
         TunnelUi.Render(sb, cfg, installed, "apps", state.Running, Volatile.Read(ref _pending) > 0, AppRulesPending && (Jobs.Active(JobApply) is not null || Jobs.Active(JobPower) is not null || Jobs.Active(JobRestore) is not null), pickedPath);
         sb.Append("<div data-live=app-cards id=added-apps><h2 class=tunnel-added-title>").Append(E(AppObservation.Text(cfg, "Добавленные программы", "Added apps"))).Append("</h2>");
         var live = state.Running ? AppsLive() : null;
@@ -2545,7 +2631,7 @@ public sealed partial class WebServer
                 sb.Append("<h3 title=\"").Append(E(a.Folder)).Append("\">").Append(E(a.Label)).Append("</h3></div>");
                 if (a.VersionAgnostic) sb.Append("<span class=tag>Microsoft Store</span>");
                 if (a.SingleFile) sb.Append("<span class=tag>").Append(E(S("col_file", []))).Append("</span>");
-                RenderAppObservation(sb, cfg, a, info, observation);
+                RenderAppObservation(sb, cfg, a, info, observation, state, withCountry: true);
                 sb.Append("<div class=app-card-actions>");
                 AppendAppRecheck(sb, cfg, a, "apps");
                 sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")

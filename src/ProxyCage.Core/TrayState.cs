@@ -155,7 +155,7 @@ public sealed class TrayNotifier
         else if (look == TrayLook.Protected)
         {
             if (_lost)
-                notice = Strings.T(lang, "state_on") + (snapshot is { ExitIp: { Length: > 0 } ip }
+                notice = Strings.T(lang, "notice_back") + (snapshot is { ExitIp: { Length: > 0 } ip }
                     ? " · " + Strings.T(lang, "exit_is", snapshot.ExitCountry ?? "?", ip) : "");
             else if (_last == TrayLook.Protected && _country is not null && country is not null && _country != country)
                 notice = Strings.T(lang, "notice_exit_changed", _country, country);

@@ -61,7 +61,7 @@ internal static class AppObservation
                     T("Интернет запрещён настройкой. Отсутствие соединений само по себе не доказывает блокировку.", "Internet is blocked by configuration. No connections alone does not prove the block is effective."), Fresh: true);
         if (live.EngineVpn > 0)
             return new("vpn", live.EngineDirect > 0 ? "warn" : "on",
-                live.EngineDirect > 0 ? T("VPN и прямые исключения", "VPN and direct exceptions") : T("VPN-трафик замечен", "VPN traffic observed"),
+                live.EngineDirect > 0 ? T("VPN и прямые исключения", "VPN and direct exceptions") : T("Работает через VPN", "Works through VPN"),
                 live.EngineDirect > 0
                     ? T($"Через VPN: {live.EngineVpn}; напрямую по правилам: {live.EngineDirect}. Проверьте список сайтов.", $"Via VPN: {live.EngineVpn}; direct by rules: {live.EngineDirect}. Review the site list.")
                     : T("В этой проверке обнаружен VPN-трафик; прямые соединения не обнаружены.", "This sample contains VPN traffic; no direct connections were observed."), Verified: true, Fresh: true);
