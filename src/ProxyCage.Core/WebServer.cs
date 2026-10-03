@@ -1736,7 +1736,6 @@ public sealed partial class WebServer
               .Append(E(T("Проверить программы", "Check apps"))).Append("</a></div>");
         }
         sb.Append("</section>");
-        TunnelUi.Render(sb, cfg, PanelInstalledApps(cfg), "state", st.Running, Volatile.Read(ref _pending) > 0, power is not null, pickedPath);
         RenderLiveApps(sb, cfg, st, guarded, S);
 
         sb.Append("<section>");
