@@ -58,8 +58,10 @@ public static partial class TunnelUi
         foreach (var app in catalog)
         {
             var existing = AppIdentity.Find(cfg.Apps, app.Path);
+            var added = existing is not null
+                || (app.Path.EndsWith(".app", StringComparison.OrdinalIgnoreCase) && AppCoverage.IsEntryCovered(cfg, app.Path));
             sb.Append("<button class=app-card type=submit name=path value=\"").Append(E(app.Path))
-              .Append("\" data-tunnel-source");
+              .Append("\" data-tunnel-source").Append(added ? " data-added hidden" : "");
             if (existing is not null) sb.Append(" data-existing-id=\"").Append(AppIdentity.Id(existing)).Append("\"");
             sb.Append(" data-path=\"").Append(E(app.Path)).Append("\" data-label=\"").Append(E(app.Name))
               .Append("\" data-name=\"").Append(E(app.Name.ToLowerInvariant())).Append("\" aria-label=\"")

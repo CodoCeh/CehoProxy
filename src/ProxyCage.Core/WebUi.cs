@@ -659,7 +659,7 @@ public static class WebUi
       document.addEventListener('input',function(e){
         var box=e.target;if(!box.matches('input.app-filter'))return;
         var owner=box.closest('form'),text=box.value.trim().toLowerCase(),shown=0;if(!owner)return;
-        owner.querySelectorAll('button.app-card').forEach(function(card){card.hidden=text.length>0&&(card.getAttribute('data-name')||'').indexOf(text)<0;if(!card.hidden)shown++});
+        owner.querySelectorAll('button.app-card').forEach(function(card){card.hidden=card.hasAttribute('data-added')||(text.length>0&&(card.getAttribute('data-name')||'').indexOf(text)<0);if(!card.hidden)shown++});
         owner.querySelectorAll('.app-group').forEach(function(g){g.hidden=!g.querySelector('button.app-card:not([hidden])')});
         var none=owner.querySelector('#tunnel-no-results');if(none)none.hidden=shown>0;
       });

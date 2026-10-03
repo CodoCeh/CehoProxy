@@ -43,13 +43,12 @@ public class TunnelMarkupTests
     }
 
     [Fact]
-    public void Existing_exact_identity_remains_in_catalog_with_focus_target()
+    public void Already_added_app_is_not_offered_in_the_catalog()
     {
         var app = new AppEntry { Name = "Notes", Folder = "/opt/notes", IdentityPath = "/opt/notes/notes" };
         var html = Render(apps: [app]);
-        Assert.Contains($"data-existing-id=\"{AppIdentity.Id(app)}\"", html);
+        Assert.Contains("data-tunnel-source data-added hidden", html);
         Assert.Contains("Already added: Notes", html);
-        Assert.Contains("data-tunnel-source", html);
     }
 
     [Fact]

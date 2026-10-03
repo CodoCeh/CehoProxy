@@ -92,7 +92,7 @@ public static partial class TunnelUi
           if(!active()||turn!==epoch)return;
           if(typeof state.running!=='boolean'||typeof state.pending!=='boolean'||typeof state.busy!=='boolean'||!Array.isArray(state.apps)||state.apps.some(function(a){return !a||typeof a.id!=='string'||typeof a.path!=='string'||typeof a.ruleApplied!=='boolean'}))throw new Error('invalid-state');
           root.dataset.running=String(state.running);root.dataset.pending=String(state.pending);root.dataset.busy=String(state.busy);retry.hidden=true;
-          sources().forEach(function(source){if(source.dataset.existingId&&!state.apps.some(function(a){return a.id===source.dataset.existingId})){delete source.dataset.existingId;var plus=source.querySelector('.tunnel-plus');if(plus)plus.textContent='+'}});
+          sources().forEach(function(source){if(source.dataset.existingId&&!state.apps.some(function(a){return a.id===source.dataset.existingId})){delete source.dataset.existingId;source.removeAttribute('data-added');source.hidden=false;var plus=source.querySelector('.tunnel-plus');if(plus)plus.textContent='+'}});
           state.apps.forEach(function(app){var card=findCard(app.id);if(card)card.dataset.ruleState=app.ruleApplied===true?'applied':state.pending?'pending':state.running?'unknown':'inactive';sources().forEach(function(source){if(source.dataset.path===app.path){source.dataset.existingId=app.id;var plus=source.querySelector('.tunnel-plus');if(plus)plus.textContent='✓'}})});
           if(appliedTarget&&!saving){
             var confirmed=state.apps.find(function(a){return a.id===appliedTarget.id});
@@ -129,7 +129,7 @@ public static partial class TunnelUi
             focusExisting(result.appId,result.message||text('Уже добавлено. Показываем сохранённое правило.','Already added. Showing the saved rule.'));updateNext({running:root.dataset.running==='true',pending:result.pending===true,busy:false});return;
           }
           pending={id:result.appId,name:value.name,path:value.path,at:Date.now()};savePending();steps('saved');phase('pending',text('Правило сохранено. Примените его отдельным действием.','Rule saved. Apply it as a separate action.'));
-          if(value.source){value.source.dataset.existingId=result.appId;var plus=value.source.querySelector('.tunnel-plus');if(plus)plus.textContent='✓'}
+          if(value.source){value.source.dataset.existingId=result.appId;value.source.setAttribute('data-added','');value.source.hidden=true;var plus=value.source.querySelector('.tunnel-plus');if(plus)plus.textContent='✓'}
           document.dispatchEvent(new CustomEvent('ceho:refresh'));updateNext({running:root.dataset.running==='true',pending:result.pending===true,busy:false});
           var manual=document.getElementById('tunnel-manual-form');if(value.endpoint==='/apps/add'){delete manual.dataset.dirty}
         }).catch(function(){if(active()){phase('unknown',text('Ответ не получен. Правило могло сохраниться; маршрут не подтверждён. Проверьте состояние или повторите сохранение: дубликат не создастся.','No response. The rule may have saved; routing is not confirmed. Check status or retry saving: duplicates are prevented.'));retry.hidden=false;retrySave.hidden=false;steps('')}}).finally(function(){saving=false;clearTimeout(slowTimer);add.disabled=false;cancel.disabled=false;delete form.dataset.submitting;if(active())reconcile()});
