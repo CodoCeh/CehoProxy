@@ -32,77 +32,50 @@ public static class TunCleanup
 
     private const int RuleSpan = 16;
 
-    public static bool IsOurEngineRunning(string runtimeConfigPath, string? root = null)
+    public static bool IsOurEngineRunning(string runtimeConfigPath, string? root = null) =>
+        OurEnginePids(runtimeConfigPath).Any();
+
+    private static IEnumerable<int> OurEnginePids(string runtimeConfigPath)
     {
         if (Os.IsWindows)
         {
-            var home = root ?? Path.GetDirectoryName(runtimeConfigPath) ?? "";
             foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
-            {
-                foreach (var (_, line) in Os.WindowsProcesses(name))
-                {
-                    if (IsOurEngineCommandLine(name, line, runtimeConfigPath, home))
-                        return true;
-                }
-            }
-
-            return false;
+                foreach (var (pid, line) in Os.WindowsProcesses(name))
+                    if (OwnedEngineProcess.Matches(name, OwnedEngineProcess.Arguments(line), runtimeConfigPath, windows: true))
+                        yield return pid;
+            yield break;
         }
 
-        var (code, output) = Os.Run("pgrep", $"-f {runtimeConfigPath}", 5000);
-        return code == 0 && output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length > 0;
+        var (code, output) = Os.Run("ps", "-A -o pid=,comm=", 5000);
+        if (code != 0) yield break;
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var fields = line.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (fields.Length != 2 || !int.TryParse(fields[0], out var pid)) continue;
+            var name = Path.GetFileName(fields[1]);
+            if (name is not ("ceho-engine" or "sing-box")) continue;
+            IReadOnlyList<string> arguments;
+            try
+            {
+                arguments = Os.IsLinux
+                    ? File.ReadAllText($"/proc/{pid}/cmdline").Split('\0', StringSplitOptions.RemoveEmptyEntries)
+                    : OwnedEngineProcess.Arguments(Os.Run("ps", $"-p {pid} -o command=", 5000).Output.Trim());
+            }
+            catch { continue; }
+            if (OwnedEngineProcess.Matches(name, arguments, runtimeConfigPath, windows: false)) yield return pid;
+        }
     }
-
-    private static bool IsOurEngineCommandLine(
-        string processName, string commandLine, string runtimeConfigPath, string home) =>
-        processName.Equals(Os.EngineFileName, StringComparison.OrdinalIgnoreCase)
-        || commandLine.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
-        || (home.Length > 0 && commandLine.Contains(home, StringComparison.OrdinalIgnoreCase));
 
     public static int KillOurProcesses(string runtimeConfigPath, Action<string>? log = null)
     {
-        if (Os.IsWindows)
-        {
-            var home = Path.GetDirectoryName(runtimeConfigPath) ?? "";
-            var killed = 0;
-            foreach (var name in new[] { Os.EngineFileName, Os.SingBoxFileName }.Distinct())
-            {
-                foreach (var (pid, line) in Os.WindowsProcesses(name))
-                {
-                    if (!IsOurEngineCommandLine(name, line, runtimeConfigPath, home)) continue;
-
-                    if (Os.Run("taskkill", $"/PID {pid} /F", 10000).Code == 0)
-                    {
-                        killed++;
-                        log?.Invoke($"остановлен движок, процесс {pid}");
-                    }
-                }
-            }
-
-            // ceho-engine только наш; если Get-CimInstance недоступен — добиваем по имени.
-            var (bulkCode, bulkOut) = Os.Run("taskkill", $"/IM {Os.EngineFileName} /F", 10000);
-            if (bulkCode == 0)
-            {
-                var n = bulkOut.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                    .Count(l => l.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase));
-                if (n > killed)
-                {
-                    log?.Invoke($"остановлено процессов движка: {n}");
-                    killed = n;
-                }
-            }
-
-            return killed;
-        }
-
-        var (code, output) = Os.Run("pgrep", $"-f {runtimeConfigPath}", 10000);
-        if (code != 0) return 0;
-
         var stopped = 0;
-        foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var pid in OurEnginePids(runtimeConfigPath).Distinct())
         {
-            if (!int.TryParse(raw.Trim(), out var pid) || pid == Environment.ProcessId) continue;
-            if (Os.Run("kill", $"-9 {pid}", 5000).Code == 0)
+            if (pid == Environment.ProcessId) continue;
+            var result = Os.IsWindows
+                ? Os.Run("taskkill", $"/PID {pid} /F", 10000)
+                : Os.Run("kill", $"-9 {pid}", 5000);
+            if (result.Code == 0)
             {
                 stopped++;
                 log?.Invoke($"остановлен движок, процесс {pid}");

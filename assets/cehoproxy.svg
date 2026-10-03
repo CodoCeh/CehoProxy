@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>CehoProxy</title>
+  <desc>Selected flat A: nested tunnel contours and a tilted application window.</desc>
+  <g id="mark">
+    <path id="outer-tunnel" fill="#192630" d="M221 116 C125 111 43 183 32 272 C18 376 94 465 196 472 C299 480 388 405 400 310 C404 285 399 265 395 247 L317 277 C325 337 278 388 219 391 C162 393 117 350 116 295 C115 236 168 184 239 176 Z"/>
+    <path id="inner-tunnel" fill="#192630" d="M245 191 C189 188 151 219 144 265 C136 314 171 361 218 366 C252 371 287 355 300 325 C278 345 246 350 220 334 C189 315 179 279 191 247 C201 220 220 205 247 199 Z"/>
+    <g id="application-window" transform="translate(361 150) rotate(-20)">
+      <path id="application-frame" fill="#00a96c" fill-rule="evenodd" d="M-81-84H81Q104-84 104-61V61Q104 84 81 84H-81Q-104 84-104 61V-61Q-104-84-81-84ZM-77-34Q-82-34-82-29V56Q-82 62-76 62H76Q82 62 82 56V-29Q82-34 77-34Z M-68-59a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M-37-59a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M-6-59a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/>
+    </g>
+  </g>
+</svg>

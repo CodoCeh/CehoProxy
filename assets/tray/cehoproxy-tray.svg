@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#192630" /><title>CehoProxy small-size optical master</title>
+  <desc>Same selected A silhouette, with wider nested-contour separation and no subpixel window controls.</desc>
+  <g id="mark" transform="translate(18 18) scale(.93)">
+    <path id="outer-tunnel" fill="#f4f7f8" d="M221 116 C125 111 43 183 32 272 C18 376 94 465 196 472 C299 480 388 405 400 310 C404 285 399 265 395 247 L317 277 C325 337 278 388 219 391 C162 393 117 350 116 295 C115 236 168 184 239 176 Z" />
+    <path id="inner-tunnel" fill="#f4f7f8" d="M244 194 C198 192 160 225 154 266 C147 308 174 349 215 355 C248 361 278 348 298 327 C275 342 247 342 222 328 C194 312 185 279 196 249 C205 225 223 209 247 202 Z" />
+    <g id="application-window" transform="translate(361 150) rotate(-20)">
+      <path id="application-frame" fill="#00a96c" fill-rule="evenodd" d="M-81-84H81Q104-84 104-61V61Q104 84 81 84H-81Q-104 84-104 61V-61Q-104-84-81-84ZM-70-29Q-76-29-76-23V51Q-76 57-70 57H70Q76 57 76 51V-23Q76-29 70-29Z" />
+    </g>
+  </g>
+</svg>

@@ -25,6 +25,31 @@ public class EngineConnectionsTests
     }
 
     [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("[null]")]
+    [InlineData("[42]")]
+    [InlineData("[\"unrecognized\"]")]
+    [InlineData("[\"block\",\"proxy\"]")]
+    [InlineData("[\"dns-out\"]")]
+    public void Unknown_or_nontraffic_chains_do_not_become_vpn_evidence(string chains)
+    {
+        var json = "{\"connections\":[{\"chains\":" + chains + ",\"metadata\":{\"processPath\":\"/opt/app/bin/app\"}}]}";
+        Assert.Empty(EngineConnections.Parse(json));
+    }
+
+    [Theory]
+    [InlineData("proxy")]
+    [InlineData("n001")]
+    [InlineData("proxy-app-2")]
+    [InlineData("proxy-site-nl")]
+    public void Generated_route_tags_remain_valid_vpn_evidence(string tag)
+    {
+        var json = "{\"connections\":[{\"chains\":[\"" + tag + "\"],\"metadata\":{\"processPath\":\"/opt/app/bin/app\"}}]}";
+        Assert.False(Assert.Single(EngineConnections.Parse(json)).Direct);
+    }
+
+    [Theory]
     [InlineData("192.168.0.1:53", true)]
     [InlineData("10.1.2.3:443", true)]
     [InlineData("172.20.0.5:80", true)]

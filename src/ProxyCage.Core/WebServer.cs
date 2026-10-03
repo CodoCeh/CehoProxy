@@ -9,13 +9,16 @@ public sealed class WebServer
 {
     private sealed record JobPayload(
         string State, int Percent, string Stage, string? Result, bool IsError,
-        bool Relaunch, double Seconds);
+        bool Relaunch, double Seconds, string? Id = null, bool Indeterminate = false,
+        double StageSeconds = 0, double IdleSeconds = 0, bool IsSlow = false,
+        DateTime? LastUpdatedUtc = null, bool CanCancel = false, string? Phase = null, DateTime? StageStartedUtc = null, bool Waiting = false, int StartupStep = 0, long Revision = 0);
 
     private const string CookieName = "ceho";
 
     private const string JobPool = "pool";
     private const string JobMeasure = "measure";
     private const string JobApply = "apply";
+    private const string JobRestore = "restore";
     private const string JobPower = "power";
     private const string JobUpdate = "update";
     private const string JobSubs = "subs";
@@ -46,6 +49,7 @@ public sealed class WebServer
     public Func<Task<string?>>? OnStop { get; set; }
     public Func<IStageReport, Task<string?>>? OnRestart { get; set; }
     public Func<IStageReport, Task<string>>? OnApply { get; set; }
+    public Func<bool, DateTime?, IStageReport, Task<string>>? OnRestoreVerified { get; set; }
 
     public Func<bool, IStageReport, Task<string>>? OnUpdate { get; set; }
 
@@ -157,6 +161,12 @@ public sealed class WebServer
             return;
         }
 
+        if (path is "/support/preview" or "/support/download" && ctx.Request.HttpMethod == "POST")
+        {
+            await HandleSupportReportAsync(ctx, cfg, path);
+            return;
+        }
+
         if (ctx.Request.HttpMethod == "POST")
         {
             var form = await ReadFormAsync(ctx.Request);
@@ -166,6 +176,7 @@ public sealed class WebServer
             var q = $"?tab={Uri.EscapeDataString(tab)}";
             if (logView.Length > 0) q += $"&view={Uri.EscapeDataString(logView)}";
             if (msg is not null) q += $"&m={Uri.EscapeDataString(msg)}&e={(isError ? 1 : 0)}";
+            if (path == "/apps/check" && !isError) q += "&notice=1";
             if (jobId is not null) q += $"&job={Uri.EscapeDataString(jobId)}";
             if (form.GetValueOrDefault("wizard") is { Length: > 0 } step) q += $"&wizard={Uri.EscapeDataString(step)}";
             Redirect(ctx, "/" + q);
@@ -186,7 +197,16 @@ public sealed class WebServer
             var q = "?tab=apps";
             if (pick.Path is { Length: > 0 })
             {
-                var (msg, isError, jobId) = TryAddAppFromPath(cfg, pick.Path);
+                await _configGate.WaitAsync();
+                (string? msg, bool isError, string? jobId) added;
+                try
+                {
+                    added = Jobs.Active(JobRestore) is { } restoring
+                        ? ("Configuration recovery is running; retry after it finishes.", true, restoring.Id)
+                        : TryAddAppFromPath(CehoConfig.Load(_configPath), pick.Path);
+                }
+                finally { _configGate.Release(); }
+                var (msg, isError, jobId) = added;
                 if (msg is not null) q += $"&m={Uri.EscapeDataString(msg)}&e={(isError ? 1 : 0)}";
                 if (jobId is not null) q += $"&job={Uri.EscapeDataString(jobId)}";
             }
@@ -199,7 +219,7 @@ public sealed class WebServer
         var flash = ctx.Request.QueryString["m"];
         var flashErr = ctx.Request.QueryString["e"] == "1";
         var current = ctx.Request.QueryString["tab"] ?? "state";
-        var job = Jobs.Find(ctx.Request.QueryString["job"]);
+        var job = Jobs.Find(ctx.Request.QueryString["job"]) ?? Jobs.Active(JobPower) ?? Jobs.Active(JobApply) ?? Jobs.Active(JobRestore);
         if (job is { State: JobState.Done, IsError: false })
         {
             var q = ctx.Request.QueryString;
@@ -296,8 +316,41 @@ public sealed class WebServer
             return;
         }
 
-        var (ok, text) = await OnApiCommand(argv);
-        await WriteJsonAsync(ctx, ok, text);
+        await _configGate.WaitAsync();
+        try
+        {
+            if (Jobs.Active(JobRestore) is not null)
+            { await WriteJsonAsync(ctx, false, "Configuration recovery is running; retry after it finishes."); return; }
+            var (ok, text) = await OnApiCommand(argv);
+            await WriteJsonAsync(ctx, ok, text);
+        }
+        finally { _configGate.Release(); }
+    }
+
+    private async Task HandleSupportReportAsync(HttpListenerContext ctx, CehoConfig cfg, string path)
+    {
+        if (ctx.Request.ContentLength64 > 512 * 1024)
+        { ctx.Response.StatusCode = 413; ctx.Response.Close(); return; }
+        var form = await ReadFormAsync(ctx.Request);
+        if (path == "/support/preview")
+        {
+            var parts = SupportReport.PartsFromForm(form);
+            var report = SupportReport.Create(cfg, parts, _state(), _doctor,
+                parts.HasFlag(SupportReport.Parts.Logs) ? Log.Tail(100) : null);
+            await WriteHtmlAsync(ctx, SafetyPanel.RenderReportPreview(cfg, report, parts));
+            return;
+        }
+        var preview = form.GetValueOrDefault("report", "");
+        if (Encoding.UTF8.GetByteCount(preview) > 128 * 1024 || !preview.StartsWith("CehoProxy support report\n", StringComparison.Ordinal))
+        { ctx.Response.StatusCode = 400; ctx.Response.Close(); return; }
+        var bytes = Encoding.UTF8.GetBytes(preview);
+        ctx.Response.ContentType = "text/plain; charset=utf-8";
+        ctx.Response.Headers["Content-Disposition"] = "attachment; filename=\"" + SupportReport.FileName + "\"";
+        ctx.Response.Headers["Cache-Control"] = "no-store";
+        ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        ctx.Response.ContentLength64 = bytes.Length;
+        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.Close();
     }
 
     private async Task HandleJobAsync(HttpListenerContext ctx)
@@ -327,16 +380,17 @@ public sealed class WebServer
         else if (job is null)
             payload = new JobPayload("gone", 100, "", null, false, false, 0);
         else
+        {
+            var snapshot = job.Snapshot();
             payload = new JobPayload(
-                job.State switch
-                {
-                    JobState.Running => "running",
-                    JobState.Done => "done",
-                    _ => "failed",
-                },
-                job.Percent, job.Stage, job.Result, job.IsError, job.RelaunchPanel,
-                Math.Round(job.Elapsed.TotalSeconds, 1));
+                snapshot.State switch { JobState.Running => "running", JobState.Done => "done", _ => "failed" },
+                snapshot.Percent, snapshot.Stage, snapshot.Result, snapshot.IsError, snapshot.RelaunchPanel,
+                Math.Round(snapshot.Seconds, 1), snapshot.Id, snapshot.Indeterminate,
+                snapshot.StageSeconds, snapshot.IdleSeconds, snapshot.IsSlow, snapshot.LastUpdatedUtc,
+                snapshot.CanCancel, snapshot.Phase, snapshot.StageStartedUtc, snapshot.Waiting, snapshot.StartupStep, snapshot.Revision);
+        }
 
+        payload = payload with { Id = id };
         var json = System.Text.Json.JsonSerializer.Serialize(payload,
             new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
         var bytes = Encoding.UTF8.GetBytes(json);
@@ -437,6 +491,7 @@ public sealed class WebServer
     }
 
     private int _pending;
+    private readonly SemaphoreSlim _configGate = new(1, 1);
 
     private string? ApplyOrDefer(CehoConfig cfg, string? doneMessage = null, bool restartIfRunning = false)
     {
@@ -454,6 +509,9 @@ public sealed class WebServer
     private Job StartApplyJob(CehoConfig cfg, string? doneMessage, bool restartIfRunning) =>
         Jobs.Start(JobApply, Strings.T(cfg.Language, restartIfRunning && _state().Running ? "job_restart" : "job_apply"), async p =>
         {
+            InvalidateAppObservations();
+            try
+            {
             if (restartIfRunning && _state().Running && OnRestart is not null)
             {
                 var err = await OnRestart(p);
@@ -465,26 +523,59 @@ public sealed class WebServer
 
             var applied = OnApply is null ? Strings.T(cfg.Language, "rules_rebuilt") : await OnApply(p);
             return doneMessage is null ? applied : $"{doneMessage} {applied}";
+            } finally { InvalidateAppObservations(); }
         }, rerunIfBusy: true);
 
     private Job StopJob(CehoConfig cfg) =>
         Jobs.Start(JobPower, Strings.T(cfg.Language, "job_stop"), async p =>
         {
-            p.Stage(Strings.T(cfg.Language, "stage_stopping"), 40);
+            InvalidateAppObservations();
+            try
+            {
+            p.Phase(Strings.T(cfg.Language, "stage_stopping"));
             var err = OnStop is null ? "no control" : await OnStop();
             if (err is not null) throw new InvalidOperationException(err);
             return Strings.T(cfg.Language, "state_off");
-        });
+            } finally { InvalidateAppObservations(); }
+        }, operationIdentity: "stop");
 
     private async Task<(string? Message, bool IsError, string? JobId)> ApplyPostAsync(
+        string path, Dictionary<string, string> f, CehoConfig cfg)
+    {
+        await _configGate.WaitAsync();
+        try { return await ApplyPostCoreAsync(path, f, CehoConfig.Load(_configPath)); }
+        finally { _configGate.Release(); }
+    }
+
+    private async Task<(string? Message, bool IsError, string? JobId)> ApplyPostCoreAsync(
         string path, Dictionary<string, string> f, CehoConfig cfg)
     {
         string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
 
         try
         {
+            // Recovery is a user-confirmed replacement. Later edits must not disappear into it.
+            if (Jobs.Active(JobRestore) is { } restoring)
+                return (cfg.Language == "ru" ? "Сначала дождитесь завершения восстановления настроек." : "Wait for configuration recovery to finish before making another change.", false, restoring.Id);
             switch (path)
             {
+                case "/settings/restore":
+                {
+                    if (f.GetValueOrDefault("confirm_restore") != "1")
+                        throw new InvalidOperationException(cfg.Language == "ru" ? "Подтвердите возврат конфигурации." : "Confirm configuration recovery.");
+                    if (OnRestoreVerified is null)
+                        throw new InvalidOperationException(cfg.Language == "ru" ? "Восстановление недоступно в этой службе." : "Configuration recovery is unavailable in this service.");
+                    if (Jobs.Running().Count > 0)
+                        throw new InvalidOperationException(cfg.Language == "ru" ? "Перед восстановлением дождитесь завершения текущих проверок и действий." : "Wait for current checks and operations before restoring configuration.");
+                    var acknowledge = f.GetValueOrDefault("acknowledge_security") == "1";
+                    if (!DateTime.TryParse(f.GetValueOrDefault("verified_utc"), CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind, out var expectedVerifiedUtc))
+                        throw new InvalidOperationException(cfg.Language == "ru" ? "Обновите предпросмотр конфигурации." : "Refresh the configuration preview.");
+                    var job = Jobs.Start(JobRestore, cfg.Language == "ru" ? "Возвращаем рабочие настройки" : "Restoring working configuration",
+                        async p => { InvalidatePanelData(); try { var result = await OnRestoreVerified(acknowledge, expectedVerifiedUtc, p); Interlocked.Exchange(ref _pending, 0); return result; } finally { InvalidatePanelData(); } });
+                    return (null, false, job.Id);
+                }
+
                 case "/apps/add":
                     return TryAddAppFromPath(cfg, f.GetValueOrDefault("path", ""));
 
@@ -1119,13 +1210,17 @@ public sealed class WebServer
 
                 case "/control/start":
                 {
-                    Interlocked.Exchange(ref _pending, 0);
                     var job = Jobs.Start(JobPower, S("job_start"), async p =>
                     {
+                        Interlocked.Exchange(ref _pending, 0);
+                        InvalidateAppObservations();
+                        try
+                        {
                         var err = OnStart is null ? "no control" : await OnStart(p);
                         if (err is not null) throw new InvalidOperationException(err);
                         return S("state_on");
-                    });
+                        } finally { InvalidateAppObservations(); }
+                    }, operationIdentity: "start");
                     return (null, false, job.Id);
                 }
 
@@ -1137,9 +1232,12 @@ public sealed class WebServer
 
                 case "/control/restart":
                 {
-                    Interlocked.Exchange(ref _pending, 0);
                     var job = Jobs.Start(JobPower, S("job_restart"), async p =>
                     {
+                        Interlocked.Exchange(ref _pending, 0);
+                        InvalidateAppObservations();
+                        try
+                        {
                         string? err;
                         if (OnRestart is not null) err = await OnRestart(p);
                         else if (OnStop is not null && OnStart is not null)
@@ -1152,7 +1250,8 @@ public sealed class WebServer
 
                         if (err is not null) throw new InvalidOperationException(err);
                         return S("rules_applied");
-                    });
+                        } finally { InvalidateAppObservations(); }
+                    }, operationIdentity: "restart");
                     return (null, false, job.Id);
                 }
 
@@ -1167,6 +1266,10 @@ public sealed class WebServer
                 }
             }
             return (null, false, null);
+        }
+        catch (JobOperationConflictException ex)
+        {
+            return (Strings.T(cfg.Language, "job_conflict", ex.ActiveTitle), true, ex.ActiveJobId);
         }
         catch (Exception ex)
         {
@@ -1191,7 +1294,7 @@ public sealed class WebServer
     }
 
     private Job StartPoolJob(CehoConfig cfg) =>
-        Jobs.Start(JobPool, Strings.T(cfg.Language, "job_pool"), async p =>
+        Jobs.Active(JobRestore) ?? Jobs.Start(JobPool, Strings.T(cfg.Language, "job_pool"), async p =>
         {
             try
             {
@@ -1208,6 +1311,16 @@ public sealed class WebServer
                 throw;
             }
         });
+
+    public void NotifyEngineStateChanged() => InvalidatePanelData();
+
+    private void InvalidatePanelData()
+    {
+        InvalidateAppObservations();
+        _pool = null; _poolError = null; _poolAtUtc = default;
+        _countries = null; _liveLatency = null; _liveLatencyAtUtc = default;
+        _doctor = null; _doctorAtUtc = default; _lastPing = null;
+    }
 
     private void Save(CehoConfig cfg)
     {
@@ -1341,12 +1454,19 @@ public sealed class WebServer
         sb.Append("</div></form>");
     }
 
+    private static void AppendProductLogo(StringBuilder sb)
+    {
+        sb.Append("<span class=product-logo><img class=\"logo logo-light\" src=\"")
+          .Append(ProductBrand.LogoDataUri).Append("\" alt=\"CehoProxy\"><img class=\"logo logo-dark\" src=\"")
+          .Append(ProductBrand.DarkLogoDataUri).Append("\" alt=\"CehoProxy\"></span>");
+    }
+
     private static string RenderGate(CehoConfig cfg, string? error)
     {
         var sb = new StringBuilder();
         Head(sb, cfg, null);
         sb.Append("<div class=gate>");
-        sb.Append("<img class=logo src=\"").Append(Brand.LogoDataUri).Append("\" alt=\"КодоЦех\">");
+        AppendProductLogo(sb);
         sb.Append("<h1>CehoProxy</h1>");
         sb.Append("<p class=hint>").Append(E(Strings.T(cfg.Language, "auth_hint"))).Append("</p>");
         if (error is not null)
@@ -1369,7 +1489,7 @@ public sealed class WebServer
         if (job is { Running: true })
             sb.Append("<noscript><meta http-equiv=refresh content=2></noscript>");
 
-        sb.Append("<title>CehoProxy</title>").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append("</style></head>");
+        sb.Append("<title>CehoProxy</title><link rel=icon type=\"image/svg+xml\" href=\"").Append(ProductBrand.IconDataUri).Append("\">").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append("</style></head>");
 
         // Пока идёт операция, страница перерисовывается каждые пару секунд.
         // Появление разделов на таких перерисовках только мельтешит, поэтому его выключаем.
@@ -1386,14 +1506,16 @@ public sealed class WebServer
         sb.Append("<div class=wrap>");
 
         sb.Append("<header>");
-        sb.Append("<img class=logo src=\"").Append(Brand.LogoDataUri).Append("\" alt=\"КодоЦех\">");
+        AppendProductLogo(sb);
         sb.Append("<span class=mark>Ceho<span>Proxy</span></span>");
         sb.Append("<form class=mode method=post action=/mode aria-label=\"").Append(E(S("mode_label")))
           .Append("\"><input type=hidden name=tab value=\"").Append(E(tab)).Append("\">");
-        foreach (var (mode, key) in new[] { (CehoConfig.PanelModeSimple, "mode_simple"), (CehoConfig.PanelModePro, "mode_pro") })
-            sb.Append("<button name=mode value=").Append(mode)
-              .Append(cfg.PanelMode == mode ? " class=on aria-pressed=true" : " aria-pressed=false").Append('>')
-              .Append(E(S(key))).Append("</button>");
+        sb.Append("<span").Append(cfg.SimplePanel ? " class=selected" : "").Append('>')
+          .Append(E(S("mode_simple"))).Append("</span><button type=submit class=mode-toggle role=switch name=mode value=")
+          .Append(cfg.SimplePanel ? CehoConfig.PanelModePro : CehoConfig.PanelModeSimple)
+          .Append(" aria-checked=").Append(cfg.SimplePanel ? "false" : "true")
+          .Append(" aria-label=\"").Append(E(S("mode_pro"))).Append("\"></button><span")
+          .Append(!cfg.SimplePanel ? " class=selected" : "").Append('>').Append(E(S("mode_pro"))).Append("</span>");
         sb.Append("</form>");
         sb.Append("<button type=button id=theme class=theme data-light=\"").Append(E(S("theme_to_light")))
           .Append("\" data-dark=\"").Append(E(S("theme_to_dark"))).Append("\">")
@@ -1425,9 +1547,12 @@ public sealed class WebServer
             sb.Append("</div></details>");
         }
         sb.Append("</nav>");
+        if (tab is "state" or "doctor" or "apps")
+            sb.Append("<div class=freshness><span id=freshness-text role=status aria-live=polite></span><button id=refresh-retry type=button class=ghost hidden>")
+              .Append(E(cfg.Language == "ru" ? "Повторить" : "Retry")).Append("</button></div>");
 
         if (!string.IsNullOrEmpty(flash))
-            sb.Append("<div class=\"flash ").Append(flashErr ? "err" : "ok").Append("\">")
+            sb.Append("<div class=\"flash ").Append(flashErr ? "err" : "notice").Append("\">")
               .Append(E(flash)).Append("</div>");
 
         RenderJob(sb, cfg, job, tab, S);
@@ -1447,6 +1572,10 @@ public sealed class WebServer
             default: RenderState(sb, cfg, st, S, wizard); break;
         }
 
+        if (tab == "access" || tab == "help")
+            SafetyPanel.RenderRecovery(sb, cfg, Root, tab);
+        if (tab == "state") RenderReconnectHistory(sb, cfg);
+
         sb.Append("<footer><a class=forged href=\"").Append(Brand.Site).Append("\" target=_blank rel=noopener>")
           .Append("<img src=\"").Append(Brand.LogoDataUri).Append("\" alt=\"\">")
           .Append(E(S("forged"))).Append("</a>")
@@ -1460,13 +1589,34 @@ public sealed class WebServer
           .Append("<span>").Append(E(S("footer_local"))).Append("</span></span></footer>");
         sb.Append("</div>");
 
+        sb.Append(WebUi.InteractionScript);
         if (job is { Running: true }) sb.Append(WebUi.JobScript);
         if (tab == "subs" && cfg.Subscriptions.Count > 0) sb.Append(WebUi.SubModalScript);
         if (tab is "apps" or "state") sb.Append(WebUi.AppFilterScript);
         if (tab == "access") sb.Append(WebUi.TransferPartsScript);
-        if (tab is "state" or "doctor" && job is not { Running: true }) sb.Append(WebUi.StateRefreshScript);
+        if (tab is "state" or "doctor" or "apps") sb.Append(WebUi.StateRefreshScript);
         sb.Append("</body></html>");
         return sb.ToString();
+    }
+
+    private static void RenderReconnectHistory(StringBuilder sb, CehoConfig cfg)
+    {
+        var history = ReconnectHistory.Shared.Snapshot();
+        if (history.Recent.Count == 0) { sb.Append("<section data-live=reconnect></section>"); return; }
+        string T(string ru, string en) => cfg.Language == "ru" ? ru : en;
+        sb.Append("<section data-live=reconnect><details class=route-details><summary>")
+          .Append(E(T("Восстановление соединения", "Connection recovery"))).Append("</summary>");
+        foreach (var item in history.Recent.Take(5))
+        {
+            sb.Append("<div class=consequences><b>").Append(E(item.Reason)).Append("</b><br>")
+              .Append(E(T("Попытка ", "Attempt "))).Append(item.Attempt);
+            if (item.MaxAttempts is { } max) sb.Append(" / ").Append(max);
+            sb.Append(" · ").Append(E(item.State switch { "running" => T("выполняется", "in progress"), "succeeded" => T("восстановлено", "recovered"), _ => T("не удалось", "failed") }))
+              .Append("<br>").Append(E(item.State == "running" ? item.Stage : item.Result)).Append("<br><span class=hint>")
+              .Append(E(item.StartedUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'"))).Append("</span></div>");
+        }
+        sb.Append("<p class=hint>").Append(E(T("История текущего запуска службы; показано до 5 последних событий.", "History from this service session; showing up to 5 recent events.")))
+          .Append("</p></details></section>");
     }
 
     private void RenderPending(StringBuilder sb, string tab, Job? job, Func<string, object[], string> S)
@@ -1490,6 +1640,7 @@ public sealed class WebServer
         StringBuilder sb, CehoConfig cfg, Job? job, string tab, Func<string, object[], string> S)
     {
         if (job is null) return;
+        var snapshot = job.Snapshot();
 
         var cls = job.State switch
         {
@@ -1501,10 +1652,20 @@ public sealed class WebServer
         sb.Append("<div class=\"job ").Append(cls).Append("\" id=jp data-job=\"").Append(E(job.Id)).Append("\"")
           .Append(job.RelaunchPanel ? " data-relaunch=1" : "")
           .Append(" data-wait=\"").Append(E(S("job_wait_panel", []))).Append("\"")
+          .Append(" data-elapsed=\"").Append(snapshot.Seconds.ToString("F1", CultureInfo.InvariantCulture)).Append("\"")
           .Append(" data-run=\"").Append(E(S("job_running", ["{0}"]))).Append("\">");
+        sb.Append("<ol class=startup-steps id=startup-steps").Append(snapshot.StartupStep == 0 ? " hidden" : "").Append('>');
+        var stepLabels = cfg.Language == "ru" ? new[] { "Подготовка", "Подключение", "Проверка" }
+            : new[] { "Prepare", "Connect", "Check" };
+        for (var i = 1; i <= 3; i++)
+            sb.Append("<li data-step=").Append(i).Append(" class=\"")
+              .Append(i < snapshot.StartupStep || snapshot.State == JobState.Done ? "complete" : i == snapshot.StartupStep ? "current" : "")
+              .Append("\"").Append(i == snapshot.StartupStep && snapshot.State == JobState.Running ? " aria-current=step" : "")
+              .Append("><span class=step-number>").Append(i).Append("</span>").Append(E(stepLabels[i - 1])).Append("</li>");
+        sb.Append("</ol>");
         sb.Append("<div class=job-head><b>").Append(E(job.Title)).Append("</b>")
-          .Append("<span class=job-num id=jn>").Append(job.Percent).Append("%</span></div>");
-        sb.Append("<div class=bar><span id=jf style=\"transform:scaleX(")
+          .Append("<span class=job-num id=jn>").Append(snapshot.Indeterminate && snapshot.State == JobState.Running ? (cfg.Language == "ru" ? "Выполняется" : "In progress") : snapshot.Percent + "%").Append("</span></div>");
+        sb.Append("<div class=\"bar").Append(snapshot.Indeterminate && snapshot.State == JobState.Running ? " indeterminate" : "").Append("\" role=progressbar aria-label=\"").Append(E(job.Title)).Append("\" aria-valuemin=0 aria-valuemax=100><span id=jf style=\"transform:scaleX(")
           .Append((job.Percent / 100.0).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(")\"></span></div>");
         sb.Append("<div class=job-stage id=js>").Append(E(job.Stage)).Append("</div>");
         sb.Append("<div class=job-foot><span id=jt>")
@@ -1516,6 +1677,19 @@ public sealed class WebServer
               .Append("</a>");
         sb.Append("</div>");
 
+        if (job.Running)
+            sb.Append("<div class=job-status id=job-status role=status aria-live=polite></div><button type=button id=job-retry class=ghost hidden>")
+              .Append(E(cfg.Language == "ru" ? "Проверить связь" : "Check connection")).Append("</button>");
+        sb.Append("<p class=\"hint job-safety\">").Append(E(cfg.Language == "ru"
+            ? "Закрытие страницы не отменяет действие. Безопасная отмена этого этапа не поддерживается."
+            : "Closing this page does not cancel the operation. Safe cancellation of this phase is not supported.")).Append("</p>");
+        if (job.Kind == JobPower && job.OperationIdentity is "start" or "restart")
+        {
+            sb.Append("<form method=post action=\"/control/").Append(job.OperationIdentity)
+              .Append("\" id=job-retry-operation").Append(job.State == JobState.Failed ? "" : " hidden")
+              .Append("><input type=hidden name=tab value=\"").Append(E(tab)).Append("\"><button>")
+              .Append(E(cfg.Language == "ru" ? "Повторить запуск" : "Retry start")).Append("</button></form>");
+        }
         var steps = job.Steps;
         if (steps.Count > 1)
         {
@@ -1531,21 +1705,35 @@ public sealed class WebServer
     private void RenderState(StringBuilder sb, CehoConfig cfg, ControlState st, Func<string, object[], string> S,
         string? wizard = null)
     {
-        var step = cfg.Subscriptions.Count == 0 ? 1 : !cfg.Apps.Any(a => a.Enabled) ? 2 : wizard == "3" ? 3 : 0;
+        string T(string ru, string en) => AppObservation.Text(cfg, ru, en);
+        var step = !cfg.Subscriptions.Any(s => s.Enabled) ? 1 : !cfg.Apps.Any(a => a.Enabled) ? 2 : wizard == "3" ? 3 : 0;
         var guarded = LeakGuard.IsActive(Root);
-        var power = Jobs.Active(JobPower) ?? Jobs.Active(JobApply);
+        var power = Jobs.Active(JobPower) ?? Jobs.Active(JobApply) ?? Jobs.Active(JobRestore);
+        var live = st.Running ? AppsLive() : null;
+        var now = DateTime.UtcNow;
+        var observations = cfg.Apps.Where(a => a.Enabled).Select(a => (App: a, Observation: AppObservation.Evaluate(
+            cfg, a, live?.FirstOrDefault(l => l.Folder == a.Folder), st.Running, guarded, _appsLiveAtUtc, now, _appsLiveFailed, AppRulesPending))).ToList();
+        var leaks = observations.Where(a => a.Observation.Leak).ToList();
+        var verified = observations.Count(a => a.Observation.Verified);
         var (cls, title, detail) =
-            power is not null ? ("wait", power.Title, S("hero_busy", []))
-            : st.Running && st.ExitIp is not null ? ("on", S("hero_on", []), S("exit_is", [st.ExitCountry ?? "?", st.ExitIp]))
+            leaks.Count > 0 ? ("bad", leaks.Any(a => a.Observation.Kind == "leak")
+                ? T("Обнаружен прямой трафик", "Direct traffic detected")
+                : T("Обнаружен неожиданный трафик", "Unexpected app traffic detected"),
+                T("Проверьте программы: ", "Check these apps: ") + string.Join(", ", leaks.Select(a => a.App.Label)))
+            : power is not null ? ("wait", power.Title, S("hero_busy", []))
+            : st.Running && st.ExitIp is not null ? ("on", T("Туннель подключён", "Tunnel connected"),
+                T("Проверочный выход туннеля: ", "Tunnel probe exit: ") + (st.ExitCountry ?? "?") + " · " + st.ExitIp)
             : st.Running && st.Probed ? ("bad", S("hero_no_exit", []), S("hero_no_exit_detail", []))
             : st.Running ? ("wait", S("hero_checking", []), S("state_checking", []))
             : DaemonControl.IsRecovering(Root) ? ("wait", S("hero_recovering", []), S("hero_recovering_detail", []))
             : DaemonControl.IsStarting(Root, TimeSpan.Zero) ? ("wait", S("hero_checking", []), S("state_starting", []))
-            : guarded ? ("warn", S("hero_off_guarded", []), S("hero_off_guarded_detail", []))
-            : ("bad", S("hero_off_direct", []), S("hero_off_direct_detail", []));
+            : guarded ? ("warn", T("Туннель выключен", "Tunnel is off"), T("Защитный барьер отмечен как включённый", "Guard is recorded as enabled"))
+            : ("off", T("Туннель выключен", "Tunnel is off"), T("Защитный барьер не подтверждён", "Guard is not confirmed"));
 
-        sb.Append("<section data-live=hero><div class=\"hero ").Append(cls).Append("\"><span class=dot></span><div><h1>")
-          .Append(E(title)).Append("</h1><p>").Append(E(detail)).Append("</p></div>")
+        sb.Append("<section data-live=hero><div class=\"hero ").Append(cls).Append("\" role=status aria-live=polite><span class=dot></span><div><h1>")
+          .Append(E(title)).Append("</h1><p>").Append(E(detail)).Append("</p><p class=scope-note>")
+          .Append(E(T("VPN предназначен только для выбранных программ. Их фактические соединения проверяются отдельно.",
+              "VPN is configured for selected apps only. Their actual connections are checked separately."))).Append("</p></div>")
           .Append("<form method=post><input type=hidden name=tab value=state>");
         if (power is not null) { }
         else if (st.Running)
@@ -1557,7 +1745,23 @@ public sealed class WebServer
         else
             sb.Append("<button type=submit formaction=\"/control/start\" class=big").Append(Os.IsElevated() ? "" : " disabled").Append('>')
               .Append(E(S("btn_on", []))).Append("</button>");
-        sb.Append("</form></div></section>");
+        sb.Append("</form></div><details class=consequences><summary>")
+          .Append(E(T("Что произойдёт при выключении?", "What happens when I turn it off?")))
+          .Append("</summary><p>").Append(E(AppObservation.StopConsequence(cfg, Os.IsWindows, guarded))).Append("</p></details>");
+        if (observations.Count > 0)
+        {
+            var summaryClass = leaks.Count > 0 ? "bad" : verified == observations.Count && st.Running ? "on" : "warn";
+            sb.Append("<div class=\"protection-summary ").Append(summaryClass).Append("\"><div><b>")
+              .Append(E(leaks.Count > 0
+                  ? T($"Требуют внимания: {leaks.Count}", $"Needs attention: {leaks.Count}")
+                  : T($"VPN-трафик замечен у {verified} из {observations.Count} программ", $"VPN traffic observed for {verified} of {observations.Count} apps")))
+              .Append("</b><p class=hint>")
+              .Append(E(T("Отсутствие трафика не подтверждает защиту. Статус относится только к последней выборке соединений.",
+                  "No traffic does not verify protection. Status describes only the latest connection sample.")))
+              .Append("</p></div><a class=ghost href=\"/?tab=doctor\">")
+              .Append(E(T("Проверить программы", "Check apps"))).Append("</a></div>");
+        }
+        sb.Append("</section>");
 
         sb.Append("<section>");
         if (power is null && st.Running && st.Probed && st.ExitIp is null)
@@ -1569,7 +1773,7 @@ public sealed class WebServer
               .Append(" <a href=\"").Append(cfg.SimplePanel ? "#settings" : "/?tab=access").Append("\">")
               .Append(E(S("auth_set_link", []))).Append("</a></div>");
 
-        var checks = Preflight.Run(cfg, Root, cfg.SimplePanel);
+        var checks = (PanelPreflight?.Invoke(cfg) ?? Preflight.Run(cfg, Root, cfg.SimplePanel));
         var problems = checks.Where(c => c.Level != Preflight.Level.Ok)
             .Where(c => !c.Title.Contains("орт ", StringComparison.OrdinalIgnoreCase)
                      && !c.Title.Contains("ort ", StringComparison.OrdinalIgnoreCase))
@@ -1615,7 +1819,7 @@ public sealed class WebServer
               .Append("<input type=hidden name=folder value=\"").Append(E(broken.Folder)).Append("\">")
               .Append("<button class=danger>").Append(E(S("fix_system_folder", []))).Append("</button></form></div></section>");
 
-        if (step > 0) RenderWizard(sb, cfg, step, S);
+        if (step > 0) RenderWizard(sb, cfg, st, step, S);
         if (step is 0 or 3)
         {
             RenderLiveApps(sb, cfg, st, guarded, S);
@@ -1655,7 +1859,7 @@ public sealed class WebServer
 
 
         var auto = Autostart.IsEnabled();
-        sb.Append("<section><h2>").Append(E(S("service_title", []))).Append("</h2><div class=lines>");
+        sb.Append("<details class=settings><summary>").Append(E(S("service_title", []))).Append("</summary><section><div class=lines>");
         var engineHere = Os.ResolveSingBox(Root) is not null;
         sb.Append("<div class=line><span>").Append(E(S("upd_current", new object[] { Updater.CurrentVersion }))).Append("</span>")
           .Append("<form method=post action=/update><input type=hidden name=tab value=state>")
@@ -1708,7 +1912,7 @@ public sealed class WebServer
           .Append("</button></form></div>");
         if (cfg.TrayControls && !Auth.HasPassword(cfg))
             sb.Append("<div class=line><span>").Append(E(S("tray_controls_open", []))).Append("</span></div>");
-        sb.Append("</div></section>");
+        sb.Append("</div></section></details>");
 
         if (cfg.SimplePanel)
         {
@@ -1718,14 +1922,16 @@ public sealed class WebServer
         }
     }
 
-    private static void RenderWizard(StringBuilder sb, CehoConfig cfg, int step, Func<string, object[], string> S)
+    private void RenderWizard(StringBuilder sb, CehoConfig cfg, ControlState st, int step, Func<string, object[], string> S)
     {
-        sb.Append("<section class=wizard><ol class=wizard-steps>");
+        string T(string ru, string en) => AppObservation.Text(cfg, ru, en);
+        sb.Append("<section class=wizard data-live=wizard><ol class=wizard-steps>");
         for (var i = 1; i <= 3; i++)
-            sb.Append("<li").Append(i == step ? " class=now" : i < step ? " class=done" : "").Append('>')
-              .Append(E(S($"wiz_step{i}", []))).Append("</li>");
-        sb.Append("</ol><h2>").Append(E(S($"wiz_title{step}", []))).Append("</h2><p class=lede>")
-          .Append(E(S($"wiz_hint{step}", []))).Append("</p>");
+            sb.Append("<li").Append(i == step ? " class=now aria-current=step" : i < step ? " class=done" : "").Append('>')
+              .Append(E(i == 3 ? T("Проверить соединение", "Verify connection") : S($"wiz_step{i}", []))).Append("</li>");
+        sb.Append("</ol><h2>").Append(E(step == 3 ? T("Проверим реальное соединение", "Verify a real connection") : S($"wiz_title{step}", [])))
+          .Append("</h2><p class=lede>")
+          .Append(E(step == 3 ? T("Подписка, туннель и трафик программы проверяются отдельно.", "The subscription, tunnel and app traffic are checked separately.") : S($"wiz_hint{step}", []))).Append("</p>");
 
         if (step == 1)
         {
@@ -1734,13 +1940,16 @@ public sealed class WebServer
               .Append("<label class=sr-only for=wiz-url>").Append(E(S("wiz_title1", []))).Append("</label>")
               .Append("<input id=wiz-url type=url name=url required placeholder=\"https://…\">")
               .Append("<button>").Append(E(S("wiz_next", []))).Append("</button></form>");
+            if (cfg.Subscriptions.Count > 0)
+                sb.Append("<p><a href=\"/?tab=subs\">").Append(E(T("Включить существующую подписку", "Enable an existing subscription"))).Append("</a></p>");
             sb.Append("<p class=hint>").Append(E(S("wiz_no_link", [])))
               .Append(" <a href=\"/?tab=help\">").Append(E(S("sub_where_title", []))).Append("</a></p>");
         }
         else if (step == 2)
         {
-            var installed = InstalledAppCatalog.Detect(cfg.Language)
-                .Where(e => !AppCoverage.IsEntryCovered(cfg, e.Path)).ToList();
+            List<InstalledAppCatalog.Entry> installed;
+            try { installed = InstalledAppCatalog.Detect(cfg.Language).Where(e => !AppCoverage.IsEntryCovered(cfg, e.Path)).ToList(); }
+            catch { installed = new(); }
             if (installed.Count > 0)
             {
                 RenderInstalledPicker(sb, S, installed, "state", "3");
@@ -1760,8 +1969,51 @@ public sealed class WebServer
         }
         else
         {
-            sb.Append("<p><a class=button href=\"/?tab=state\">").Append(E(S("wiz_done", []))).Append("</a></p>");
+            var now = DateTime.UtcNow;
+            var subscriptionOk = cfg.Subscriptions.Any(s => AppObservation.SubscriptionVerified(s, now));
+            var subscriptionFailed = !subscriptionOk && cfg.Subscriptions.Any(s => s.Enabled && (s.LastCheckOk == false || s.ExpiresUtc <= now));
+            var tunnelOk = st.Running && st.Probed && st.ExitIp is not null;
+            var live = st.Running ? AppsLive() : null;
+            now = DateTime.UtcNow;
+            var apps = cfg.Apps.Where(a => a.Enabled).ToList();
+            var results = apps.Select(a => AppObservation.Evaluate(cfg, a, live?.FirstOrDefault(l => l.Folder == a.Folder),
+                st.Running, LeakGuard.IsActive(Root), _appsLiveAtUtc, now, _appsLiveFailed, AppRulesPending)).ToList();
+            var appsOk = results.Count > 0 && results.All(r => r.Verified);
+            var failed = subscriptionFailed || (st.Running && st.Probed && st.ExitIp is null) || results.Any(r => r.Leak);
+            var complete = subscriptionOk && tunnelOk && appsOk;
+            sb.Append("<ol class=verification-checklist>");
+            void Check(bool ok, string label, string note)
+            {
+                sb.Append("<li class=").Append(ok ? "on" : "off").Append("><b>")
+                  .Append(E((ok ? "✓ " : "○ ") + label)).Append("</b><span class=hint>").Append(E(note)).Append("</span></li>");
+            }
+            Check(subscriptionOk, T("Подписка", "Subscription"), subscriptionOk
+                ? T("Есть доступные серверы; проверка не старше суток", "Available servers; checked within the last day")
+                : T("Проверьте подписку и доступность серверов", "Check the subscription and server availability"));
+            Check(tunnelOk, T("Туннель", "Tunnel"), tunnelOk
+                ? T("Проверочный выход получен", "Probe exit received")
+                : T("Включите туннель и дождитесь проверочного выхода", "Start the tunnel and wait for a probe exit"));
+            Check(appsOk, T("Трафик программ", "App traffic"), appsOk
+                ? T("В свежей выборке замечен VPN-трафик без утечек", "Fresh sample contains VPN traffic without observed leaks")
+                : T("Откройте выбранные программы, создайте трафик и перепроверьте", "Open selected apps, generate traffic and recheck"));
+            sb.Append("</ol><div class=\"wizard-result ").Append(complete ? "on" : failed ? "bad" : "wait").Append("\" role=status><b>")
+              .Append(E(complete ? T("Соединение проверено", "Connection verified")
+                  : failed ? T("Проверка требует внимания", "The check needs attention")
+                  : T("Ожидаем проверку соединения", "Waiting for connection verification"))).Append("</b></div>");
+            if (!subscriptionOk)
+                sb.Append("<form class=row method=post action=/subs/check><input type=hidden name=tab value=state><input type=hidden name=wizard value=3><button class=ghost>")
+                  .Append(E(T("Проверить подписку", "Check subscription"))).Append("</button></form>");
+            if (!st.Running)
+                sb.Append("<form class=row method=post action=/control/start><input type=hidden name=tab value=state><input type=hidden name=wizard value=3><button")
+                  .Append(Os.IsElevated() ? "" : " disabled").Append('>').Append(E(S("btn_on", []))).Append("</button></form>");
+            foreach (var app in apps)
+                AppendAppRecheck(sb, cfg, app, "state", "3");
+            if (failed)
+                sb.Append("<p><a href=\"/?tab=doctor\">").Append(E(T("Открыть диагностику", "Open diagnostics"))).Append("</a></p>");
+            if (complete)
+                sb.Append("<p><a class=button href=\"/?tab=state\">").Append(E(S("wiz_done", []))).Append("</a></p>");
         }
+
         sb.Append("</section>");
     }
 
@@ -1771,6 +2023,15 @@ public sealed class WebServer
 
     private IReadOnlyList<AppLive>? _appsLive;
     private DateTime _appsLiveAtUtc;
+    private DateTime _appsLiveAttemptAtUtc;
+    private DateTime _appsLiveConfigAtUtc;
+    private bool _appsLiveFailed;
+    private readonly object _appsLiveSync = new();
+    private int _observationGeneration;
+    // A read-only diagnostics seam for deterministic panel fixtures; normal panels always use Preflight.Run.
+    internal Func<CehoConfig, IReadOnlyList<Preflight.Check>>? PanelPreflight { get; set; }
+    private bool AppRulesPending => Volatile.Read(ref _pending) > 0 || Jobs.Active(JobApply) is not null
+        || Jobs.Active(JobPower) is not null || Jobs.Active(JobRestore) is not null;
     private string? _engineVersion;
     private DateTime _engineVersionAtUtc;
 
@@ -1786,37 +2047,59 @@ public sealed class WebServer
 
     private void ForgetEngineVersion() => _engineVersion = null;
 
+    private void InvalidateAppObservations()
+    {
+        lock (_appsLiveSync)
+        {
+            Interlocked.Increment(ref _observationGeneration);
+            _appsLive = null;
+            _appsLiveAtUtc = default;
+            _appsLiveAttemptAtUtc = default;
+            _appsLiveFailed = false;
+        }
+    }
+
     private IReadOnlyList<AppLive>? AppsLive()
     {
         if (OnAppsLive is null) return null;
-        if (_appsLive is null || DateTime.UtcNow - _appsLiveAtUtc > TimeSpan.FromSeconds(10))
+        lock (_appsLiveSync)
         {
-            try { _appsLive = OnAppsLive(); }
-            catch (Exception ex) { Log.Warn($"панель не смогла проверить программы: {ex.Message}"); }
-            _appsLiveAtUtc = DateTime.UtcNow;
+            var now = DateTime.UtcNow;
+            var configAt = File.GetLastWriteTimeUtc(_configPath);
+            if (_appsLiveAttemptAtUtc == default || now - _appsLiveAttemptAtUtc > TimeSpan.FromSeconds(10)
+                || configAt != _appsLiveConfigAtUtc)
+            {
+                _appsLiveAttemptAtUtc = now;
+                _appsLiveConfigAtUtc = configAt;
+                try
+                {
+                    _appsLive = OnAppsLive();
+                    _appsLiveAtUtc = DateTime.UtcNow;
+                    _appsLiveFailed = false;
+                }
+                catch (Exception ex)
+                {
+                    // Never turn a failed refresh into a fresh, green observation.
+                    _appsLiveFailed = true;
+                    Log.Warn($"панель не смогла проверить программы: {ex.Message}");
+                }
+            }
+            return _appsLive;
         }
-        return _appsLive;
     }
 
     private (string? Message, bool IsError, string? JobId) CheckApp(CehoConfig cfg, AppEntry app)
     {
-        string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
         var st = _state();
-        if (!st.Running)
-            return (S("check_off", app.Label) + " " + S(app.NoInternet ? "check_off_blocked" : "check_off_hint"), true, null);
-
-        _appsLive = null;
-        var info = AppsLive()?.FirstOrDefault(l => l.Folder == app.Folder);
-        var exit = st.ExitIp is null ? "" : " " + S("exit_is", st.ExitCountry ?? "?", st.ExitIp);
-        if (info is null) return (S("check_unknown", app.Label), true, null);
-        if (info.Processes == 0) return (S("check_idle", app.Label), false, null);
-        if (info.Direct > 0) return (S("check_leak", app.Label, info.Direct), true, null);
-        if (info.Tunneled == 0 && info.EngineVpn == 0) return (S("check_quiet", app.Label), false, null);
-        return (S("app_check_ok", app.Label, Math.Max(info.Tunneled, info.EngineVpn)) + exit
-                + (info.EngineDirect > 0 ? " " + S("check_rules_direct", info.EngineDirect) : ""), false, null);
+        InvalidateAppObservations();
+        var info = st.Running ? AppsLive()?.FirstOrDefault(l => l.Folder == app.Folder) : null;
+        var result = AppObservation.Evaluate(cfg, app, info, st.Running, LeakGuard.IsActive(Root),
+            _appsLiveAtUtc, DateTime.UtcNow, _appsLiveFailed, AppRulesPending);
+        return ($"{app.Label}: {result.Title}. {result.Advice}", result.Leak || result.Kind is "stale" or "unknown", null);
     }
 
-    private void RenderLiveApps(StringBuilder sb, CehoConfig cfg, ControlState st, bool guarded, Func<string, object[], string> S)
+    private void RenderLiveApps(StringBuilder sb, CehoConfig cfg, ControlState st, bool guarded, Func<string, object[], string> S,
+        string tab = "state")
     {
         var apps = cfg.Apps.Where(a => a.Enabled).ToList();
         sb.Append("<section data-live=apps><h2>").Append(E(S("apps_title", []))).Append("</h2>");
@@ -1835,37 +2118,96 @@ public sealed class WebServer
         foreach (var app in apps)
         {
             var info = live?.FirstOrDefault(l => l.Folder == app.Folder);
-            var (cls, text) =
-                !st.Running ? (guarded ? ("warn", S("app_offline", [])) : ("bad", S("app_direct", [])))
-                : info is null ? ("off", S("app_unknown", []))
-                : info.Processes == 0 ? ("off", S("app_idle", []))
-                : info.Direct > 0 ? ("bad", S("app_leak", [info.Direct]))
-                : info.EngineDirect > 0 ? ("warn", S("app_engine_direct", [info.EngineVpn, info.EngineDirect]))
-                : info.Tunneled > 0 ? ("on", S("app_tunnel", [info.Tunneled]))
-                : ("on", S("app_quiet", []));
-            sb.Append("<li class=").Append(cls).Append("><span class=dot></span>");
+            var result = AppObservation.Evaluate(cfg, app, info, st.Running, guarded, _appsLiveAtUtc, DateTime.UtcNow, _appsLiveFailed, AppRulesPending);
+            sb.Append("<li class=\"app-observation ").Append(result.Css).Append("\"><div class=app-identity>");
             AppIcon(sb, AppIcons.Source(app, catalog), app.Label);
-            sb.Append("<b>").Append(E(app.Label)).Append("</b><span class=detail>").Append(E(text)).Append("</span></li>");
+            sb.Append("<b>").Append(E(app.Label)).Append("</b></div>");
+            RenderAppObservation(sb, cfg, app, info, result);
+            AppendAppRecheck(sb, cfg, app, tab);
+            sb.Append("</li>");
         }
-        sb.Append("</ul></section>");
+        sb.Append("</ul><p class=scope-note>").Append(E(AppObservation.Text(cfg,
+            "Остальные программы не выбраны для VPN и могут подключаться напрямую.",
+            "Other apps are not selected for VPN and may connect directly."))).Append("</p>")
+          .Append("<a href=\"/?tab=apps\">").Append(E(AppObservation.Text(cfg, "Все программы →", "All apps →"))).Append("</a></section>");
+    }
+
+    private void RenderAppObservation(StringBuilder sb, CehoConfig cfg, AppEntry app, AppLive? info, AppObservation.Result result)
+    {
+        string T(string ru, string en) => AppObservation.Text(cfg, ru, en);
+        sb.Append("<div class=app-observation-body><span class=\"observation-badge ").Append(result.Css)
+          .Append("\" data-observation=\"").Append(result.Kind).Append("\">").Append(E(result.Title))
+          .Append("</span><p class=configured-route>").Append(E(T("Настроено: ", "Configured: ") + AppObservation.ConfiguredRoute(cfg, app)))
+          .Append("</p><p class=hint>").Append(E(result.Advice)).Append("</p><p class=observation-meta>")
+          .Append(E(info is null || _appsLiveAtUtc == default ? T("Наблюдений ещё нет", "No observations yet")
+              : T("Последняя выборка: ", "Last sample: ") + _appsLiveAtUtc.ToLocalTime().ToString("dd.MM HH:mm:ss")
+                  + (result.Fresh ? T(" · свежая", " · current") : T(" · не подтверждает текущий маршрут", " · does not verify current routing"))))
+          .Append("</p><details class=route-details><summary>").Append(E(T("Путь, процессы и исключения", "Path, processes and exceptions")))
+          .Append("</summary><dl class=kv><dt>").Append(E(T("Путь", "Path"))).Append("</dt><dd class=path>").Append(E(app.Folder)).Append("</dd>");
+        if (info is not null)
+        {
+            sb.Append("<dt>").Append(E(T("Совпавших процессов", "Matching processes"))).Append("</dt><dd>").Append(info.Processes).Append("</dd>")
+              .Append("<dt>").Append(E(T("Соединения через VPN", "Connections via VPN"))).Append("</dt><dd>").Append(info.EngineVpn).Append("</dd>")
+              .Append("<dt>").Append(E(T("Входят в туннель", "Entering the tunnel"))).Append("</dt><dd>").Append(info.Tunneled).Append("</dd>")
+              .Append("<dt>").Append(E(T("Вне туннеля", "Outside tunnel"))).Append("</dt><dd>").Append(info.Direct).Append("</dd>")
+              .Append("<dt>").Append(E(T("Напрямую по правилам", "Direct by rules"))).Append("</dt><dd>").Append(info.EngineDirect).Append("</dd>");
+        }
+        sb.Append("</dl><p class=hint>").Append(E(app.SingleFile
+            ? T("Выбран один файл. Отдельные вспомогательные программы могут не входить в это правило.", "A single file is selected. Separate helper apps may not be included in this rule.")
+            : T("Вспомогательные процессы учитываются, если их путь совпадает с правилом. Процессы вне выбранной папки не подтверждены этой проверкой.", "Helper processes are counted when their paths match the rule. Processes outside the selected folder are not verified by this check.")))
+          .Append("</p><p class=hint>").Append(E(cfg.SitesOnly
+            ? T("Только сайты из списка направляются через VPN; прочие могут идти напрямую.", "Only listed sites use VPN; other sites may go direct.")
+            : T("Сайты-исключения могут идти напрямую согласно настройке списка.", "Site exceptions may go direct according to the site-list settings.")))
+          .Append("</p>");
+        if (cfg.DirectSites.Count > 0)
+            sb.Append("<p class=path>").Append(E(string.Join(", ", cfg.DirectSites.Take(5))))
+              .Append(cfg.DirectSites.Count > 5 ? " …" : "").Append("</p>");
+        sb.Append("<a href=\"/?tab=sites\">").Append(E(T("Проверить правила сайтов", "Review site rules"))).Append("</a>")
+          .Append("<p class=hint>").Append(E(T("Выборка не проверяет весь будущий трафик и не устанавливает отдельный выходной IP программы.",
+              "A sample does not verify all future traffic or establish the app's own exit IP."))).Append("</p></details></div>");
+    }
+
+    private static void AppendAppRecheck(StringBuilder sb, CehoConfig cfg, AppEntry app, string tab, string? wizard = null)
+    {
+        sb.Append("<form class=app-actions method=post action=/apps/check><input type=hidden name=tab value=\"").Append(E(tab))
+          .Append("\"><input type=hidden name=folder value=\"").Append(E(app.Folder)).Append("\">");
+        if (wizard is not null) sb.Append("<input type=hidden name=wizard value=\"").Append(E(wizard)).Append("\">");
+        sb.Append("<button class=ghost aria-label=\"").Append(E(AppObservation.Text(cfg, "Проверить снова: ", "Recheck: ") + app.Label))
+          .Append("\">").Append(E(AppObservation.Text(cfg, "Проверить снова", "Recheck"))).Append("</button></form>");
     }
 
     private int _doctorRunning;
     private bool? _doctorSimple;
 
+    private bool DoctorResultIsFresh(CehoConfig cfg)
+    {
+        var now = DateTime.UtcNow;
+        return _doctor is not null && _doctorSimple == cfg.SimplePanel && _doctorAtUtc <= now
+            && now - _doctorAtUtc < TimeSpan.FromMinutes(10)
+            && File.GetLastWriteTimeUtc(_configPath) <= _doctorAtUtc;
+    }
+
     private void EnsureFreshDoctor(CehoConfig cfg)
     {
-        if (_doctor is not null && _doctorSimple == cfg.SimplePanel
-            && DateTime.UtcNow - _doctorAtUtc < TimeSpan.FromMinutes(10)) return;
-        if (Jobs.Find(JobDoctor) is { Running: true }) return;
+        if (Jobs.Active(JobRestore) is not null) return;
+        if (DoctorResultIsFresh(cfg)) return;
+        if (Jobs.Active(JobDoctor) is not null) return;
         if (Interlocked.Exchange(ref _doctorRunning, 1) == 1) return;
+        var generation = Volatile.Read(ref _observationGeneration);
         _ = Task.Run(async () =>
         {
             try
             {
+                var configAt = File.GetLastWriteTimeUtc(_configPath);
                 var result = await Doctor.CheckAsync(CehoConfig.Load(_configPath), Root, Tools(), null, cfg.SimplePanel);
-                Remember(result);
-                _doctorSimple = cfg.SimplePanel;
+                // A check started before rule changes or restoration cannot certify the new state.
+                lock (_appsLiveSync)
+                {
+                    if (generation != Volatile.Read(ref _observationGeneration)
+                        || configAt != File.GetLastWriteTimeUtc(_configPath) || Jobs.Active(JobRestore) is not null) return;
+                    Remember(result);
+                    _doctorSimple = cfg.SimplePanel;
+                }
             }
             catch (Exception ex) { Log.Warn($"самопроверка панели не завершилась: {ex.Message}"); }
             finally { Interlocked.Exchange(ref _doctorRunning, 0); }
@@ -1876,23 +2218,31 @@ public sealed class WebServer
     {
         EnsureFreshDoctor(cfg);
         sb.Append("<section data-live=check><h2>").Append(E(S("selfcheck_title", []))).Append("</h2>");
-        if (_doctor is null || _doctorSimple != cfg.SimplePanel)
+        var report = _doctor;
+        if (report is null || _doctorSimple != cfg.SimplePanel)
         {
             sb.Append("<div class=\"line wait\"><span><span class=dot></span> ").Append(E(S("check_running", [])))
               .Append("</span></div></section>");
             return;
         }
 
-        var shown = Preflight.Run(cfg, Root, cfg.SimplePanel).Where(c => c.Level != Preflight.Level.Ok)
-            .Select(c => c.Title).ToHashSet();
-        var found = _doctor.Checks.Where(c => c.Level != Preflight.Level.Ok && !shown.Contains(c.Title))
+        var preflight = (PanelPreflight?.Invoke(cfg) ?? Preflight.Run(cfg, Root, cfg.SimplePanel))
+            .Where(c => c.Level != Preflight.Level.Ok).ToList();
+        var shown = preflight.Select(c => c.Title).ToHashSet();
+        var found = report.Checks.Where(c => c.Level != Preflight.Level.Ok && !shown.Contains(c.Title))
             .GroupBy(c => c.Title).Select(g => g.First()).ToList();
-        var cls = found.Count == 0 ? "on" : found.Any(c => c.Level == Preflight.Level.Blocker) ? "bad" : "warn";
+        var allProblems = preflight.Concat(found).ToList();
+        var problems = allProblems.Count;
+        var fresh = DoctorResultIsFresh(cfg);
+        var cls = !fresh ? "wait" : problems == 0 ? "on" : allProblems.Any(c => c.Level == Preflight.Level.Blocker) ? "bad" : "warn";
         sb.Append("<div class=\"line ").Append(cls).Append("\"><span><span class=dot></span> ")
-          .Append(E(found.Count == 0 ? S("check_ok", []) : S("check_found", [found.Count]))).Append("</span>");
-        if (found.Count > 0 && !cfg.SimplePanel)
-            sb.Append("<a class=\"btnlink\" href=\"/?tab=doctor\">").Append(E(S("check_open", []))).Append("</a>");
-        sb.Append("</div>");
+          .Append(E(!fresh ? AppObservation.Text(cfg, "Обновляем диагностику; ниже предыдущий результат", "Refreshing diagnostics; previous result shown below")
+              : problems == 0 ? AppObservation.Text(cfg, "Общие проверки без замечаний", "General checks found no issues") : S("check_found", [problems])))
+          .Append("</span><a class=btnlink href=\"/?tab=doctor\">").Append(E(S("check_open", []))).Append("</a></div>")
+          .Append("<p class=observation-meta>").Append(E(AppObservation.Text(cfg, "Последняя диагностика: ", "Last diagnostics: ")
+              + _doctorAtUtc.ToLocalTime().ToString("dd.MM HH:mm:ss"))).Append("</p><p class=hint>")
+          .Append(E(AppObservation.Text(cfg, "Общая диагностика не заменяет проверку трафика каждой программы.",
+              "General diagnostics do not replace a traffic check for each app."))).Append("</p>");
         if (found.Count > 0 && cfg.SimplePanel)
         {
             void Items(IEnumerable<Preflight.Check> items)
@@ -1934,22 +2284,31 @@ public sealed class WebServer
             RenderPingCard(sb, _lastPing, S);
         }
 
+        sb.Append("</section>");
+        RenderLiveApps(sb, cfg, _state(), LeakGuard.IsActive(Root), S, "doctor");
+        sb.Append("<section data-live=doctor><h2>").Append(E(AppObservation.Text(cfg, "Общая диагностика", "General diagnostics"))).Append("</h2>");
         EnsureFreshDoctor(cfg);
         var report = _doctor;
         if (report is null)
         {
-            sb.Append("<p class=hint data-live=doctor>").Append(E(S("check_running", []))).Append("</p></section>");
+            sb.Append("<p class=hint>").Append(E(S("check_running", []))).Append("</p></section>");
             return;
         }
 
+        var reportFresh = DoctorResultIsFresh(cfg);
         var head = report.Healthy
-            ? (report.Warnings > 0 ? S("doc_warnings", [report.Warnings]) : S("doc_all_ok", []))
+            ? (report.Warnings > 0 ? S("doc_warnings", [report.Warnings]) : AppObservation.Text(cfg, "Общие проверки без замечаний", "General checks found no issues"))
             : S("pf_blockers", [report.Blockers]);
 
-        sb.Append("<div class=\"status ").Append(report.Healthy ? report.Warnings > 0 ? "wait" : "on" : "bad")
+        sb.Append("<div class=\"status ").Append(!reportFresh ? "wait" : report.Healthy ? report.Warnings > 0 ? "wait" : "on" : "bad")
           .Append("\"><span class=dot></span><b>").Append(E(head)).Append("</b><span class=detail>")
           .Append(E(S("doc_when", [_doctorAtUtc.ToLocalTime().ToString("dd.MM HH:mm")])))
           .Append("</span></div>");
+
+        if (!reportFresh)
+            sb.Append("<p class=hint>").Append(E(AppObservation.Text(cfg,
+                "Это предыдущий результат. Новая диагностика ещё не завершена.",
+                "This is the previous result. A new diagnostic check has not completed yet."))).Append("</p>");
 
         if (report.Done.Count > 0)
         {
@@ -2198,45 +2557,46 @@ public sealed class WebServer
         try { installed = InstalledAppCatalog.Detect(cfg.Language, fresh: true); }
         catch { installed = Array.Empty<InstalledAppCatalog.Entry>(); }
 
+        var state = _state();
+        var live = state.Running ? AppsLive() : null;
+        var guarded = LeakGuard.IsActive(Root);
         if (cfg.Apps.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("apps_empty", []))).Append("</p>");
         else
         {
-            sb.Append("<div class=scroll><table class=t-own><tr><th>")
-              .Append(E(S("col_name", []))).Append("</th><th></th></tr>");
+            sb.Append("<div data-live=app-cards><div class=app-cards>");
             foreach (var a in cfg.Apps)
             {
-                sb.Append("<tr><td class=named>");
+                var info = live?.FirstOrDefault(l => l.Folder == a.Folder);
+                var observation = AppObservation.Evaluate(cfg, a, info, state.Running, guarded, _appsLiveAtUtc, DateTime.UtcNow, _appsLiveFailed, AppRulesPending);
+                sb.Append("<article class=\"app-card ").Append(observation.Css).Append("\"><div class=app-identity>");
                 AppIcon(sb, AppIcons.Source(a, installed), a.Label);
-                sb.Append("<span title=\"").Append(E(a.Folder)).Append("\">")
-                  .Append(E(a.Label)).Append("</span>");
-                if (a.VersionAgnostic) sb.Append("<br><span class=tag>Microsoft Store</span>");
-                if (a.SingleFile) sb.Append("<br><span class=tag>").Append(E(S("col_file", []))).Append("</span>");
-                sb.Append("<br><span class=tag>")
-                  .Append(E(a.NoInternet ? S("app_offline_tag", [])
-                      : a.AllowedNodes.Count == 0
-                      ? S("app_tunnel_general", [])
-                      : S("app_tunnel_pinned", new object[] { a.AllowedNodes.Count })))
-                  .Append("</span>");
-                sb.Append("<details class=rename><summary>").Append(E(S("btn_rename", []))).Append("</summary>")
+                sb.Append("<h3 title=\"").Append(E(a.Folder)).Append("\">").Append(E(a.Label)).Append("</h3></div>");
+                if (a.VersionAgnostic) sb.Append("<span class=tag>Microsoft Store</span>");
+                if (a.SingleFile) sb.Append("<span class=tag>").Append(E(S("col_file", []))).Append("</span>");
+                RenderAppObservation(sb, cfg, a, info, observation);
+                sb.Append("<div class=app-card-actions>");
+                AppendAppRecheck(sb, cfg, a, "apps");
+                sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")
+                  .Append(Uri.EscapeDataString(a.Folder)).Append("\">").Append(E(S("btn_tunnel", []))).Append("</a>")
+                  .Append("<details class=rename><summary>").Append(E(S("btn_rename", []))).Append("</summary>")
                   .Append("<form class=row method=post action=/apps/rename><input type=hidden name=tab value=apps>")
                   .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder)).Append("\">")
-                  .Append("<input type=text name=displayName value=\"").Append(E(a.Label))
+                  .Append("<label class=sr-only for=\"rename-").Append(E(Uri.EscapeDataString(a.Folder))).Append("\">")
+                  .Append(E(S("rename_app_ask", []))).Append("</label>")
+                  .Append("<input id=\"rename-").Append(E(Uri.EscapeDataString(a.Folder))).Append("\" type=text name=displayName value=\"").Append(E(a.Label))
                   .Append("\" placeholder=\"").Append(E(S("rename_app_ask", []))).Append("\">")
-                  .Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></details>");
-                sb.Append("</td><td class=actions>");
-                sb.Append("<form method=post action=/apps/check><input type=hidden name=tab value=apps>")
-                  .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder))
-                  .Append("\"><button class=ghost>").Append(E(S("btn_check_app", []))).Append("</button></form>");
-                sb.Append("<a class=ghost href=\"/?tab=apps&amp;tunnel=")
-                  .Append(Uri.EscapeDataString(a.Folder)).Append("\">")
-                  .Append(E(S("btn_tunnel", []))).Append("</a>");
-                sb.Append("<form method=post action=/apps/remove><input type=hidden name=tab value=apps>")
-                  .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder))
-                  .Append("\"><button class=danger>").Append(E(S("btn_remove", []))).Append("</button></form>");
-                sb.Append("</td></tr>");
+                  .Append("<button class=ghost>").Append(E(S("btn_save", []))).Append("</button></form></details>")
+                  .Append("<details class=remove-app><summary>").Append(E(S("btn_remove", []))).Append("</summary><p class=hint>")
+                  .Append(E(AppObservation.Text(cfg, "Удаление исключит программу из правил VPN; она может подключаться напрямую. Если это последняя программа, туннель остановится.",
+                      "Removing this app excludes it from VPN rules; it may connect directly. Removing the last app stops the tunnel.")))
+                  .Append("</p><form method=post action=/apps/remove><input type=hidden name=tab value=apps>")
+                  .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder)).Append("\"><button class=danger>")
+                  .Append(E(S("btn_remove", []))).Append("</button></form></details></div></article>");
             }
-            sb.Append("</table></div>");
+            sb.Append("</div><p class=scope-note>").Append(E(AppObservation.Text(cfg,
+                "Выбранные программы используют настроенные правила VPN. Остальные могут подключаться напрямую.",
+                "Selected apps use the configured VPN rules. Other apps may connect directly."))).Append("</p></div>");
         }
 
         sb.Append("<div class=app-entry-grid><div class=app-entry><h3>")
@@ -2285,6 +2645,18 @@ public sealed class WebServer
         sb.Append("<section><h2>").Append(E(S("app_tunnel_title", new object[] { app.Label }))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("app_tunnel_lede", []))).Append("</p>");
         sb.Append("<p><a href=\"/?tab=apps\">").Append(E(S("app_tunnel_back", []))).Append("</a></p>");
+
+        sb.Append("<aside class=consequences><b>").Append(E(AppObservation.Text(cfg, "Перед изменением маршрута", "Before changing routing")))
+          .Append("</b><p>").Append(E(AppObservation.Text(cfg,
+              $"Изменение относится к программе «{app.Label}». Если туннель запущен, применение правил переподключит его; соединения других выбранных программ тоже могут прерваться. После применения нужна новая проверка трафика.",
+              $"The change applies to {app.Label}. If the tunnel is running, applying rules reconnects it; other selected apps may also lose connections briefly. Recheck app traffic after applying.")))
+          .Append("</p><p>").Append(E(AppObservation.Text(cfg,
+              "Запрет интернета блокирует программу. Снятие запрета возвращает настроенный VPN-маршрут и правила сайтов, а не гарантирует прямой доступ.",
+              "Blocking Internet denies access for this app. Removing the block restores its configured VPN route and site rules; it does not guarantee direct access.")))
+          .Append("</p>");
+        if (Os.IsWindows)
+            sb.Append("<p>").Append(E(AppObservation.StopConsequence(cfg, true, LeakGuard.IsActive(Root)))).Append("</p>");
+        sb.Append("</aside>");
 
         sb.Append("<div class=\"line ").Append(app.NoInternet ? "off" : "on").Append("\"><span><span class=dot></span> ")
           .Append(E(S(app.NoInternet ? "app_offline_on" : "app_offline_off", []))).Append("</span>")
@@ -2467,7 +2839,7 @@ public sealed class WebServer
             : S("sub_expires_on", new object[] { date, days });
     }
 
-    private static void RenderSubs(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
+    private void RenderSubs(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
         sb.Append("<section><h2>").Append(E(S("nav_subs", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("subs_pool", []))).Append("</p>");
@@ -2502,6 +2874,11 @@ public sealed class WebServer
                 if (s.LastNodes is { } nodes)
                     sb.Append("<br><span class=tag>").Append(E(S("sub_nodes_n", new object[] { nodes })))
                       .Append("</span>");
+                if (SupportReport.HasInsecureTls(s, Root))
+                    sb.Append(" <span class=\"tag bad tls-warning\" title=\"")
+                      .Append(E(SafetyPanel.T(cfg.Language, "Подлинность сервера не проверяется; возможен перехват соединения.",
+                          "The server identity is not verified; interception is possible."))).Append("\">")
+                      .Append(E(SafetyPanel.T(cfg.Language, "Проверка TLS отключена", "TLS verification disabled"))).Append("</span>");
                 sb.Append("<div class=path>").Append(E(cfg.SimplePanel ? HostOf(s.Url) : MaskUrl(s.Url))).Append("</div></td>");
 
                 sb.Append("<td>");
@@ -2552,7 +2929,10 @@ public sealed class WebServer
                 sb.Append("<button type=button class=ghost data-sub-edit=\"")
                   .Append(SubDialogId(s.Name)).Append("\">")
                   .Append(E(S("btn_edit", []))).Append("</button>");
-                sb.Append("<form method=post action=/subs/remove><input type=hidden name=tab value=subs>")
+                sb.Append("<form method=post action=/subs/remove data-confirm=\"")
+                  .Append(E(SafetyPanel.T(cfg.Language, "Удалить подписку «" + s.Name + "»? Её настройки и локальный кэш будут удалены.",
+                      "Delete subscription “" + s.Name + "”? Its settings and local cache will be removed.")))
+                  .Append("\"><input type=hidden name=tab value=subs>")
                   .Append("<input type=hidden name=name value=\"").Append(E(s.Name))
                   .Append("\"><button class=danger>").Append(E(S("btn_delete", []))).Append("</button></form>");
                 sb.Append("</td></tr>");
@@ -2564,9 +2944,10 @@ public sealed class WebServer
             sb.Append("<div class=sub-modals>");
             foreach (var s in cfg.Subscriptions)
             {
-                sb.Append("<dialog id=\"").Append(SubDialogId(s.Name)).Append("\" class=sub-modal>");
+                sb.Append("<dialog id=\"").Append(SubDialogId(s.Name)).Append("\" class=sub-modal data-unsaved-confirm=\"")
+                  .Append(E(SafetyPanel.T(cfg.Language, "Закрыть без сохранения изменений?", "Discard unsaved changes?"))).Append("\">");
                 sb.Append("<h3 class=modal-title>").Append(E(S("subs_edit_title", new object[] { s.Name }))).Append("</h3>");
-                RenderSubForm(sb, S, "/subs/save", "btn_save", s, s.Name, editPassword: true, inModal: true);
+                RenderSubForm(sb, S, "/subs/save", "btn_save", s, s.Name, editPassword: true, inModal: true, cfg.Language, cfg.SimplePanel);
                 sb.Append("</dialog>");
             }
             sb.Append("</div>");
@@ -2577,7 +2958,7 @@ public sealed class WebServer
         sb.Append("<p class=hint>").Append(E(S("sub_checking", []))).Append("</p>");
 
         sb.Append("<h3>").Append(E(S("subs_add_title", []))).Append("</h3>");
-        RenderSubForm(sb, S, "/subs/add", "btn_add_sub", null, null, editPassword: false, inModal: false);
+        RenderSubForm(sb, S, "/subs/add", "btn_add_sub", null, null, editPassword: false, inModal: false, cfg.Language, cfg.SimplePanel);
 
         sb.Append("<form class=row method=post action=/subs/timeout style=\"margin-top:16px\"><input type=hidden name=tab value=subs>");
         sb.Append("<span style=\"align-self:center\">").Append(E(S("timeout_label", []))).Append(":</span>");
@@ -2841,8 +3222,11 @@ public sealed class WebServer
         SubscriptionEntry? edit,
         string? origName,
         bool editPassword,
-        bool inModal)
+        bool inModal,
+        string language,
+        bool simple)
     {
+        string T(string ru, string en) => SafetyPanel.T(language, ru, en);
         var isNaive = edit is not null && SubscriptionKind.IsNaive(edit);
         NaiveProxySettings? naive = null;
         if (isNaive && NaiveProxyHelper.TryParseUri(edit!.Url, out var parsed))
@@ -2898,8 +3282,26 @@ public sealed class WebServer
         sb.Append("<label class=field><span>").Append(E(S("naive_sni", []))).Append("</span><input type=text name=serverName");
         if (naive?.ServerName is { Length: > 0 }) sb.Append(" value=\"").Append(E(naive.ServerName)).Append("\"");
         sb.Append(" placeholder=\"").Append(E(S("naive_sni_hint", []))).Append("\"></label>");
-        sb.Append("<label class=check><input type=checkbox name=allowInsecure")
-          .Append(naive is { AllowInsecure: true } ? " checked" : "").Append("> allowInsecure</label>");
+        if (naive is { AllowInsecure: true })
+            sb.Append("<p class=\"flash err tls-warning\" role=status>")
+              .Append(E(T("Проверка TLS-сертификата отключена (allowInsecure). Подлинность сервера не проверяется: соединение может быть перехвачено.",
+                  "TLS certificate verification is disabled (allowInsecure). The server's identity is not verified: the connection could be intercepted."))).Append("</p>");
+        if (simple)
+        {
+            // Simple mode must not silently clear a previously approved advanced setting.
+            if (naive is { AllowInsecure: true }) sb.Append("<input type=hidden name=allowInsecure value=1>");
+            sb.Append("<p class=hint>").Append(E(T("Настройки проверки TLS доступны в расширенном режиме.",
+                "TLS verification settings are available in advanced mode."))).Append("</p>");
+        }
+        else
+        {
+            sb.Append("<details class=tls-advanced><summary>").Append(E(T("Дополнительно: безопасность TLS", "Advanced: TLS security"))).Append("</summary>");
+            sb.Append("<label class=check><input type=checkbox name=allowInsecure")
+              .Append(naive is { AllowInsecure: true } ? " checked" : "").Append("> ")
+              .Append(E(T("Отключить проверку TLS-сертификата (allowInsecure)", "Disable TLS certificate verification (allowInsecure)"))).Append("</label>");
+            sb.Append("<p class=\"hint warn\">").Append(E(T("Опасная настройка: подлинность сервера не проверяется. Включайте только осознанно для доверенного сервера с нестандартным сертификатом. Это не исправление сетевых ошибок; предпочтительно установить действительный сертификат.",
+                "Risky setting: the server's identity is not checked. Enable only deliberately for a trusted server with a non-standard certificate. This is not a network-error fix; a valid certificate is preferable."))).Append("</p></details>");
+        }
         sb.Append("<p class=hint>").Append(E(S("subs_kind_naive_hint", []))).Append("</p></div>");
         sb.Append("<div class=modal-actions>");
         sb.Append("<button type=submit>").Append(E(S(buttonKey, []))).Append("</button>");
@@ -3118,6 +3520,7 @@ public sealed class WebServer
         sb.Append("<p class=hint>").Append(E(S("help_multiuser", []))).Append("</p></section>");
 
         RenderSubscriptionHelp(sb, S);
+        SafetyPanel.RenderReport(sb, cfg);
 
         // Про вмешательство в систему честнее рассказать самим, чем оставлять человека гадать,
         // почему в списке адаптеров появился ещё один туннель.
@@ -3146,6 +3549,7 @@ public sealed class WebServer
 
     private async Task RefreshLiveLatencyAsync(CehoConfig cfg)
     {
+        if (Jobs.Active(JobRestore) is not null) return;
         if (DateTime.UtcNow - _liveLatencyAtUtc < TimeSpan.FromSeconds(20)) return;
 
         _liveLatency = await ClashLatency.ReadDelaysAsync(cfg.ClashApiPort);

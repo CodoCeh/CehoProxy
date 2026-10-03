@@ -111,7 +111,7 @@ public sealed class UpdateHandoffTests
     public void Web_job_script_redirects_helper_failure_and_waits_during_pending()
     {
         Assert.Contains("if(j.state==='running')", WebUi.JobScript);
-        Assert.Contains("if(j.state==='failed'&&box.dataset.relaunch)", WebUi.JobScript);
-        Assert.Contains("j.result||'Обновление не удалось.'", WebUi.JobScript);
+        Assert.Contains("if(j.state==='failed'||j.isError)", WebUi.JobScript);
+        Assert.Contains("message(j.result||api.text", WebUi.JobScript);
     }
 }

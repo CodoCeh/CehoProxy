@@ -32,3 +32,11 @@ lab/
 TestResults/
 
 tools/ui/.venv/
+
+# Verified local recovery checkpoint can contain private subscription credentials.
+config.verified.json
+.ceho-private-*
+
+# Local UI verification dependencies and generated output
+tools/panel-qa/node_modules/
+tools/panel-qa/artifacts/

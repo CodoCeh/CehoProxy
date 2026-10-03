@@ -1,0 +1,18 @@
+{
+  "renderer": "ProxyCage.Core.TrayPixmap.Render / RenderTemplate",
+  "outputs": {
+    "assets/logo/cehoproxy-tray-preview.png": "b274db6437b5fccd3fa8ca99ffd6ce56100dec10d81176d1b5a901b912250f70",
+    "assets/tray/cehoproxy-status-locked.png": "8a4f8be81008e829aba0dd363c6e18a8f63464f3159e6c9ed3cf6185b37a8f35",
+    "assets/tray/cehoproxy-status-locked@2x.png": "b28c389b01bc25c3422dd53358aea8f20b6e1a30ea50555e9f6f36446c80454e",
+    "assets/tray/cehoproxy-status-off.png": "5d55fbebba43896f46a2e4e55a03272e497f605aa6ac7604922af51e35832d33",
+    "assets/tray/cehoproxy-status-off@2x.png": "cd795716f093a35ec0b8d48c047acc6b123f0782fb541e182a46a38b48799ba1",
+    "assets/tray/cehoproxy-status-protected.png": "88dced07432f65be2b475ad326189b88bc49bb0144400080fc2fbd42853023e0",
+    "assets/tray/cehoproxy-status-protected@2x.png": "5e1aba681f6d0e3c0871fb4ddcda596dc5997079d2ae178cc94ff9287b72efbb",
+    "assets/tray/cehoproxy-status-starting.png": "20f9a7690621079acd50a7ef4a6d4614ec7c3d2a78235bc2661337b52443b8e7",
+    "assets/tray/cehoproxy-status-starting@2x.png": "89e925e5e50e8b684843bd799ae61f9b733da0230f18496beb4c994cd2437c93",
+    "assets/tray/cehoproxy-status-stopped.png": "061d5b0eaffd6eecada73fcd16aced52c0aaf24de1eb08eafd8393b8c456b4eb",
+    "assets/tray/cehoproxy-status-stopped@2x.png": "f25d00831d486eb992575bd21480262e5c536eef7591c2bc66c867c761969ce6",
+    "assets/tray/cehoproxy-status-trouble.png": "48b2a911f389d9361f8d528a64bcbd455c5ce1b877825b21f24abe47737b2490",
+    "assets/tray/cehoproxy-status-trouble@2x.png": "d3b0019e529ac208b0a7637a41f021e092b17029b72f0c4db06b354b925d06fb"
+  }
+}

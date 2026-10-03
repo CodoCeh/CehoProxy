@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>cehoproxy</AssemblyName>
-    <!-- фирменный знак КодоЦеха на самой программе; на других системах свойство просто не применяется -->
+    <!-- Product-specific CehoProxy icon; the company brand remains separate. -->
     <ApplicationIcon>..\..\assets\cehoproxy.ico</ApplicationIcon>
   </PropertyGroup>
 

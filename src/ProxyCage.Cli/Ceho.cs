@@ -73,11 +73,12 @@ public static class Ceho
     private static async Task<NodeCountryService?> GetNodeCountryServiceAsync(
         IStageReport? report, string lang, CancellationToken cancellationToken = default)
     {
+        report?.Phase(Strings.T(lang, "stage_country_db_queue"), waiting: true);
         await CountryDatabaseGate.WaitAsync(cancellationToken);
         try
         {
             _countryDatabase ??= new DbIpLiteCountryDatabase(Path.Combine(Root, "geoip"));
-            report?.Stage(Strings.T(lang, "country_db_check"), 94);
+            report?.Phase(Strings.T(lang, "country_db_check"), waiting: true);
             await _countryDatabase.EnsureCurrentAsync(cancellationToken);
             if (!_countryDatabase.IsAvailable) return null;
 
@@ -391,6 +392,7 @@ public static class Ceho
         if (active.Count == 0)
             throw new PoolEmptyException(Strings.T(cfg.Language, "subs_all_off"));
 
+        report?.Phase(Strings.T(cfg.Language, "stage_loading_subs"), waiting: true);
         var done = 0;
         var lists = active.Count == 0
             ? Array.Empty<IReadOnlyList<ProxyNode>>()
@@ -398,13 +400,11 @@ public static class Ceho
             {
                 var nodes = await LoadOneAsync(s, cfg.Language, preferCache, report, cfg.TimeoutSeconds);
                 var ready = Interlocked.Increment(ref done);
-                report?.Stage(
-                    Strings.T(cfg.Language, "sub_progress", s.Name, nodes.Count, ready, active.Count),
-                    active.Count > 0 ? ready * 90 / active.Count : 90);
+                report?.Note(Strings.T(cfg.Language, "sub_progress", s.Name, nodes.Count, ready, active.Count));
                 return nodes;
             }));
 
-        report?.Stage(Strings.T(cfg.Language, "sub_building_pool"), 95);
+        report?.Phase(Strings.T(cfg.Language, "sub_building_pool"));
 
         var pool = new List<ProxyNode>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -434,13 +434,13 @@ public static class Ceho
         }
         else
         {
-            report?.Stage(Strings.T(cfg.Language, "country_probe"), 95);
+            report?.Phase(Strings.T(cfg.Language, "stage_country_queue"), waiting: true);
             await CountryRefreshGate.WaitAsync(CountryRefreshCancellation.Token);
             try
             {
+                report?.Phase(Strings.T(cfg.Language, "country_probe"), waiting: true);
                 await countryService.RefreshAsync(pool, progress: (current, total) =>
-                    report?.Stage($"{Strings.T(cfg.Language, "country_probe")} {current}/{total}",
-                        total == 0 ? 96 : 95 + current / total),
+                    report?.Note($"{Strings.T(cfg.Language, "country_probe")} {current}/{total}"),
                     cancellationToken: CountryRefreshCancellation.Token);
             }
             finally { CountryRefreshGate.Release(); }
@@ -463,12 +463,13 @@ public static class Ceho
             return NodeCountryService.Group(nodes);
         }
 
+        report?.Phase(Strings.T(lang, "stage_country_queue"), waiting: true);
         await CountryRefreshGate.WaitAsync(CountryRefreshCancellation.Token);
         try
         {
+            report?.Phase(Strings.T(lang, "country_probe"), waiting: true);
             return await service.RefreshAsync(nodes, progress: (current, total) =>
-                    report?.Stage($"{Strings.T(lang, "country_probe")} {current}/{total}",
-                        total == 0 ? 96 : 95 + current / total),
+                    report?.Note($"{Strings.T(lang, "country_probe")} {current}/{total}"),
                 cancellationToken: CountryRefreshCancellation.Token, forceProbe: true);
         }
         finally { CountryRefreshGate.Release(); }
@@ -477,13 +478,14 @@ public static class Ceho
     public static async Task<string> ApplyAsync(IStageReport? report = null)
     {
         var cfg = CehoConfig.Load(ConfigPath);
+        cfg.Validate();
         if (Os.IsWindows && Os.IsElevated()) LeakGuard.Apply(cfg, Root);
         var moved = DaemonControl.IsRunning(Root) ? null : Preflight.SaveProxyPortIfBusy(cfg, ConfigPath);
         var nodes = await LoadAllNodesAsync(cfg, preferCache: false, report);
-        report?.Stage(Strings.T(cfg.Language, "stage_writing_rules"), 97);
+        report?.Phase(Strings.T(cfg.Language, "stage_writing_rules"));
         var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg);
         Directory.CreateDirectory(Root);
-        await File.WriteAllTextAsync(RuntimeConfigPath, json);
+        PrivateFile.Write(RuntimeConfigPath, json);
         Auth.RestrictConfigAccess(ConfigPath);
         var rebuilt = Strings.T(cfg.Language, "rules_rebuilt");
         return moved is null ? rebuilt : $"{moved} {rebuilt}";
@@ -537,31 +539,6 @@ public static class Ceho
             return resp.IsSuccessStatusCode;
         }
         catch { return false; }
-    }
-
-    public static async Task<string?> RefreshIfDeadAsync(int mixedPort)
-    {
-        var cfg = CehoConfig.Load(ConfigPath);
-        if (!cfg.RotationEnabled || cfg.Subscriptions.Count == 0) return null;
-
-        if (await CheckSubscriptionLiveAsync(mixedPort, cfg.CheckUrl, cfg.TimeoutSeconds)) return null;
-
-        var before = SubscriptionsFingerprint();
-        try
-        {
-            var nodes = await LoadAllNodesAsync(cfg);
-            await File.WriteAllTextAsync(RuntimeConfigPath,
-                SingBoxConfigGenerator.GenerateForConfig(nodes, cfg));
-            Auth.RestrictConfigAccess(ConfigPath);
-        }
-        catch (Exception ex)
-        {
-            return ex.Message;
-        }
-
-        return SubscriptionsFingerprint() != before
-            ? Strings.T(cfg.Language, "subs_refreshed_rules_reloaded")
-            : ExplainDeadNodes(cfg.Language);
     }
 
     public static string ExplainDeadNodes(string? lang)

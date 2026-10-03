@@ -561,7 +561,7 @@ public static class Installer
 
         foreach (var pattern in new[]
                  {
-                     "singbox.json", "hwid.txt", "node-country-cache.json",
+                     "singbox.json", VerifiedConfigStore.FileName, "hwid.txt", "node-country-cache.json",
                      "node-country-cache.json.tmp", "tun-devices.txt",
                      "cehoproxy.log", "cehoproxy.log.*", "sing-box.log",
                      "sing-box.log.*", "crash-*.log", "cehoproxy.exe.old",

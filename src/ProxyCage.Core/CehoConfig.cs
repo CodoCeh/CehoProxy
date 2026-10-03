@@ -185,19 +185,25 @@ public sealed class CehoConfig
 
     public static CehoConfig Load(string path)
     {
+        PrivateFile.RejectLink(path);
         var cfg = File.Exists(path)
-            ? JsonSerializer.Deserialize<CehoConfig>(File.ReadAllText(path), Json) ?? new CehoConfig()
+            ? JsonSerializer.Deserialize<CehoConfig>(PrivateFile.ReadText(path, MaxFileBytes), Json)
+                ?? throw new InvalidDataException("Configuration must be a JSON object, not null.")
             : new CehoConfig { PanelMode = PanelModeSimple };
         cfg.PanelMode = string.Equals(cfg.PanelMode, PanelModeSimple, StringComparison.OrdinalIgnoreCase)
             ? PanelModeSimple
             : PanelModePro;
 
-        foreach (var app in cfg.Apps)
-            app.AllowedNodes ??= new();
+        if (cfg.Apps is not null)
+            foreach (var app in cfg.Apps)
+                if (app is not null) app.AllowedNodes ??= new();
         cfg.DirectSites ??= new();
         cfg.SiteCountries ??= new();
         if (!cfg.SitesOnly)
             cfg.SiteMode = SiteModeExcept;
+
+        // Reject corruption before migrations can write back to the original file.
+        cfg.Validate();
 
         cfg.MigrateLegacyNaive(path);
 
@@ -218,12 +224,50 @@ public sealed class CehoConfig
     public static bool SharesSingBoxTun(string? address) =>
         string.Equals(address?.Trim(), SharedSingBoxTun, StringComparison.OrdinalIgnoreCase);
 
-    public void Save(string path)
+    internal const int MaxFileBytes = 32 * 1024 * 1024;
+
+    /// <summary>Validate local settings before replacing a file or starting an apply.</summary>
+    public void Validate()
     {
-        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
-        Auth.RestrictConfigAccess(path);
+        if (WebPort is < 1 or > 65535 || MixedPort is < 1 or > 65535 || ClashApiPort is < 1 or > 65535)
+            throw new InvalidDataException("Configuration ports must be between 1 and 65535.");
+        if (TimeoutSeconds <= 0 || MaxLatencyMs < 0)
+            throw new InvalidDataException("Configuration timeouts and latency limits are invalid.");
+        var address = TunAddress?.Split('/');
+        if (address is not { Length: 2 } || !System.Net.IPAddress.TryParse(address[0], out var ip)
+            || ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork
+            || !int.TryParse(address[1], out var prefix) || prefix is < 0 or > 32)
+            throw new InvalidDataException("The tunnel address must be an IPv4 address with a valid prefix.");
+        if (!Uri.TryCreate(CheckUrl, UriKind.Absolute, out var check) || check.Scheme is not ("http" or "https"))
+            throw new InvalidDataException("The connection check URL must use HTTP or HTTPS.");
+        if (!string.IsNullOrWhiteSpace(EngineLogLevel) && EngineLogLevel is not ("trace" or "debug" or "info" or "warn" or "error" or "fatal" or "panic"))
+            throw new InvalidDataException("The engine log level is invalid.");
+        if (Apps is null || Subscriptions is null || NaiveProxy is null || SiteCountries is null || NodeLatency is null
+            || new[] { PreferredCountries, ExcludedCountries, DirectSites, BlockedNodes }.Any(l => l is null || l.Any(s => s is null))
+            || SiteCountries.Any(p => p.Value is null))
+            throw new InvalidDataException("Configuration lists cannot be null or contain null entries.");
+        if (Apps.Any(a => a is null || a.Name is null || a.Folder is null || a.AllowedNodes is null || a.AllowedNodes.Any(n => n is null)))
+            throw new InvalidDataException("An application entry is invalid.");
+        if (Subscriptions.Any(s => s is null || !IsSafeSubscriptionName(s.Name) || s.Url is null)
+            || Subscriptions.Select(s => s.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != Subscriptions.Count)
+            throw new InvalidDataException("Subscription names must be unique, nonempty local file names.");
+        if (NaiveProxy.Server is null || NaiveProxy.Username is null || NaiveProxy.Password is null || NaiveProxy.Remark is null)
+            throw new InvalidDataException("Legacy proxy settings are invalid.");
+    }
+
+    internal static bool IsSafeSubscriptionName(string? name) => !string.IsNullOrWhiteSpace(name)
+        && name.Length <= 192 && name.IndexOfAny(new[] { '/', '\\', ':', '<', '>', '"', '|', '?', '*' }) < 0
+        && !name.Any(char.IsControl);
+
+    public void Save(string path) => Save(path, null);
+
+    internal void Save(string path, Action<PrivateFile.WriteStage, string>? observe)
+    {
+        Validate();
+        var text = JsonSerializer.Serialize(this, Json);
+        if (System.Text.Encoding.UTF8.GetByteCount(text) > MaxFileBytes)
+            throw new InvalidDataException("Configuration file is too large.");
+        PrivateFile.Write(path, text, observe);
     }
 
     /// <summary>Сохраняет сведения о проверке подписки, не помечая правила движка устаревшими.</summary>
@@ -244,9 +288,10 @@ public sealed class CehoConfig
         if (!Subscriptions.Any(s => string.Equals(s.Url, uri, StringComparison.OrdinalIgnoreCase)))
         {
             var baseName = string.IsNullOrWhiteSpace(NaiveProxy.Remark) ? "NaiveProxy" : NaiveProxy.Remark.Trim();
+            if (!IsSafeSubscriptionName(baseName)) baseName = "NaiveProxy";
             var name = baseName;
-            for (var i = 2; Subscriptions.Any(s => s.Name == name); i++)
-                name = $"{baseName} {i}";
+            for (var i = 2; Subscriptions.Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)); i++)
+                name = $"{baseName[..Math.Min(baseName.Length, 180)]} {i}";
 
             Subscriptions.Add(new SubscriptionEntry { Name = name, Url = uri, Enabled = true });
             ActiveSubscription ??= name;

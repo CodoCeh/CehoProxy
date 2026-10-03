@@ -31,18 +31,17 @@ public class UpdateRelaunchTests
     [Fact]
     public void Panel_waits_for_the_interface_instead_of_reloading_into_a_dead_port()
     {
-        Assert.Contains("go('/?tab=state')", WebUi.JobScript);
-        Assert.Contains("function go(url)", WebUi.JobScript);
+        Assert.Contains("function waitPanel()", WebUi.JobScript);
         Assert.Contains("j.relaunch", WebUi.JobScript);
-        Assert.Contains("waitPanel", WebUi.JobScript);
-        Assert.Contains("sawDown", WebUi.JobScript);
-        Assert.Contains("fails>=3", WebUi.JobScript);
+        Assert.Contains("sawPanelDown", WebUi.JobScript);
+        Assert.Contains("relaunchStarted>=25000", WebUi.JobScript);
+        Assert.Contains("api.request('/?tab=state',5000)", WebUi.JobScript);
     }
 
     [Fact]
     public void Live_refresh_swaps_blocks_without_replaying_the_fade_in()
     {
-        Assert.Contains("replaceWith(next)", WebUi.StateRefreshScript);
-        Assert.Contains("next.style.animation='none'", WebUi.StateRefreshScript);
+        Assert.Contains("replaceWith(fresh)", WebUi.StateRefreshScript);
+        Assert.Contains("fresh.style.animation='none'", WebUi.StateRefreshScript);
     }
 }

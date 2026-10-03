@@ -19,6 +19,15 @@ public static class TrayPixmap
 
     public sealed record Image(int Width, int Height, uint[] Pixels);
 
+    private static readonly int[] OpticalSizes = { 16, 20, 22, 24, 32, 48, 64 };
+
+    public static string ResourceName(int size)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(size);
+        var assetSize = OpticalSizes.FirstOrDefault(candidate => candidate >= size, OpticalSizes[^1]);
+        return $"cehoproxy.tray.cehoproxy-tray-{assetSize}.png";
+    }
+
     public static Image Decode(byte[] png)
     {
         var width = 0;
@@ -86,11 +95,71 @@ public static class TrayPixmap
 
     public static Image Render(Image brand, TrayLook look, int size)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(size);
         var pixels = Scale(brand, size);
-        var side = Math.Max(8, size / 2 + 1);
+        // A 6 px badge at 16 px preserves the nested tunnel instead of covering
+        // half the product mark; larger icons keep the same visual proportion.
+        var side = Math.Max(7, (int)Math.Round(size * 0.375) + 1);
         var box = new Box(size - side, size - side, side - 1, side - 1);
         Badge(pixels, size, TrayState.Badge(look), Colours[look], box);
         return new Image(size, size, pixels);
+    }
+
+    /// <summary>
+    /// Alpha-only macOS status item: the complete 18 pt product mark, followed by
+    /// a 7 pt state glyph. AppKit tints the template for light/dark/selected states.
+    /// The build assets and the preview use these same pixels at 1x and 2x.
+    /// </summary>
+    public static Image RenderTemplate(Image brand, TrayLook look, int scale = 1)
+    {
+        if (scale is < 1 or > 4) throw new ArgumentOutOfRangeException(nameof(scale));
+        var side = 18 * scale;
+        var width = 26 * scale;
+        var pixels = new uint[width * side];
+        var mark = Scale(brand, side);
+        for (var y = 0; y < side; y++)
+        for (var x = 0; x < side; x++)
+            pixels[y * width + x] = mark[y * side + x] & 0xFF000000;
+
+        var box = new Box(19 * scale, 5 * scale, 7 * scale, 7 * scale);
+        bool Disc(double x, double y) => Distance(x, y, box.Cx, box.Cy) <= box.R;
+        void Ink(Func<double, double, bool> shape) => Paint(pixels, width, side, shape, 0xFF000000);
+        void Cut(Func<double, double, bool> shape) => Paint(pixels, width, side, shape, 0, erase: true);
+        switch (TrayState.Badge(look))
+        {
+            case TrayBadge.Disc:
+                Ink(Disc);
+                break;
+            case TrayBadge.Half:
+                Ink((x, y) => Disc(x, y) && y >= box.Cy);
+                break;
+            case TrayBadge.Ring:
+                Ink((x, y) => Disc(x, y) && Distance(x, y, box.Cx, box.Cy) >= box.R - 1.25 * scale);
+                break;
+            case TrayBadge.Slash:
+                Ink(Disc);
+                Cut((x, y) => Segment(x, y,
+                    box.X + box.W * 0.78, box.Y + box.H * 0.22,
+                    box.X + box.W * 0.22, box.Y + box.H * 0.78) <= 0.6 * scale);
+                break;
+            case TrayBadge.Square:
+                Ink((x, y) => Inside(x, y, box.X + 0.5 * scale, box.Y + 0.5 * scale, 6 * scale, 6 * scale));
+                break;
+            default:
+            {
+                var arcCy = box.Y + box.H * 0.35;
+                var arcR = box.W * 0.22;
+                var bodyTop = box.Y + box.H * 0.45;
+                Ink((x, y) => Inside(x, y, box.X + box.W * 0.18, bodyTop, box.W * 0.64, box.H * 0.5));
+                Ink((x, y) =>
+                    (y <= arcCy && Math.Abs(Distance(x, y, box.Cx, arcCy) - arcR) <= 0.55 * scale)
+                    || (y > arcCy && y <= bodyTop &&
+                        (Math.Abs(x - (box.Cx - arcR)) <= 0.55 * scale ||
+                         Math.Abs(x - (box.Cx + arcR)) <= 0.55 * scale)));
+                break;
+            }
+        }
+        return new Image(width, side, pixels);
     }
 
     public static byte[] NetworkOrder(Image image)
@@ -179,11 +248,14 @@ public static class TrayPixmap
         }
     }
 
-    private static void Paint(uint[] pixels, int size, Func<double, double, bool> shape, uint colour)
+    private static void Paint(uint[] pixels, int size, Func<double, double, bool> shape, uint colour) =>
+        Paint(pixels, size, size, shape, colour);
+
+    private static void Paint(uint[] pixels, int width, int height, Func<double, double, bool> shape, uint colour, bool erase = false)
     {
         const int samples = 4;
-        for (var py = 0; py < size; py++)
-        for (var px = 0; px < size; px++)
+        for (var py = 0; py < height; py++)
+        for (var px = 0; px < width; px++)
         {
             var hits = 0;
             for (var sy = 0; sy < samples; sy++)
@@ -191,7 +263,10 @@ public static class TrayPixmap
                 if (shape(px + (sx + 0.5) / samples, py + (sy + 0.5) / samples)) hits++;
             if (hits == 0) continue;
             var cover = hits / (double)(samples * samples);
-            pixels[py * size + px] = Over(pixels[py * size + px], colour, cover);
+            var at = py * width + px;
+            pixels[at] = erase
+                ? ((uint)Math.Round((pixels[at] >> 24) * (1 - cover)) << 24) | (pixels[at] & 0x00FFFFFF)
+                : Over(pixels[at], colour, cover);
         }
     }
 

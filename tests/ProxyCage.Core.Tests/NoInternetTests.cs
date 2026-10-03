@@ -85,7 +85,7 @@ public sealed class NoInternetTests : IDisposable
                 new Dictionary<string, string> { ["tab"] = "apps", ["folder"] = folder, ["enable"] = "1" }));
             Assert.Equal(HttpStatusCode.SeeOther, off.StatusCode);
             Assert.True(CehoConfig.Load(configPath).Apps[0].NoInternet);
-            Assert.Contains(WebUtility.HtmlEncode(Strings.T("ru", "app_offline_tag")), await http.GetStringAsync("/?tab=apps"));
+            Assert.Contains(WebUtility.HtmlEncode("Интернет запрещён"), await http.GetStringAsync("/?tab=apps"));
 
             using var on = await http.PostAsync("/apps/offline", new FormUrlEncodedContent(
                 new Dictionary<string, string> { ["tab"] = "apps", ["folder"] = folder }));

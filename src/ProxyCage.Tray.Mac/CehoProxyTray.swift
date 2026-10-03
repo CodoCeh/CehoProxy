@@ -1,11 +1,7 @@
 import AppKit
 
-enum Look {
+enum Look: Hashable {
     case guarded, starting, off, trouble, stopped, locked
-}
-
-enum Badge {
-    case disc, half, ring, slash, square, lock
 }
 
 enum Outcome {
@@ -418,113 +414,51 @@ final class Tray: NSObject, NSMenuDelegate {
         }
     }
 
-    private func badge() -> Badge {
-        switch look {
-        case .guarded: return .disc
-        case .starting: return .half
-        case .off: return .ring
-        case .trouble: return .slash
-        case .stopped: return .square
-        case .locked: return .lock
-        }
-    }
-
-    private func colour() -> NSColor {
-        switch look {
-        case .guarded: return NSColor(srgbRed: 0.18, green: 0.77, blue: 0.42, alpha: 1)
-        case .starting: return NSColor(srgbRed: 0.96, green: 0.65, blue: 0.14, alpha: 1)
-        case .off, .trouble: return NSColor(srgbRed: 0.88, green: 0.31, blue: 0.24, alpha: 1)
-        default: return NSColor(srgbRed: 0.54, green: 0.56, blue: 0.60, alpha: 1)
-        }
-    }
-
     private func paint() {
         guard let button = item.button else { return }
-        button.image = mark()
+        button.image = Tray.mark(look)
+        button.title = button.image == nil ? "CehoProxy" : ""
+        button.imagePosition = button.image == nil ? .noImage : .imageOnly
         var tip = "CehoProxy — " + stateText()
         if look == .guarded, let ip = snapshot?.exitIp {
             tip += " · " + say(lang, "exit_is", snapshot?.exitCountry ?? "?", ip)
         }
         button.toolTip = tip
+        button.setAccessibilityLabel(tip)
     }
 
-    private func mark() -> NSImage {
-        let side: CGFloat = 18
-        let image = NSImage(size: NSSize(width: side, height: side))
-        image.lockFocus()
-        Tray.brand()?.draw(in: NSRect(x: 0, y: 0, width: side, height: side),
-                           from: .zero, operation: .sourceOver, fraction: 1)
-        draw(NSRect(x: side - 9, y: 0, width: 9, height: 9))
-        image.unlockFocus()
-        return image
-    }
+    private static var cachedMarks: [Look: NSImage] = [:]
 
-    private func draw(_ box: NSRect) {
-        let dark = NSColor(srgbRed: 0.06, green: 0.08, blue: 0.09, alpha: 0.94)
-        let tint = colour()
-        switch badge() {
-        case .disc:
-            tint.setFill()
-            NSBezierPath(ovalIn: box).fill()
-            stroke(NSBezierPath(ovalIn: box.insetBy(dx: 0.5, dy: 0.5)), dark, 1)
-        case .half:
-            dark.setFill()
-            NSBezierPath(ovalIn: box).fill()
-            let half = NSBezierPath()
-            half.appendArc(withCenter: NSPoint(x: box.midX, y: box.midY),
-                           radius: box.width / 2 - 0.5, startAngle: 180, endAngle: 360)
-            half.close()
-            tint.setFill()
-            half.fill()
-            stroke(NSBezierPath(ovalIn: box.insetBy(dx: 0.5, dy: 0.5)), dark, 1)
-        case .ring:
-            dark.setFill()
-            NSBezierPath(ovalIn: box).fill()
-            stroke(NSBezierPath(ovalIn: box.insetBy(dx: 1.5, dy: 1.5)), tint, 2)
-        case .slash:
-            tint.setFill()
-            NSBezierPath(ovalIn: box).fill()
-            stroke(NSBezierPath(ovalIn: box.insetBy(dx: 0.5, dy: 0.5)), dark, 1)
-            let line = NSBezierPath()
-            line.move(to: NSPoint(x: box.minX + box.width * 0.25, y: box.minY + box.height * 0.25))
-            line.line(to: NSPoint(x: box.maxX - box.width * 0.25, y: box.maxY - box.height * 0.25))
-            stroke(line, NSColor.white, 1.6)
-        case .square:
-            tint.setFill()
-            NSBezierPath(rect: box).fill()
-            stroke(NSBezierPath(rect: box.insetBy(dx: 0.5, dy: 0.5)), dark, 1)
-        case .lock:
-            tint.setFill()
-            NSBezierPath(ovalIn: box).fill()
-            stroke(NSBezierPath(ovalIn: box.insetBy(dx: 0.5, dy: 0.5)), dark, 1)
-            NSColor.white.setFill()
-            NSBezierPath(rect: NSRect(x: box.minX + box.width * 0.28, y: box.minY + box.height * 0.22,
-                                      width: box.width * 0.44, height: box.height * 0.32)).fill()
-            let shackle = NSBezierPath()
-            shackle.appendArc(withCenter: NSPoint(x: box.midX, y: box.minY + box.height * 0.54),
-                              radius: box.width * 0.17, startAngle: 0, endAngle: 180)
-            stroke(shackle, NSColor.white, 1.4)
+    private static func mark(_ look: Look) -> NSImage? {
+        if let ready = cachedMarks[look] { return ready }
+        let state: String
+        switch look {
+        case .guarded: state = "protected"
+        case .starting: state = "starting"
+        case .off: state = "off"
+        case .trouble: state = "trouble"
+        case .stopped: state = "stopped"
+        case .locked: state = "locked"
         }
-    }
-
-    private func stroke(_ path: NSBezierPath, _ colour: NSColor, _ width: CGFloat) {
-        colour.setStroke()
-        path.lineWidth = width
-        path.stroke()
-    }
-
-    private static var cachedBrand: NSImage?
-
-    private static func brand() -> NSImage? {
-        if let ready = cachedBrand { return ready }
         var places: [String] = []
-        if let resource = Bundle.main.resourcePath { places.append(resource + "/cehoproxy.png") }
-        places.append(
-            URL(fileURLWithPath: CommandLine.arguments[0])
-                .deletingLastPathComponent().path + "/cehoproxy.png")
-        for place in places where FileManager.default.fileExists(atPath: place) {
-            cachedBrand = NSImage(contentsOfFile: place)
-            return cachedBrand
+        if let resource = Bundle.main.resourcePath { places.append(resource) }
+        places.append(URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().path)
+        for place in places {
+            let image = NSImage(size: NSSize(width: 26, height: 18))
+            for suffix in ["", "@2x"] {
+                let path = place + "/cehoproxy-status-" + state + suffix + ".png"
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                      let representation = NSBitmapImageRep(data: data) else { continue }
+                representation.size = image.size
+                image.addRepresentation(representation)
+            }
+            if image.representations.isEmpty { continue }
+            // Alpha-only assets keep the full 18 pt product mark and six distinct
+            // adjacent state glyphs. AppKit supplies contrast in light, dark and
+            // selected menu-bar appearances; a colour-only status is never used.
+            image.isTemplate = true
+            cachedMarks[look] = image
+            return image
         }
         return nil
     }

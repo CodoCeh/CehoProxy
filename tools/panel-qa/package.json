@@ -1,0 +1,1 @@
+{"name":"cehoproxy-panel-qa","private":true,"type":"module","scripts":{"test":"node --test panel-client.test.mjs","screenshots":"node inspect.mjs"},"devDependencies":{"jsdom":"26.1.0","@playwright/test":"1.55.1"}}

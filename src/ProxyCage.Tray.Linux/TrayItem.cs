@@ -25,7 +25,7 @@ internal sealed class TrayItem : IDisposable
     private const int IdPanel = 8;
     private const int IdQuit = 10;
 
-    private static readonly int[] Sizes = { 22, 32, 48 };
+    private static readonly int[] Sizes = { 16, 20, 22, 24, 32, 48, 64 };
 
     private readonly DBusConnection _connection;
     private readonly PanelLink _link;
@@ -56,14 +56,19 @@ internal sealed class TrayItem : IDisposable
         _link = new PanelLink(root);
         _root = root;
 
-        using var stream = typeof(TrayItem).Assembly.GetManifestResourceStream("cehoproxy.png")
-            ?? throw new InvalidOperationException("cehoproxy.png");
-        using var buffer = new MemoryStream();
-        stream.CopyTo(buffer);
-        var brand = TrayPixmap.Decode(buffer.ToArray());
+        // Offer exact optical sizes to the host rather than forcing it to shrink
+        // the product artwork. Pixels and state badges match the Windows tray.
+        var brands = Sizes.ToDictionary(size => size, size =>
+        {
+            using var stream = typeof(TrayItem).Assembly.GetManifestResourceStream(TrayPixmap.ResourceName(size))
+                ?? throw new InvalidOperationException(TrayPixmap.ResourceName(size));
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return TrayPixmap.Decode(buffer.ToArray());
+        });
         foreach (var look in Enum.GetValues<TrayLook>())
             _icons[look] = Sizes
-                .Select(size => (size, TrayPixmap.NetworkOrder(TrayPixmap.Render(brand, look, size))))
+                .Select(size => (size, TrayPixmap.NetworkOrder(TrayPixmap.Render(brands[size], look, size))))
                 .ToArray();
 
         _connection.AddMethodHandler(new Handler(ItemPath, HandleItem));

@@ -15,7 +15,8 @@ swiftc -O -target "$ARCH-apple-macos12.0" \
   -o "$APP/Contents/MacOS/CehoProxyTray" \
   "$ROOT/src/ProxyCage.Tray.Mac/CehoProxyTray.swift"
 
-cp "$ROOT/assets/cehoproxy.png" "$APP/Contents/Resources/cehoproxy.png"
+cp "$ROOT/assets/cehoproxy.icns" "$APP/Contents/Resources/cehoproxy.icns"
+cp "$ROOT/assets/tray"/cehoproxy-status-*.png "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -26,6 +27,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>CehoProxy</string>
   <key>CFBundleIdentifier</key><string>ru.codoceh.cehoproxy.tray</string>
   <key>CFBundleExecutable</key><string>CehoProxyTray</string>
+  <key>CFBundleIconFile</key><string>cehoproxy</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>

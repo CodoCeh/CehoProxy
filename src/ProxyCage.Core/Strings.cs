@@ -65,6 +65,28 @@ public static class Strings
 
     private static readonly Dictionary<string, Pair> Table = new(StringComparer.Ordinal)
     {
+        ["job_conflict"] = new("Ещё выполняется «{0}». Новая команда не запущена: дождитесь завершения и повторите её.", "“{0}” is still running. The new command was not started; wait for it to finish and try again."),
+        ["stage_restore_verified"] = new("Восстанавливаю последнюю проверенную конфигурацию", "Restoring the last verified configuration"),
+        ["reconnect_verified_config"] = new("Возврат к последней проверенной конфигурации", "Restoring the last verified configuration"),
+        ["restore_verified_off"] = new("Проверенные настройки восстановлены. Защита остаётся выключенной.", "Verified settings restored. Protection remains off."),
+        ["restore_verified_on"] = new("Проверенные настройки восстановлены; движок запущен и порты отвечают.", "Verified settings restored; the engine is running and its ports respond."),
+        ["stage_engine_queue"] = new("Ожидаю завершения другой операции движка", "Waiting for another engine operation to finish"),
+        ["stage_loading_subs"] = new("Читаю подписки и сохранённые серверы", "Loading subscriptions and saved servers"),
+        ["stage_country_queue"] = new("Ожидаю текущей проверки стран серверов", "Waiting for the current server-country check"),
+        ["stage_country_db_queue"] = new("Ожидаю подготовки базы стран", "Waiting for the country database"),
+        ["stage_adapter_retry"] = new("Адаптер не готов; попытка {0} из {1}: {2}", "Adapter is not ready; attempt {0} of {1}: {2}"),
+        ["engine_ready_timeout"] = new("Движок не открыл порты прокси и управления за 20 секунд. Запуск остановлен; проверьте журнал движка.", "The engine did not make its proxy and control ports ready within 20 seconds. Startup stopped; check the engine log."),
+        ["reconnect_manual_start"] = new("Включение защиты по запросу пользователя", "Protection requested by the user"),
+        ["reconnect_manual_restart"] = new("Перезапуск по запросу пользователя", "Restart requested by the user"),
+        ["reconnect_service_start"] = new("Запуск службы", "Service startup"),
+        ["reconnect_retry"] = new("Повтор после неудачного запуска: {0}", "Retry after startup failed: {0}"),
+        ["reconnect_engine_exit"] = new("Движок завершился: {0}", "The engine exited: {0}"),
+        ["reconnect_network_changed"] = new("Изменился адрес физической сети", "The physical network address changed"),
+        ["reconnect_tunnel_missing"] = new("Движок работает, но туннель отсутствует в двух проверках подряд", "The engine is running but the tunnel was absent in two consecutive checks"),
+        ["reconnect_subscriptions"] = new("Серверы не отвечали; подписки обновлены", "Servers were unreachable; subscriptions were refreshed"),
+        ["reconnect_rules"] = new("Применение изменённых правил", "Applying changed routing rules"),
+        ["reconnect_engine_update"] = new("Проверка после обновления движка", "Verifying the updated engine"),
+        ["reconnect_engine_rollback"] = new("Возврат к предыдущему движку", "Restoring the previous engine"),
         ["tagline"] = new(
             "CehoProxy — выбранные программы выходят в интернет только через туннель.",
             "CehoProxy — selected apps reach the internet only through the tunnel."),

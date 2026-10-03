@@ -11,7 +11,7 @@ public class FullUninstallCleanupTests
         {
             foreach (var name in new[]
                      {
-                         "singbox.json", "hwid.txt", "node-country-cache.json",
+                         "singbox.json", VerifiedConfigStore.FileName, "hwid.txt", "node-country-cache.json",
                          "node-country-cache.json.tmp", "tun-devices.txt",
                          "cehoproxy.log", "cehoproxy.log.1", "sing-box.log.1",
                          "cehoproxy-update.log", "cehoproxy-update.log.1",

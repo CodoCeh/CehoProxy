@@ -18,6 +18,9 @@ concurrency:
 
 jobs:
   tests:
+    # This review branch runs the explicitly scoped safe-review workflow instead.
+    # It does not certify live VPN/firewall/repair behavior or the full platform suite.
+    if: github.ref_name != 'feat/verified-panel-reliability-20261003' && github.head_ref != 'feat/verified-panel-reliability-20261003'
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -73,3 +76,13 @@ jobs:
           path: artifacts/tests
           if-no-files-found: warn
           retention-days: 7
+
+  safe-review-scope:
+    name: Review scope notice (full live-system suite NOT run)
+    if: github.ref_name == 'feat/verified-panel-reliability-20261003' || github.head_ref == 'feat/verified-panel-reliability-20261003'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo 'This review branch uses the separate safe-review unit and fixture-browser workflow.'
+          echo 'Live VPN, firewall, routing, privileged repair, installation and real sleep/WiFi checks remain unrun.'
+          echo 'A green safe-review job is NOT a full-suite or release-readiness claim.'

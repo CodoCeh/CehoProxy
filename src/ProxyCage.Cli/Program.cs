@@ -1982,6 +1982,19 @@ if (cmd is "daemon" or "web")
     if (cmd == "daemon" && Environment.GetEnvironmentVariable(DaemonControl.ForegroundEnv) == "1")
         Os.DetachFromControllingTerminal();
 
+    // Acquire before cleanup, listeners or PID publication. A concurrent launch
+    // reuses the existing controller instead of creating a second tunnel owner.
+    using var controllerLease = ControllerLease.TryAcquire(Ceho.Root);
+    if (controllerLease is null || (DaemonControl.RunningPid(Ceho.Root) is { } existingPid
+        && existingPid != Environment.ProcessId))
+    {
+        var panelPort = Auth.ReadPanelPointer(Ceho.Root) ?? cfg0.WebPort;
+        var panelUrl = $"http://127.0.0.1:{panelPort}";
+        Console.WriteLine(Strings.T(cfg0.Language, "panel_at", panelUrl));
+        if (cmd == "web" && Assistant.Interactive) Os.OpenInBrowser(panelUrl);
+        return 0;
+    }
+
     DaemonControl.ListenForStop();
     var cfg = CehoConfig.Load(Ceho.ConfigPath);
     var withTunnel = cmd == "daemon";
@@ -1991,16 +2004,21 @@ if (cmd is "daemon" or "web")
     Log.EchoToConsole = true;
 
     SingBoxProcess? proc = null;
+    CehoConfig? activeEngineConfig = null;
     SingBoxProcess? guard = null;
     var guardConfigPath = TunCleanup.GuardConfigPath(Ceho.Root);
     var shuttingDown = false;
     string? lastError = null;
     var wanted = false;
-    long lastRetryAt = 0;
+    var recovery = new RecoveryPolicy();
+    var guardRecovery = new RecoveryPolicy();
+    Action runtimeChanged = () => { };
     string? exitCountry = null, exitIp = null;
     var probed = false;
     string? boundAddress = null;
     var tunnelMissing = 0;
+    var failedExitChecks = 0;
+    long exitCheckGeneration = -1;
 
     void StopGuard()
     {
@@ -2027,10 +2045,13 @@ if (cmd is "daemon" or "web")
             return;
         }
 
+        if (!Os.IsElevated() || Os.ResolveSingBox(Ceho.Root) is null || guardRecovery.Exhausted) return;
+        if (!guardRecovery.Wanted) guardRecovery.StartByUser();
+        if (guardRecovery.Pending is not null && !guardRecovery.TryBegin(Environment.TickCount64, out _)) return;
         try
         {
             TunCleanup.KillOurProcesses(guardConfigPath, Log.Info);
-            await File.WriteAllTextAsync(guardConfigPath, SingBoxConfigGenerator.GenerateFailClosed(c));
+            PrivateFile.Write(guardConfigPath, SingBoxConfigGenerator.GenerateFailClosed(c));
             Auth.RestrictConfigAccess(guardConfigPath);
 
             var p = new SingBoxProcess();
@@ -2041,18 +2062,34 @@ if (cmd is "daemon" or "web")
                 var reason = p.Explain(c.Language);
                 p.Dispose();
                 LeakGuard.SetTunnelGuard(Ceho.Root, false);
-                Log.Warn(Strings.T(c.Language, "guard_failed", reason));
+                ScheduleGuardRecovery(reason);
                 return;
             }
 
             guard = p;
+            guardRecovery.Started(Environment.TickCount64);
             LeakGuard.SetTunnelGuard(Ceho.Root, true);
             Log.Info(Strings.T(c.Language, "guard_on"));
         }
         catch (Exception ex)
         {
             LeakGuard.SetTunnelGuard(Ceho.Root, false);
-            Log.Warn(Strings.T(c.Language, "guard_failed", ex.Message));
+            ScheduleGuardRecovery(ex.Message);
+        }
+    }
+
+    void ScheduleGuardRecovery(string reason)
+    {
+        if (guardRecovery.Exhausted) return;
+        if (!guardRecovery.Wanted) guardRecovery.StartByUser();
+        guardRecovery.Schedule(guardRecovery.Generation, "guard-failed", reason, Environment.TickCount64);
+        Log.Warn(Strings.T(cfg.Language, "guard_failed", reason));
+        if (guardRecovery.Exhausted)
+        {
+            lastError = Strings.T(cfg.Language, "guard_failed",
+                RecoveryPolicy.TerminalMessage(cfg.Language, guardRecovery.MaxAttempts, reason));
+            runtimeChanged();
+            Log.Warn(lastError);
         }
     }
 
@@ -2083,27 +2120,75 @@ if (cmd is "daemon" or "web")
         catch (Exception ex) { Log.Info("автозапуск при первом запуске: " + ex.Message); }
     }
 
-    async Task<string?> StartTunnel(IStageReport? report)
+    async Task<string?> StartTunnel(IStageReport? report,
+        string reasonCode = "manual-start", string? reason = null)
     {
+        report?.StartupStep(1);
+        report?.Phase(Strings.T(cfg.Language, "stage_engine_queue"), waiting: true);
         using (EngineMutex.Acquire(Ceho.Root))
-            return await StartTunnelLocked(report);
+            return await StartTunnelLocked(report, reasonCode, reason);
     }
 
-    async Task<string?> StartTunnelLocked(IStageReport? report)
+    async Task<string?> StartTunnelLocked(IStageReport? report,
+        string reasonCode = "manual-start", string? triggerReason = null, bool automatic = false)
     {
-        if (proc is not null) return Strings.T(cfg.Language, "already_on");
+        if (shuttingDown) return Strings.T(cfg.Language, "stage_stopping");
+        if (automatic && (!wanted || !recovery.Wanted)) return null;
+        if (!automatic)
+        {
+            recovery.StartByUser();
+            guardRecovery.StartByUser();
+        }
         wanted = true;
+        // Another queued start may have finished while we waited. It is success,
+        // not a new start and not an error for the caller that joined it.
+        if (proc is { IsRunning: true }) return null;
+        if (proc is not null) StopTunnelLocked();
+        runtimeChanged();
+        var connection = ReconnectHistory.Shared.Begin(reasonCode,
+            triggerReason ?? Strings.T(cfg.Language, "reconnect_manual_start"), report);
+        report = connection;
+        var succeeded = false;
+        report?.StartupStep(1);
         DaemonControl.MarkStarting(Ceho.Root, recovering: lastError is not null);
         try
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
             var c = CehoConfig.Load(Ceho.ConfigPath);
+            // Recheck every attempt, including starts requested through the panel.
+            // Never download subscriptions or spawn probes with known blockers.
+            c.Validate();
+            var configurationError = StartupPreflight.ConfigurationError(c);
+            if (configurationError is not null) throw new InvalidOperationException(configurationError);
+            var hasEngine = Os.ResolveSingBox(Ceho.Root) is not null;
+            var blockers = Preflight.Run(c, Ceho.Root).Where(check => check.Level == Preflight.Level.Blocker
+                && check.Repair is not (Repair.PanelPort or Repair.ProxyPort)
+                // The engine is present: this one dependency has an existing,
+                // bounded download path below, after discovering whether it is needed.
+                && !(hasEngine && check.Repair == Repair.Engine
+                    && check.Title == Strings.T(c.Language, "pf_cronet_missing"))).ToArray();
+            if (blockers.Length > 0)
+                throw new InvalidOperationException(string.Join(" ", blockers.Select(check => check.Title + " " + check.Fix)));
+            var leftover = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+            if (leftover > 0) await Task.Delay(500);
+            if (Preflight.TryMoveProxyPortIfBusy(c, out var busyPort, out var freePort))
+            {
+                c.Save(Ceho.ConfigPath);
+                Log.Info(Strings.T(c.Language, "proxy_port_moved", busyPort, freePort));
+            }
+            if (c.MixedPort == c.ClashApiPort || Preflight.TcpPortTaken(c.MixedPort) == true
+                || Preflight.TcpPortTaken(c.ClashApiPort) == true)
+                throw new InvalidOperationException(c.Language == "ru"
+                    ? "Порт прокси или API занят. Проверьте настройки сети; другие процессы не остановлены."
+                    : "The proxy or API port is occupied. Check network settings; other processes were not stopped.");
+            // Keep the configured leak protection while subscriptions/probes wait.
+            LeakGuard.Apply(c, Ceho.Root);
 
-            var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: true, report);
+            var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: reasonCode != "exit-unavailable", report);
 
             if (nodes.Any(n => n.Protocol == ProxyProtocol.Naive) && Installer.MissingCronetDll(Ceho.Root))
             {
-                report?.Stage(Strings.T(c.Language, "stage_cronet_fetch"), 91);
+                report?.Phase(Strings.T(c.Language, "stage_cronet_fetch"), waiting: true);
                 try
                 {
                     await Installer.EnsureCronetAsync(Ceho.Root, m => report?.Note(m), c.Language);
@@ -2115,20 +2200,18 @@ if (cmd is "daemon" or "web")
                 }
             }
 
-            report?.Stage(Strings.T(c.Language, "stage_writing_rules"), 92);
+            report?.Phase(Strings.T(c.Language, "stage_writing_rules"));
             // Список программ мог измениться, пока качались подписки.
             c = CehoConfig.Load(Ceho.ConfigPath);
-            // Свой зависший движок отпускает порт до проверки: иначе уйдём с 2080,
-            // хотя его держали мы. Чужой слушатель (xray и т.п.) остаётся — берём свободный.
-            var leftover = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
-            if (leftover > 0) await Task.Delay(500);
-            if (Preflight.TryMoveProxyPortIfBusy(c, out var busyPort, out var freePort))
-            {
-                c.Save(Ceho.ConfigPath);
-                Log.Info(Strings.T(c.Language, "proxy_port_moved", busyPort, freePort));
-            }
-            await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
-                SingBoxConfigGenerator.GenerateForConfig(nodes, c));
+            // A configuration edited while subscriptions loaded is validated again.
+            c.Validate();
+            configurationError = StartupPreflight.ConfigurationError(c);
+            if (configurationError is not null) throw new InvalidOperationException(configurationError);
+            var generatedRules = SingBoxConfigGenerator.GenerateForConfig(nodes, c);
+            PrivateFile.Write(Ceho.RuntimeConfigPath, generatedRules);
+            VerifiedConfigStore.Candidate? candidate = null;
+            try { candidate = VerifiedConfigStore.Capture(Ceho.Root, c, generatedRules); }
+            catch { Log.Warn("Не удалось подготовить проверенную копию настроек."); }
             LeakGuard.Apply(c, Ceho.Root);
             Log.Info($"этап: подписки и правила {watch.Elapsed.TotalSeconds:F1} с");
 
@@ -2139,15 +2222,20 @@ if (cmd is "daemon" or "web")
                  && attempt < 5;
                  attempt++)
             {
-                Log.Info($"адаптер Wintun не готов — включаю устройство и пробую снова (попытка {attempt}/5)");
+                var retryMessage = Strings.T(c.Language, "stage_adapter_retry", attempt + 1, 5, reason!);
+                connection.Retrying(attempt + 1, 5, retryMessage);
+                Log.Info(retryMessage);
                 DaemonControl.MarkStarting(Ceho.Root, recovering: true);
                 var beforeRetry = TunCleanup.Devices();
                 TunCleanup.ReleaseOurs(
                     Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
                     attempts: 5, aggressive: true, beforeStart: beforeRetry);
                 var tunName = TunCleanup.AdapterName(attempt + 1);
-                await File.WriteAllTextAsync(Ceho.RuntimeConfigPath,
-                    SingBoxConfigGenerator.GenerateForConfig(nodes, c, tunName));
+                generatedRules = SingBoxConfigGenerator.GenerateForConfig(nodes, c, tunName);
+                PrivateFile.Write(Ceho.RuntimeConfigPath, generatedRules);
+                candidate = null;
+                try { candidate = VerifiedConfigStore.Capture(Ceho.Root, c, generatedRules); }
+                catch { Log.Warn("Не удалось подготовить проверенную копию настроек."); }
                 Log.Info($"пробую другое имя адаптера: {tunName}");
                 await Task.Delay(TimeSpan.FromSeconds(4));
                 reason = await BringEngineUp(c, report);
@@ -2161,9 +2249,15 @@ if (cmd is "daemon" or "web")
             }
 
             lastError = null;
+            recovery.Started(Environment.TickCount64, healthy: false);
+            if (candidate is not null)
+            {
+                try { VerifiedConfigStore.CommitVerified(Ceho.Root, candidate); }
+                catch { Log.Warn("Не удалось сохранить проверенную копию настроек."); }
+            }
             probed = false;
             boundAddress = Os.PhysicalBindAddress(c.TunAddress)?.ToString();
-            report?.Stage(Strings.T(c.Language, "stage_bounce_apps"), 99);
+            report?.Phase(Strings.T(c.Language, "stage_bounce_apps"));
             watch.Restart();
             var bounced = IsolatedAppBounce.ResetNetwork(c, Log.Info);
             Log.Info($"этап: сброс соединений программ {watch.Elapsed.TotalSeconds:F1} с");
@@ -2171,6 +2265,7 @@ if (cmd is "daemon" or "web")
                 Log.Info(
                     $"сброшены старые соединения {string.Join(", ", bounced.Labels)}: " +
                     $"процессы {bounced.Killed}, TCP {bounced.Connections}");
+            succeeded = true;
             return null;
         }
         catch (Exception ex)
@@ -2182,14 +2277,49 @@ if (cmd is "daemon" or "web")
         }
         finally
         {
-            if (proc is null && wanted) DaemonControl.MarkStarting(Ceho.Root, recovering: true);
+            if (proc is null && wanted)
+                ScheduleRecoveryLocked("retry-after-failure", lastError ?? Strings.T(cfg.Language, "start_failed"));
             else DaemonControl.ClearStarting(Ceho.Root);
+            runtimeChanged();
+            connection.Complete(succeeded, succeeded
+                ? Strings.T(cfg.Language, "state_on")
+                : lastError ?? Strings.T(cfg.Language, "start_failed"));
         }
+    }
+
+    void ScheduleRecoveryLocked(string reasonCode, string reason)
+    {
+        if (shuttingDown || !wanted) return;
+        recovery.Schedule(recovery.Generation, reasonCode, reason, Environment.TickCount64);
+        if (recovery.Exhausted)
+        {
+            lastError = RecoveryPolicy.TerminalMessage(cfg.Language, recovery.MaxAttempts, reason);
+            DaemonControl.ClearStarting(Ceho.Root);
+            var terminal = ReconnectHistory.Shared.Begin("recovery-exhausted", lastError);
+            terminal.Complete(false, lastError);
+            Log.Warn(lastError);
+        }
+        else if (recovery.Pending is not null)
+        {
+            lastError = reason;
+            DaemonControl.MarkStarting(Ceho.Root, recovering: true);
+        }
+    }
+
+    async Task QueueAutomaticRecovery(string reasonCode, string reason, long generation)
+    {
+        using var gate = EngineMutex.Acquire(Ceho.Root);
+        // A slow pre-sleep/network probe must not restart a newer session or
+        // undo a stop that was accepted while it was awaiting the network.
+        if (shuttingDown || !wanted || !recovery.IsCurrent(generation)) return;
+        StopTunnelLocked();
+        ScheduleRecoveryLocked(reasonCode, reason);
+        await StartGuard();
     }
 
     async Task<string?> BringEngineUp(CehoConfig c, IStageReport? report)
     {
-        report?.Stage(Strings.T(c.Language, "stage_cleanup"), 94);
+        report?.Phase(Strings.T(c.Language, "stage_cleanup"));
         var watch = System.Diagnostics.Stopwatch.StartNew();
 
         var handover = guard is not null;
@@ -2223,47 +2353,56 @@ if (cmd is "daemon" or "web")
         Log.Info($"этап: подготовка к запуску {watch.Elapsed.TotalSeconds:F1} с");
         watch.Restart();
 
-        report?.Stage(Strings.T(c.Language, "stage_engine_start"), 96);
+        report?.StartupStep(2);
+        report?.Phase(Strings.T(c.Language, "stage_engine_start"));
 
         Os.AdoptOwnEngine(Ceho.Root);
         Auth.RestrictConfigAccess(Ceho.ConfigPath);
         var p = new SingBoxProcess();
-        p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
-        Log.Info($"движок запущен, pid {p.ProcessId}");
+        try
+        {
+            p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
+            Log.Info($"движок запущен, pid {p.ProcessId}");
 
-        report?.Stage(Strings.T(c.Language, "stage_engine_wait"), 98);
-        var answeredAt = -1;
-        for (var waited = 0; waited < 20000 && p.IsRunning; waited += 250)
-        {
-            if (answeredAt < 0 && await SingBoxProcess.ListensAsync(c.MixedPort, c.ClashApiPort)) answeredAt = waited;
-            if (answeredAt >= 0 && waited - answeredAt >= 1500) break;
-            await Task.Delay(250);
-        }
-        Log.Info($"этап: запуск движка {watch.Elapsed.TotalSeconds:F1} с, порты ответили через {(answeredAt < 0 ? "—" : $"{answeredAt / 1000.0:F1} с")}");
-        TunCleanup.Remember(Ceho.Root, c.TunAddress, Log.Info, before);
-        if (p.IsRunning)
-        {
-            proc = p;
-            return null;
-        }
+            report?.StartupStep(3);
+            report?.Phase(Strings.T(c.Language, "stage_engine_wait"), waiting: true);
+            var readiness = await EngineReadiness.WaitAsync(
+                () => p.IsRunning,
+                () => SingBoxProcess.ListensAsync(c.MixedPort, c.ClashApiPort));
+            Log.Info($"этап: запуск движка {watch.Elapsed.TotalSeconds:F1} с, готовность: {readiness}");
+            TunCleanup.Remember(Ceho.Root, c.TunAddress, Log.Info, before);
+            if (readiness == EngineReadinessResult.Ready && p.IsRunning)
+            {
+                proc = p;
+                activeEngineConfig = c;
+                return null;
+            }
 
-        // Сам вывод движка уже в журнале: он попадает туда строкой за строкой.
-        var reason = p.Explain(c.Language);
-        Log.Error($"движок не устоял: {reason}");
-        p.Dispose();
-        TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
-        if (EngineAdapterStuck(reason))
-        {
-            TunCleanup.ReleaseOurs(
-                Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
-                attempts: 5, aggressive: true, beforeStart: before);
-            await Task.Delay(TimeSpan.FromSeconds(3));
+            // A still-running process with missing listeners is a failed startup too.
+            var reason = readiness == EngineReadinessResult.TimedOut
+                ? Strings.T(c.Language, "engine_ready_timeout")
+                : p.Explain(c.Language);
+            Log.Error($"движок не устоял: {reason}");
+            p.Dispose();
+            TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+            if (EngineAdapterStuck(reason))
+            {
+                TunCleanup.ReleaseOurs(
+                    Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
+                    attempts: 5, aggressive: true, beforeStart: before);
+                await Task.Delay(TimeSpan.FromSeconds(3));
+            }
+            else
+            {
+                TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
+            }
+            return reason;
         }
-        else
+        catch
         {
-            TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
+            p.Dispose();
+            throw;
         }
-        return reason;
     }
 
     string? StopTunnel()
@@ -2275,12 +2414,15 @@ if (cmd is "daemon" or "web")
     string? StopTunnelLocked()
     {
         if (proc is null) return Strings.T(cfg.Language, "already_off");
+        var stoppingConfig = activeEngineConfig ?? cfg;
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var clean = proc.Stop(Os.IsWindows ? 2000 : 8000);
         Log.Info($"этап: остановка движка {watch.Elapsed.TotalSeconds:F1} с");
         watch.Restart();
         proc.Dispose();
         proc = null;
+        activeEngineConfig = null;
+        runtimeChanged();
         exitCountry = exitIp = null;
         probed = false;
 
@@ -2292,7 +2434,7 @@ if (cmd is "daemon" or "web")
         }
 
         TunCleanup.ReleaseOurs(
-            Ceho.RuntimeConfigPath, cfg.TunAddress, Ceho.Root, Log.Info,
+            Ceho.RuntimeConfigPath, stoppingConfig.TunAddress, Ceho.Root, Log.Info,
             attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
         if (Os.IsWindows && TunCleanup.LastReleaseClean)
             (cleanedAt, cleanedDevices) = (Environment.TickCount64, TunCleanup.Devices());
@@ -2305,12 +2447,20 @@ if (cmd is "daemon" or "web")
         Ceho.ConfigPath,
         () => new WebServer.ControlState(proc is not null, exitCountry, exitIp, lastError, probed),
         Log.Info);
+    runtimeChanged = web.NotifyEngineStateChanged;
 
-    async Task<string?> RestartTunnel(IStageReport? report)
+    async Task<string?> RestartTunnel(IStageReport? report,
+        string reasonCode = "manual-restart", string? reason = null, bool onlyIfWanted = false)
     {
-        report?.Stage(Strings.T(cfg.Language, "stage_stopping"), 5);
-        StopTunnel();
-        return await StartTunnel(report);
+        report?.Phase(Strings.T(cfg.Language, "stage_engine_queue"), waiting: true);
+        // Keep stop and start in the same critical section. A stop request cannot
+        // slip between them and accidentally be undone by this restart.
+        using var gate = EngineMutex.Acquire(Ceho.Root);
+        if (shuttingDown || (onlyIfWanted && !wanted)) return null;
+        report?.Phase(Strings.T(cfg.Language, "stage_stopping"));
+        StopTunnelLocked();
+        return await StartTunnelLocked(report, reasonCode,
+            reason ?? Strings.T(cfg.Language, "reconnect_manual_restart"));
     }
 
     web.OnStart = async report =>
@@ -2330,17 +2480,88 @@ if (cmd is "daemon" or "web")
             return new WebServer.AppLive(a.Folder, v.Processes, v.Tunneled, v.Direct, vpn, direct);
         }).ToList();
     };
-    web.OnStop = () => { wanted = false; DaemonControl.ClearStarting(Ceho.Root); return Task.FromResult(StopTunnel()); };
-    web.OnRestart = RestartTunnel;
+    web.OnStop = () =>
+    {
+        using var gate = EngineMutex.Acquire(Ceho.Root);
+        wanted = false;
+        recovery.StopByUser();
+        guardRecovery.StartByUser();
+        lastError = null;
+        runtimeChanged();
+        DaemonControl.ClearStarting(Ceho.Root);
+        return Task.FromResult(StopTunnelLocked());
+    };
+    web.OnRestart = report => RestartTunnel(report);
+    web.OnRestoreVerified = async (acknowledgeSecurity, expectedVerifiedUtc, report) =>
+    {
+        report.Phase(Strings.T(cfg.Language, "stage_engine_queue"), waiting: true);
+        using var gate = EngineMutex.Acquire(Ceho.Root);
+        if (shuttingDown) throw new InvalidOperationException(Strings.T(cfg.Language, "stage_stopping"));
+        var wasRunning = proc is not null || wanted;
+        report.Phase(Strings.T(cfg.Language, "stage_restore_verified"));
+        VerifiedConfigStore.Restore(Ceho.Root, acknowledgeSecurity, expectedVerifiedUtc);
+        var restored = CehoConfig.Load(Ceho.ConfigPath);
+        if (!wasRunning)
+        {
+            // Refresh only an already-active fail-closed guard; restoring settings
+            // must not turn an intentionally disabled working tunnel on.
+            if (guard is not null)
+            {
+                StopGuard();
+                await StartGuard();
+            }
+            return Strings.T(restored.Language, "restore_verified_off");
+        }
+
+        recovery.StartByUser();
+        guardRecovery.StartByUser();
+        runtimeChanged();
+        report.StartupStep(1);
+        var connection = ReconnectHistory.Shared.Begin("verified-config-restored",
+            Strings.T(restored.Language, "reconnect_verified_config"), report);
+        try
+        {
+            connection.Phase(Strings.T(restored.Language, "stage_stopping"));
+            StopTunnelLocked();
+            LeakGuard.Apply(restored, Ceho.Root);
+            var error = await BringEngineUp(restored, connection);
+            if (error is not null) throw new InvalidOperationException(error);
+            lastError = null;
+            recovery.Started(Environment.TickCount64, healthy: false);
+            runtimeChanged();
+            exitCountry = exitIp = null;
+            probed = false;
+            boundAddress = Os.PhysicalBindAddress(restored.TunAddress)?.ToString();
+            connection.Phase(Strings.T(restored.Language, "stage_bounce_apps"));
+            IsolatedAppBounce.ResetNetwork(restored, Log.Info);
+            var result = Strings.T(restored.Language, "restore_verified_on");
+            connection.Complete(true, result);
+            DaemonControl.ClearStarting(Ceho.Root);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            lastError = ex.Message;
+            connection.Complete(false, ex.Message);
+            await StartGuard();
+            if (proc is null && wanted) ScheduleRecoveryLocked("retry-after-failure", ex.Message);
+            runtimeChanged();
+            throw;
+        }
+    };
     web.OnApply = report => TunnelRuleApply.RunAsync(
         report,
-        () => EngineMutex.Acquire(Ceho.Root),
+        () =>
+        {
+            report.Phase(Strings.T(cfg.Language, "stage_engine_queue"), waiting: true);
+            return EngineMutex.Acquire(Ceho.Root);
+        },
         () => proc is not null,
         async p =>
         {
-            p.Stage(Strings.T(cfg.Language, "stage_stopping"), 5);
+            p.Phase(Strings.T(cfg.Language, "stage_stopping"));
             StopTunnelLocked();
-            return await StartTunnelLocked(p);
+            return await StartTunnelLocked(p, "rules-changed", Strings.T(cfg.Language, "reconnect_rules"));
         },
         Ceho.ApplyAsync,
         Strings.T(cfg.Language, "rules_applied"));
@@ -2373,10 +2594,10 @@ if (cmd is "daemon" or "web")
                 var wasRunning = proc is not null;
                 if (wasRunning) StopTunnelLocked();
                 Installer.SwapEngine(Ceho.Root, fresh);
-                if (wasRunning && await StartTunnelLocked(report) is { } error)
+                if (wasRunning && await StartTunnelLocked(report, "engine-update", S("reconnect_engine_update")) is { } error)
                 {
                     Installer.RestoreEngine(Ceho.Root);
-                    await StartTunnelLocked(report);
+                    await StartTunnelLocked(report, "engine-rollback", S("reconnect_engine_rollback"));
                     throw new InvalidOperationException(S("engine_rolled_back", error));
                 }
             }
@@ -2744,13 +2965,12 @@ if (cmd is "daemon" or "web")
         await StartGuard();
 
         var tunnelBlockers = startupBlockers
-            .Where(c => !c.Title.Contains("орт ", StringComparison.OrdinalIgnoreCase)
-                     && !c.Title.Contains("ort ", StringComparison.OrdinalIgnoreCase)).ToList();
+            .Where(c => c.Repair is not (Repair.PanelPort or Repair.ProxyPort)).ToList();
         if (tunnelBlockers.Count > 0)
             Console.Error.WriteLine(Strings.T(cfg.Language, "panel_only", cfg.WebPort));
         else
         {
-            var err = await StartTunnel(null);
+            var err = await StartTunnel(null, "service-start", Strings.T(cfg.Language, "reconnect_service_start"));
             Log.Info(err is null
                 ? Strings.T(cfg.Language, "state_on")
                 : $"{Strings.T(cfg.Language, "start_failed")}: {err}");
@@ -2775,45 +2995,40 @@ if (cmd is "daemon" or "web")
                     {
                         if (proc is null && guard is not null && !guard.IsRunning)
                         {
+                            var reason = guard.Explain(cfg.Language);
                             StopGuard();
+                            ScheduleGuardRecovery(reason);
                             await StartGuard();
                         }
                     }
                 }
 
-                if (proc is null && wanted && lastError is not null
-                    && Environment.TickCount64 - lastRetryAt > 60_000)
+                if (proc is null && guard is null && guardRecovery.Pending is not null)
                 {
-                    using (EngineMutex.Acquire(Ceho.Root))
-                    {
-                        if (proc is null && wanted)
-                        {
-                            lastRetryAt = Environment.TickCount64;
-                            Log.Info(Strings.T(cfg.Language, "state_recovering"));
-                            var again = await StartTunnelLocked(null);
-                            Log.Info(again is null
-                                ? Strings.T(cfg.Language, "state_on")
-                                : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
-                        }
-                    }
+                    using var gate = EngineMutex.Acquire(Ceho.Root);
+                    await StartGuard();
                 }
 
                 if (proc is not null && !proc.IsRunning)
                 {
-                    using (EngineMutex.Acquire(Ceho.Root))
+                    using var gate = EngineMutex.Acquire(Ceho.Root);
+                    if (proc is not null && !proc.IsRunning)
                     {
-                        // Пока сторож ждал очереди, движок мог поднять кто-то другой.
-                        if (proc is not null && !proc.IsRunning)
-                        {
-                            var reason = proc.Explain(cfg.Language);
-                            Log.Error($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
-                            lastError = reason;
-                            StopTunnelLocked();
-                            var again = await StartTunnelLocked(null);
-                            Log.Info(again is null
-                                ? Strings.T(cfg.Language, "state_on")
-                                : $"{Strings.T(cfg.Language, "start_failed")}: {again}");
-                        }
+                        var reason = proc.Explain(cfg.Language);
+                        Log.Error($"{Strings.T(cfg.Language, "engine_gone")}: {reason}");
+                        StopTunnelLocked();
+                        ScheduleRecoveryLocked("engine-exited", Strings.T(cfg.Language, "reconnect_engine_exit", reason));
+                    }
+                }
+
+                if (proc is null && wanted && recovery.Pending is not null)
+                {
+                    using var gate = EngineMutex.Acquire(Ceho.Root);
+                    if (proc is null && wanted && recovery.TryBegin(Environment.TickCount64, out var retry))
+                    {
+                        var again = await StartTunnelLocked(null, retry!.ReasonCode, retry.Reason, automatic: true);
+                        Log.Info(again is null ? Strings.T(cfg.Language, "state_on")
+                            : $"{Strings.T(cfg.Language, "start_failed")}: {lastError ?? again}");
                     }
                 }
             }
@@ -2828,12 +3043,19 @@ if (cmd is "daemon" or "web")
         {
             try
             {
+                var observedGeneration = recovery.Generation;
+                if (exitCheckGeneration != observedGeneration)
+                {
+                    exitCheckGeneration = observedGeneration;
+                    failedExitChecks = 0;
+                    tunnelMissing = 0;
+                }
                 if (proc is not null
                     && Os.PhysicalBindAddress(cfg.TunAddress)?.ToString() is { } bind
                     && boundAddress is not null && bind != boundAddress)
                 {
                     Log.Info($"адрес сети сменился: {boundAddress} -> {bind}, перезапускаю туннель");
-                    await RestartTunnel(null);
+                    await QueueAutomaticRecovery("network-changed", Strings.T(cfg.Language, "reconnect_network_changed"), observedGeneration);
                 }
 
                 tunnelMissing = proc is not null && proc.IsRunning && !NodeProbe.TunnelIsUp(cfg.TunAddress)
@@ -2842,7 +3064,7 @@ if (cmd is "daemon" or "web")
                 {
                     Log.Warn("движок работает, но туннеля в системе нет — перезапускаю туннель");
                     tunnelMissing = 0;
-                    await RestartTunnel(null);
+                    await QueueAutomaticRecovery("tunnel-missing", Strings.T(cfg.Language, "reconnect_tunnel_missing"), observedGeneration);
                 }
 
                 if (Os.IsWindows && Os.IsElevated())
@@ -2852,30 +3074,53 @@ if (cmd is "daemon" or "web")
                 {
                     using (EngineMutex.Acquire(Ceho.Root))
                     {
-                        StopGuard();
-                        await StartGuard();
+                        if (proc is null && guard is not null && !NodeProbe.TunnelIsUp(CehoConfig.GuardTunAddress))
+                        {
+                            StopGuard();
+                            ScheduleGuardRecovery(Strings.T(cfg.Language, "reconnect_tunnel_missing"));
+                            await StartGuard();
+                        }
                     }
                 }
 
                 if (proc is not null)
                 {
                     var port = CehoConfig.Load(Ceho.ConfigPath).MixedPort;
-                    (exitCountry, exitIp) = await Ceho.ProbeExitAsync(port);
-                    probed = true;
-
-                    if (exitIp is null)
+                    var observedExit = await Ceho.ProbeExitAsync(port);
+                    using (EngineMutex.Acquire(Ceho.Root))
                     {
-                        var refreshed = await Ceho.RefreshIfDeadAsync(port);
-                        if (refreshed is not null)
+                        if (!recovery.IsCurrent(observedGeneration) || proc is null) continue;
+                        (exitCountry, exitIp) = observedExit;
+                        probed = true;
+                    }
+
+                    var current = CehoConfig.Load(Ceho.ConfigPath);
+                    // Exit-IP metadata can be unavailable even when traffic works.
+                    // Confirm loss of actual connectivity twice before recovery.
+                    var online = observedExit.Item2 is not null
+                        || await Ceho.CheckSubscriptionLiveAsync(port, current.CheckUrl);
+                    using (EngineMutex.Acquire(Ceho.Root))
+                    {
+                        if (!recovery.IsCurrent(observedGeneration) || proc is null) continue;
+                        if (online)
                         {
-                            Log.Warn(refreshed);
-                            lastError = refreshed;
-                            if (refreshed.Contains("обнов") || refreshed.Contains("updated"))
-                            {
-                                StopTunnel();
-                                await StartTunnel(null);
-                            }
+                            failedExitChecks = 0;
+                            recovery.ObserveHealthy(Environment.TickCount64);
                         }
+                        else
+                        {
+                            failedExitChecks++;
+                            recovery.ObserveUnhealthy();
+                        }
+                    }
+                    if (!online && failedExitChecks >= 2 && current.RotationEnabled)
+                    {
+                        var reason = current.Language == "ru"
+                            ? "Две проверки подряд не подтвердили доступ через туннель."
+                            : "Two consecutive checks could not confirm connectivity through the tunnel.";
+                        // Refresh only inside the admitted engine attempt, using
+                        // current settings. This observer never writes caches/rules.
+                        await QueueAutomaticRecovery("exit-unavailable", reason, observedGeneration);
                     }
                 }
             }

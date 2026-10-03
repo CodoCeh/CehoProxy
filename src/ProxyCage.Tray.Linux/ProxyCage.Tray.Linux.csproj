@@ -17,7 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\assets\cehoproxy.png" LogicalName="cehoproxy.png" />
+    <EmbeddedResource Include="../../assets/tray/cehoproxy-tray-*.png" LogicalName="cehoproxy.tray.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
