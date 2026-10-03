@@ -175,7 +175,7 @@ public static class SettingsTransfer
                 Name = d.Name, DisplayName = app.DisplayName, Folder = d.Folder,
                 VersionAgnostic = d.VersionAgnostic, SingleFile = d.SingleFile,
                 Launch = File.Exists(path) ? path : null,
-                Enabled = app.Enabled, NoInternet = app.NoInternet, AllowedNodes = app.AllowedNodes,
+                Enabled = app.Enabled, NoInternet = app.NoInternet, AllowedNodes = app.AllowedNodes, UnsuitableNodes = app.UnsuitableNodes ?? new(),
             };
         }
         catch { return null; }

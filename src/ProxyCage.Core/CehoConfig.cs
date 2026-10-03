@@ -34,6 +34,12 @@ public sealed class AppEntry
     /// Ключи те же, что у BlockedNodes: «Vless|server|443».
     /// </summary>
     public List<string> AllowedNodes { get; set; } = new();
+
+    /// <summary>
+    /// Ноды, которые пользователь отметил как неподходящие для этой программы
+    /// (например, сервис пишет про неподдерживаемый регион). «Подобрать другую» их пропускает.
+    /// </summary>
+    public List<string> UnsuitableNodes { get; set; } = new();
 }
 
 public sealed class SubscriptionEntry
@@ -199,7 +205,7 @@ public sealed class CehoConfig
 
         if (cfg.Apps is not null)
             foreach (var app in cfg.Apps)
-                if (app is not null) app.AllowedNodes ??= new();
+                if (app is not null) { app.AllowedNodes ??= new(); app.UnsuitableNodes ??= new(); }
         cfg.DirectSites ??= new();
         cfg.SiteCountries ??= new();
         if (!cfg.SitesOnly)

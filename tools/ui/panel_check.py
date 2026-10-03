@@ -239,6 +239,25 @@ def full_scenario(pg, M):
                   card.locator("form.country-form select").input_value() == "")
         else:
             print("страна выхода: у машины меньше двух стран в нодах, проверка пропущена")
+        reload_tab("apps")
+        card = pg.locator("article.app-card").filter(has_text=label_of(paths[0])).first
+        if card.locator("details.node-help").count():
+            card.locator("details.node-help summary").click()
+            with pg.expect_navigation(wait_until="load", timeout=30000):
+                card.locator("details.node-help button", has_text=re.compile("другую ноду|another node")).first.click()
+            reload_tab("apps")
+            card = pg.locator("article.app-card").filter(has_text=label_of(paths[0])).first
+            card.locator("details.node-help summary").click()
+            check("отдельная нода: «Подобрать другую» закрепляет одну ноду и помнит прежнюю",
+                  card.locator("details.node-help").inner_text().count(":") >= 1 and "1" in card.locator("details.node-help").inner_text(),
+                  card.locator("details.node-help").inner_text()[:200])
+            with pg.expect_navigation(wait_until="load", timeout=30000):
+                card.locator("details.node-help button", has_text=re.compile("общий пул|shared pool")).first.click()
+            reload_tab("apps")
+            card = pg.locator("article.app-card").filter(has_text=label_of(paths[0])).first
+            card.locator("details.node-help summary").click()
+            check("отдельная нода: «Вернуть общий пул» сбрасывает выбор",
+                  not card.locator("details.node-help button", has_text=re.compile("общий пул|shared pool")).count())
         if was_running:
             if pg.locator("form.pending").count():
                 check("применение после выбора страны", apply_pending(), body()[:300])

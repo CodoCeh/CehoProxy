@@ -795,6 +795,41 @@ public sealed partial class WebServer
                     return added > 0 ? (S("rec_added", added), false, null) : (S("rec_none"), false, null);
                 }
 
+                case "/apps/node-next":
+                case "/apps/node-tag":
+                case "/apps/node-reset":
+                {
+                    var folder = f.GetValueOrDefault("folder", "");
+                    var app = cfg.Apps.FirstOrDefault(a => AppIdentity.SameConfiguredPath(a.Folder, folder));
+                    if (app is null) return (S("app_tunnel_missing"), true, null);
+                    app.UnsuitableNodes ??= [];
+                    var pool = _pool ?? [];
+                    if (path == "/apps/node-reset")
+                    {
+                        app.AllowedNodes = [];
+                        app.UnsuitableNodes = [];
+                        Save(cfg);
+                        return (S("node_reset_done", app.Label), false, ApplyOrDefer(cfg, restartIfRunning: true));
+                    }
+                    if (pool.Count == 0) return (S("node_pool_empty"), true, null);
+                    if (path == "/apps/node-tag")
+                    {
+                        var marked = NodeChoice.GoogleMarked(pool.Where(n => !cfg.BlockedNodes.Contains(n.Key, StringComparer.OrdinalIgnoreCase))).ToList();
+                        if (marked.Count == 0) return (S("node_tag_none"), true, null);
+                        app.AllowedNodes = marked.Select(n => n.Key).ToList();
+                        Save(cfg);
+                        return (S("node_tag_set", app.Label, marked.Count), false, ApplyOrDefer(cfg, restartIfRunning: true));
+                    }
+                    var next = NodeChoice.Next(app, pool, cfg);
+                    if (next is null) return (S("node_none_left"), true, null);
+                    foreach (var key in app.AllowedNodes)
+                        if (!app.UnsuitableNodes.Contains(key, StringComparer.OrdinalIgnoreCase)) app.UnsuitableNodes.Add(key);
+                    app.AllowedNodes = [next.Key];
+                    Save(cfg);
+                    var label = (next.Remark.Length > 0 ? next.Remark : next.Tag) + (next.CountryName is { Length: > 0 } cn ? " · " + cn : "");
+                    return (S("node_next_set", app.Label, label), false, ApplyOrDefer(cfg, restartIfRunning: true));
+                }
+
                 case "/apps/country":
                 {
                     var folder = f.GetValueOrDefault("folder", "");
@@ -2150,7 +2185,7 @@ public sealed partial class WebServer
         if (app.NoInternet || !app.Enabled || app.AllowedNodes.Count > 0)
             sb.Append("<p class=configured-route>").Append(E(T("Настроено: ", "Configured: ") + AppObservation.ConfiguredRoute(cfg, app))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(result.Advice)).Append("</p>");
-        if (withCountry) RenderCountryPicker(sb, cfg, app);
+        if (withCountry) { RenderCountryPicker(sb, cfg, app); RenderNodeHelp(sb, cfg, app); }
         sb.Append("<details class=route-details><summary>").Append(E(T("Подробности", "Details")))
           .Append("</summary><dl class=kv><dt>").Append(E(T("Путь", "Path"))).Append("</dt><dd class=path>").Append(E(app.Folder)).Append("</dd>");
         if (info is not null)
@@ -2194,6 +2229,33 @@ public sealed partial class WebServer
             sb.Append("<option value=\"").Append(E(g.Key)).Append('"').Append(string.Equals(current, g.Key, StringComparison.OrdinalIgnoreCase) ? " selected" : "")
               .Append('>').Append(E(CountryResolver.Flag(g.Key) + " " + (g.First().CountryName ?? g.Key))).Append("</option>");
         sb.Append("</select></label><noscript><button class=ghost>").Append(E(Strings.T(cfg.Language, "btn_save"))).Append("</button></noscript></form>");
+    }
+
+    private void RenderNodeHelp(StringBuilder sb, CehoConfig cfg, AppEntry app)
+    {
+        if (app.NoInternet || !app.Enabled) return;
+        string S(string key, params object[] args) => Strings.T(cfg.Language, key, args);
+        var pool = _pool;
+        if (pool is null) return;
+        var usable = pool.Where(n => !n.IsMeta && !cfg.BlockedNodes.Contains(n.Key, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (usable.Count < 2) return;
+        var pinned = usable.Where(n => app.AllowedNodes.Contains(n.Key, StringComparer.OrdinalIgnoreCase)).ToList();
+        var marked = NodeChoice.GoogleMarked(usable);
+        void Form(string action, string label, string cls = "ghost") =>
+            sb.Append("<form method=post action=").Append(action).Append("><input type=hidden name=tab value=apps><input type=hidden name=folder value=\"")
+              .Append(E(app.Folder)).Append("\"><button class=").Append(cls).Append('>').Append(E(label)).Append("</button></form>");
+        sb.Append("<details class=node-help><summary>").Append(E(S("node_help_title"))).Append("</summary><p class=hint>")
+          .Append(E(S("node_help_hint"))).Append("</p><p class=hint>")
+          .Append(E(pinned.Count == 0 ? S("node_help_any")
+              : S("node_help_now", string.Join(", ", pinned.Take(3).Select(n => n.Remark.Length > 0 ? n.Remark : n.Tag)) + (pinned.Count > 3 ? " …" : ""))))
+          .Append("</p><div class=node-help-actions>");
+        Form("/apps/node-next", S("node_next_btn"));
+        if (marked.Count > 0) Form("/apps/node-tag", S("node_tag_btn", marked.Count));
+        if (pinned.Count > 0 || app.UnsuitableNodes.Count > 0) Form("/apps/node-reset", S("node_reset_btn"));
+        sb.Append("</div>");
+        if (app.UnsuitableNodes.Count > 0)
+            sb.Append("<p class=hint>").Append(E(S("node_unsuitable", app.UnsuitableNodes.Count))).Append("</p>");
+        sb.Append("</details>");
     }
 
     private void RenderRecommended(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S, string tab)
