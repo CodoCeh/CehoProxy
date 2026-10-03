@@ -114,12 +114,12 @@ with sync_playwright() as p:
     print(f"язык интерфейса: {lang}")
     check("главная открывается", "CehoProxy" in page.title(), page.title())
 
-    # Режим: запоминаем и возвращаем.
-    modes = page.locator("form[action='/mode'] button")
-    start_pro = modes.nth(1).get_attribute("class") or ""
-    was_pro = "on" in start_pro.split() or "active" in start_pro
-    modes.nth(1).click()
-    page.wait_for_load_state()
+    # Режим: запоминаем и возвращаем (один переключатель, кнопка меняет режим на противоположный).
+    toggle = page.locator("form[action='/mode'] button.mode-toggle")
+    was_pro = "pro" != (toggle.get_attribute("value") or "pro")
+    if not was_pro:
+        toggle.click()
+        page.wait_for_load_state()
     tabs_pro = set(re.findall(r'href="/\?tab=([a-z]+)', page.content()))
     check("режим профи показывает вкладки «sites», «exit», «doctor», «access»",
           {"sites", "exit", "doctor", "access"} <= tabs_pro, tabs_pro)
@@ -142,8 +142,30 @@ with sync_playwright() as p:
     check("кнопка темы меняет тему", before != after, (before, after))
     page.evaluate("localStorage.removeItem('ceho-theme')")
 
+    def open_details(pg):
+        pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+
+    # Туннель: каталог, поиск, окно подтверждения открывается и закрывается без добавления.
+    go(page, base + "/?tab=apps")
+    cards = page.locator("form.app-pick button.app-card")
+    n_cards = cards.count()
+    if n_cards:
+        page.fill("#tunnel-search", "zzzzqqqq")
+        check("каталог: поиск без совпадений скрывает карточки",
+              page.locator("form.app-pick button.app-card:visible").count() == 0, page.locator("form.app-pick button.app-card:visible").count())
+        page.fill("#tunnel-search", "")
+        check("каталог: пустой поиск возвращает карточки", page.locator("form.app-pick button.app-card:visible").count() == n_cards)
+        cards.first.click()
+        confirm = page.locator("#tunnel-confirm-add")
+        check("каталог: клик по карточке показывает подтверждение", confirm.first.is_visible())
+        page.locator("#tunnel-cancel").click()
+        check("каталог: «Отмена» закрывает подтверждение", not confirm.first.is_visible())
+    page.locator("#tunnel-choose").click()
+    check("«Выбрать программу» не ломает страницу", page.locator("body").inner_text().strip() != "")
+
     # Пароль: несовпадение.
     go(page, base + "/?tab=access")
+    open_details(page)
     page.fill("form[action='/password'] input[name=password]", "abc12345")
     page.fill("form[action='/password'] input[name=password2]", "different")
     submit(page, lambda: page.locator("form[action='/password'] button").first.click())
@@ -151,23 +173,30 @@ with sync_playwright() as p:
 
     # Перенос: без выбранных частей, и галочки переживают перезагрузку.
     go(page, base + "/?tab=access")
-    boxes = page.locator(".transfer-parts").first.locator("input[type=checkbox]")
+    open_details(page)
+    box_sel = "form[action='/settings/export'] input[type=checkbox]"
+    boxes = page.locator(box_sel)
     n = boxes.count()
     for i in range(n):
         boxes.nth(i).uncheck()
     boxes.nth(0).check()
     page.fill("form[action='/settings/export'] input[name=password]", "filepass1")
     page.fill("form[action='/settings/export'] input[name=password2]", "otherpass")
-    submit(page, lambda: page.locator("form[action='/settings/export'] button[type=submit], form[action='/settings/export'] button").last.click())
-    boxes = page.locator(".transfer-parts").first.locator("input[type=checkbox]")
+    submit(page, lambda: page.locator("form[action='/settings/export'] button").last.click())
+    boxes = page.locator(box_sel)
     state = [boxes.nth(i).is_checked() for i in range(boxes.count())]
     check("перенос: галочки сохранились после ошибки", state == [True] + [False] * (n - 1), state)
 
     # Программы: несуществующий путь.
     go(page, base + "/?tab=apps")
+    open_details(page)
     page.fill("form[action='/apps/add'] input[name=path]", r"C:\net\takogo\net.exe")
-    submit(page, lambda: page.locator("form[action='/apps/add'] button").first.click())
-    check("программа по несуществующему пути отклонена", M["no_path"] in page.content(), page.url)
+    page.locator("form[action='/apps/add'] button").first.click()
+    page.wait_for_selector("#tunnel-confirm-add", state="visible", timeout=10000)
+    check("путь к программе сначала требует подтверждения", True)
+    page.locator("#tunnel-confirm-add").click()
+    page.wait_for_timeout(4000)
+    check("программа по несуществующему пути отклонена", M["no_path"] in page.locator("body").inner_text(), page.url)
 
     # Подписки: не ссылка.
     go(page, base + "/?tab=subs")
@@ -195,7 +224,7 @@ with sync_playwright() as p:
     # Режим обратно.
     if not was_pro:
         go(page, base + "/")
-        page.locator("form[action='/mode'] button").nth(0).click()
+        page.locator("form[action='/mode'] button.mode-toggle").click()
 
     check("в консоли браузера нет ошибок", not [e for e in errors if "favicon" not in e], errors[:3])
     browser.close()
