@@ -5,7 +5,7 @@ using System.Web;
 
 namespace ProxyCage.Core;
 
-public sealed class WebServer
+public sealed partial class WebServer
 {
     private sealed record JobPayload(
         string State, int Percent, string Stage, string? Result, bool IsError,
@@ -167,9 +167,20 @@ public sealed class WebServer
             return;
         }
 
+        if (path == "/apps/tunnel-state" && ctx.Request.HttpMethod == "GET")
+        {
+            await HandleTunnelStateAsync(ctx, cfg);
+            return;
+        }
+
         if (ctx.Request.HttpMethod == "POST")
         {
             var form = await ReadFormAsync(ctx.Request);
+            if (IsAppAddPath(path))
+            {
+                await HandleAppAddPostAsync(ctx, path, form);
+                return;
+            }
             var (msg, isError, jobId) = await ApplyPostAsync(path, form, cfg);
             var tab = form.GetValueOrDefault("tab", "state");
             var logView = form.GetValueOrDefault("view", "");
@@ -197,18 +208,8 @@ public sealed class WebServer
             var q = "?tab=apps";
             if (pick.Path is { Length: > 0 })
             {
-                await _configGate.WaitAsync();
-                (string? msg, bool isError, string? jobId) added;
-                try
-                {
-                    added = Jobs.Active(JobRestore) is { } restoring
-                        ? ("Configuration recovery is running; retry after it finishes.", true, restoring.Id)
-                        : TryAddAppFromPath(CehoConfig.Load(_configPath), pick.Path);
-                }
-                finally { _configGate.Release(); }
-                var (msg, isError, jobId) = added;
-                if (msg is not null) q += $"&m={Uri.EscapeDataString(msg)}&e={(isError ? 1 : 0)}";
-                if (jobId is not null) q += $"&job={Uri.EscapeDataString(jobId)}";
+                // Native selection identifies a path; adding it still needs the user's review.
+                q += "&pick_path=" + Uri.EscapeDataString(AppIdentity.Normalize(pick.Path));
             }
             else if (pick.ErrorKey is { Length: > 0 })
                 q += $"&m={Uri.EscapeDataString(Strings.T(cfg.Language, pick.ErrorKey))}&e=1";
@@ -237,7 +238,7 @@ public sealed class WebServer
         if (current == "exit" && st.Running)
             await RefreshLiveLatencyAsync(cfg);
         await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel,
-            ctx.Request.QueryString["wizard"]));
+            ctx.Request.QueryString["wizard"], ctx.Request.QueryString["pick_path"]));
     }
 
     private static bool IsSameOriginRequest(HttpListenerRequest request)
@@ -495,49 +496,69 @@ public sealed class WebServer
 
     private string? ApplyOrDefer(CehoConfig cfg, string? doneMessage = null, bool restartIfRunning = false)
     {
-        if (!_state().Running) return ApplyJob(cfg, doneMessage, restartIfRunning).Id;
         Interlocked.Increment(ref _pending);
+        if (!_state().Running && Jobs.Active(JobApply) is null && Jobs.Active(JobPower) is null)
+            return ApplyJob(cfg, doneMessage, restartIfRunning).Id;
         return null;
     }
 
-    private Job ApplyJob(CehoConfig cfg, string? doneMessage = null, bool restartIfRunning = false)
-    {
-        Interlocked.Exchange(ref _pending, 0);
-        return StartApplyJob(cfg, doneMessage, restartIfRunning);
-    }
+    private Job ApplyJob(CehoConfig cfg, string? doneMessage = null, bool restartIfRunning = false, bool allowRestart = false) =>
+        StartApplyJob(cfg, doneMessage, restartIfRunning, allowRestart);
 
-    private Job StartApplyJob(CehoConfig cfg, string? doneMessage, bool restartIfRunning) =>
+    private Job StartApplyJob(CehoConfig cfg, string? doneMessage, bool restartIfRunning, bool allowRestart) =>
         Jobs.Start(JobApply, Strings.T(cfg.Language, restartIfRunning && _state().Running ? "job_restart" : "job_apply"), async p =>
         {
             InvalidateAppObservations();
+            var before = ConfigFingerprint();
+            var pendingBefore = Volatile.Read(ref _pending);
             try
             {
-            if (restartIfRunning && _state().Running && OnRestart is not null)
-            {
-                var err = await OnRestart(p);
-                if (err is not null) throw new InvalidOperationException(err);
-                return doneMessage is null
-                    ? Strings.T(cfg.Language, "rules_applied")
-                    : $"{doneMessage} {Strings.T(cfg.Language, "rules_applied")}";
+                // Admission is not enough: a queued startup may have completed since the click.
+                if (_state().Running && !allowRestart)
+                    throw new InvalidOperationException(ConfirmApplyMessage(cfg));
+                string applied;
+                var didApply = false;
+                if (OnApplyWithRestartConfirmation is not null)
+                {
+                    applied = await OnApplyWithRestartConfirmation(allowRestart, p);
+                    didApply = true;
+                }
+                else if (restartIfRunning && _state().Running && OnRestart is not null)
+                {
+                    var err = await OnRestart(p);
+                    if (err is not null) throw new InvalidOperationException(err);
+                    applied = Strings.T(cfg.Language, "rules_applied");
+                    didApply = true;
+                }
+                else
+                {
+                    applied = OnApply is null ? Strings.T(cfg.Language, "rules_rebuilt") : await OnApply(p);
+                    didApply = OnApply is not null;
+                }
+                if (didApply) RecordAppliedRules(before, pendingBefore);
+                return doneMessage is null ? applied : $"{doneMessage} {applied}";
             }
+            catch { ForgetAppliedRules(); throw; }
+            finally { InvalidateAppObservations(); }
+        }, rerunIfBusy: false, operationIdentity: allowRestart ? "confirmed-apply" : "deferred-apply");
 
-            var applied = OnApply is null ? Strings.T(cfg.Language, "rules_rebuilt") : await OnApply(p);
-            return doneMessage is null ? applied : $"{doneMessage} {applied}";
-            } finally { InvalidateAppObservations(); }
-        }, rerunIfBusy: true);
-
-    private Job StopJob(CehoConfig cfg) =>
+    private Job StopJob(CehoConfig cfg, bool removeLastApp = false) =>
         Jobs.Start(JobPower, Strings.T(cfg.Language, "job_stop"), async p =>
         {
             InvalidateAppObservations();
             try
             {
             p.Phase(Strings.T(cfg.Language, "stage_stopping"));
-            var err = OnStop is null ? "no control" : await OnStop();
+            var before = removeLastApp ? ConfigFingerprint() : null;
+            var pendingBefore = Volatile.Read(ref _pending);
+            var err = removeLastApp && OnRemoveLastApp is not null
+                ? await OnRemoveLastApp(cfg)
+                : OnStop is null ? "no control" : await OnStop();
             if (err is not null) throw new InvalidOperationException(err);
+            if (removeLastApp && OnRemoveLastApp is not null) RecordAppliedRules(before, pendingBefore);
             return Strings.T(cfg.Language, "state_off");
             } finally { InvalidateAppObservations(); }
-        }, operationIdentity: "stop");
+        }, operationIdentity: removeLastApp ? "remove-last-app" : "stop");
 
     private async Task<(string? Message, bool IsError, string? JobId)> ApplyPostAsync(
         string path, Dictionary<string, string> f, CehoConfig cfg)
@@ -577,55 +598,9 @@ public sealed class WebServer
                 }
 
                 case "/apps/add":
-                    return TryAddAppFromPath(cfg, f.GetValueOrDefault("path", ""));
-
                 case "/apps/detected":
-                {
-                    var raw = f.GetValueOrDefault("path", "").Trim();
-                    if (raw.Length == 0) return (S("err_need_path"), true, null);
-
-                    var d = AppDetector.Detect(raw, cfg.Language);
-                    if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
-                        return (S("err_already_added"), true, null);
-
-                    var name = f.GetValueOrDefault("name", d.Name);
-                    cfg.Apps.Add(new AppEntry
-                    {
-                        Name = name,
-                        Folder = d.Folder,
-                        VersionAgnostic = d.VersionAgnostic,
-                        SingleFile = d.SingleFile,
-                    });
-                    Save(cfg);
-                    return ($"{S("added_name", name)}. {d.Explanation}", false, ApplyOrDefer(cfg, restartIfRunning: true));
-                }
-
                 case "/apps/installed":
-                {
-                    var raw = f.GetValueOrDefault("path", "").Trim();
-                    if (raw.Length == 0) return (S("apps_installed_choose"), true, null);
-                    var known = InstalledAppCatalog.Detect(cfg.Language).FirstOrDefault(a =>
-                        a.Path.Equals(raw, Os.IsLinux
-                            ? StringComparison.Ordinal
-                            : StringComparison.OrdinalIgnoreCase));
-                    if (known is null) return (S("apps_installed_missing"), true, null);
-
-                    var d = AppDetector.Detect(known.Path, cfg.Language);
-                    if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
-                        return (S("err_already_added"), true, null);
-
-                    cfg.Apps.Add(new AppEntry
-                    {
-                        Name = known.Name,
-                        Folder = d.Folder,
-                        VersionAgnostic = d.VersionAgnostic,
-                        SingleFile = d.SingleFile,
-                        Launch = File.Exists(known.Path) ? known.Path : null,
-                    });
-                    Save(cfg);
-                    return ($"{S("added_name", known.Name)}. {d.Explanation}", false,
-                        ApplyOrDefer(cfg, restartIfRunning: true));
-                }
+                    return AddAppCore(cfg, path, f).Legacy;
 
                 case "/apps/bounce":
                 {
@@ -638,12 +613,17 @@ public sealed class WebServer
 
                 case "/apps/remove":
                 {
+                    // Admission and the save share _configGate. A last-app cleanup must
+                    // not be rejected by a power job after the saved app was already removed.
+                    if (Jobs.Active(JobPower) is { } activePower)
+                        return (Strings.T(cfg.Language, "job_conflict", activePower.Title), true, activePower.Id);
                     var folder = f.GetValueOrDefault("folder", "");
-                    cfg.Apps.RemoveAll(a => a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                    cfg.Apps.RemoveAll(a => AppIdentity.SamePath(a.Folder, folder));
                     Save(cfg);
                     var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
                         ? ApplyOrDefer(cfg, restartIfRunning: true)
-                        : _state().Running && OnStop is not null ? StopJob(cfg).Id : null;
+                        : OnRemoveLastApp is not null || (_state().Running && OnStop is not null)
+                            ? StopJob(cfg, removeLastApp: true).Id : null;
                     return (S("removed"), false, job);
                 }
 
@@ -758,7 +738,7 @@ public sealed class WebServer
                 {
                     var folder = f.GetValueOrDefault("folder", "");
                     var app = cfg.Apps.FirstOrDefault(a =>
-                        a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                        AppIdentity.SamePath(a.Folder, folder));
                     if (app is null) return (S("app_tunnel_missing"), true, null);
                     return CheckApp(cfg, app);
                 }
@@ -767,7 +747,7 @@ public sealed class WebServer
                 {
                     var folder = f.GetValueOrDefault("folder", "");
                     var app = cfg.Apps.FirstOrDefault(a =>
-                        a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                        AppIdentity.SamePath(a.Folder, folder));
                     if (app is null) return (S("app_tunnel_missing"), true, null);
 
                     var displayName = f.GetValueOrDefault("displayName", "").Trim();
@@ -780,7 +760,7 @@ public sealed class WebServer
                 {
                     var folder = f.GetValueOrDefault("folder", "");
                     var app = cfg.Apps.FirstOrDefault(a =>
-                        a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                        AppIdentity.SamePath(a.Folder, folder));
                     if (app is null) return (S("app_tunnel_missing"), true, null);
 
                     var shown = (f.GetValueOrDefault("all", "") ?? "")
@@ -807,7 +787,7 @@ public sealed class WebServer
                 {
                     var folder = f.GetValueOrDefault("folder", "");
                     var app = cfg.Apps.FirstOrDefault(a =>
-                        a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+                        AppIdentity.SamePath(a.Folder, folder));
                     if (app is null) return (S("app_tunnel_missing"), true, null);
 
                     app.NoInternet = f.ContainsKey("enable");
@@ -1193,7 +1173,11 @@ public sealed class WebServer
                 }
 
                 case "/apply":
-                    return (null, false, ApplyJob(cfg, restartIfRunning: true).Id);
+                {
+                    var confirmed = f.GetValueOrDefault("confirm_apply") == "1";
+                    if (_state().Running && !confirmed) return (ConfirmApplyMessage(cfg), true, null);
+                    return (null, false, ApplyJob(cfg, restartIfRunning: true, allowRestart: confirmed).Id);
+                }
 
                 case "/elevate":
                 {
@@ -1212,7 +1196,6 @@ public sealed class WebServer
                 {
                     var job = Jobs.Start(JobPower, S("job_start"), async p =>
                     {
-                        Interlocked.Exchange(ref _pending, 0);
                         InvalidateAppObservations();
                         try
                         {
@@ -1234,7 +1217,6 @@ public sealed class WebServer
                 {
                     var job = Jobs.Start(JobPower, S("job_restart"), async p =>
                     {
-                        Interlocked.Exchange(ref _pending, 0);
                         InvalidateAppObservations();
                         try
                         {
@@ -1312,7 +1294,11 @@ public sealed class WebServer
             }
         });
 
-    public void NotifyEngineStateChanged() => InvalidatePanelData();
+    public void NotifyEngineStateChanged()
+    {
+        ForgetAppliedRules();
+        InvalidatePanelData();
+    }
 
     private void InvalidatePanelData()
     {
@@ -1326,29 +1312,6 @@ public sealed class WebServer
     {
         cfg.Save(_configPath);
         Auth.RestrictConfigAccess(_configPath);
-    }
-
-    private (string? Message, bool IsError, string? JobId) TryAddAppFromPath(CehoConfig cfg, string raw)
-    {
-        string S(string key, params object[] a) => Strings.T(cfg.Language, key, a);
-        raw = raw.Trim();
-        if (raw.Length == 0) return (S("err_need_path"), true, null);
-        if (!File.Exists(raw) && !Directory.Exists(raw))
-            return (S("err_no_such_path", raw), true, null);
-
-        var d = AppDetector.Detect(raw, cfg.Language);
-        if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
-            return (S("err_already_added"), true, null);
-
-        cfg.Apps.Add(new AppEntry
-        {
-            Name = d.Name, Folder = d.Folder,
-            VersionAgnostic = d.VersionAgnostic,
-            SingleFile = d.SingleFile,
-            Launch = File.Exists(raw) ? raw : null,
-        });
-        Save(cfg);
-        return ($"{S("added_name", d.Name)}. {d.Explanation}", false, ApplyOrDefer(cfg, restartIfRunning: true));
     }
 
     private static async Task<Dictionary<string, string>> ReadFormAsync(HttpListenerRequest req)
@@ -1489,7 +1452,7 @@ public sealed class WebServer
         if (job is { Running: true })
             sb.Append("<noscript><meta http-equiv=refresh content=2></noscript>");
 
-        sb.Append("<title>CehoProxy</title><link rel=icon type=\"image/svg+xml\" href=\"").Append(ProductBrand.IconDataUri).Append("\">").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append("</style></head>");
+        sb.Append("<title>CehoProxy</title><link rel=icon type=\"image/svg+xml\" href=\"").Append(ProductBrand.IconDataUri).Append("\">").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append(TunnelUi.Css).Append("</style></head>");
 
         // Пока идёт операция, страница перерисовывается каждые пару секунд.
         // Появление разделов на таких перерисовках только мельтешит, поэтому его выключаем.
@@ -1498,7 +1461,7 @@ public sealed class WebServer
 
     private string RenderPage(
         CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr, Job? job,
-        LogView logView = LogView.All, string? tunnelFolder = null, string? wizard = null)
+        LogView logView = LogView.All, string? tunnelFolder = null, string? wizard = null, string? pickedPath = null)
     {
         string S(string key, params object[] a) => Strings.T(cfg.Language, key, cfg.SimplePanel, a);
         var sb = new StringBuilder();
@@ -1560,7 +1523,7 @@ public sealed class WebServer
 
         switch (tab)
         {
-            case "apps": RenderApps(sb, cfg, S, tunnelFolder); break;
+            case "apps": RenderApps(sb, cfg, S, tunnelFolder, pickedPath); break;
             case "sites": RenderSites(sb, cfg, S); break;
             case "subs": RenderSubs(sb, cfg, S); break;
             case "exit": RenderExit(sb, cfg, S); break;
@@ -1569,7 +1532,7 @@ public sealed class WebServer
             case "log": RenderLog(sb, cfg, logView, S); break;
             case "access": RenderAccess(sb, cfg, S); break;
             case "help": RenderHelp(sb, cfg, S); break;
-            default: RenderState(sb, cfg, st, S, wizard); break;
+            default: RenderState(sb, cfg, st, S, wizard, pickedPath); break;
         }
 
         if (tab == "access" || tab == "help")
@@ -1589,12 +1552,13 @@ public sealed class WebServer
           .Append("<span>").Append(E(S("footer_local"))).Append("</span></span></footer>");
         sb.Append("</div>");
 
-        sb.Append(WebUi.InteractionScript);
+        sb.Append(WebUi.InteractionScript).Append(WebUi.ToastScript);
         if (job is { Running: true }) sb.Append(WebUi.JobScript);
         if (tab == "subs" && cfg.Subscriptions.Count > 0) sb.Append(WebUi.SubModalScript);
         if (tab is "apps" or "state") sb.Append(WebUi.AppFilterScript);
         if (tab == "access") sb.Append(WebUi.TransferPartsScript);
         if (tab is "state" or "doctor" or "apps") sb.Append(WebUi.StateRefreshScript);
+        if (tab is "state" or "apps") sb.Append(TunnelUi.Script);
         sb.Append("</body></html>");
         return sb.ToString();
     }
@@ -1622,17 +1586,19 @@ public sealed class WebServer
     private void RenderPending(StringBuilder sb, string tab, Job? job, Func<string, object[], string> S)
     {
         var count = Volatile.Read(ref _pending);
-        if (count == 0 || job is { Running: true } || !_state().Running) return;
-        sb.Append("<form class=pending method=post action=/apply><input type=hidden name=tab value=\"")
+        sb.Append("<div data-live=pending-actions>");
+        if (count == 0 || job is { Running: true } || !_state().Running) { sb.Append("</div>"); return; }
+        sb.Append("<form class=pending method=post action=/apply><input type=hidden name=confirm_apply value=1><input type=hidden name=tab value=\"")
           .Append(E(tab)).Append("\"><span><b>").Append(E(S("pending_title", new object[] { count })))
           .Append("</b> ").Append(E(S("pending_hint", []))).Append("</span><button>")
           .Append(E(S("btn_apply_pending", []))).Append("</button></form>");
+        sb.Append("<p class=consequences>").Append(E(ConfirmApplyMessage(CehoConfig.Load(_configPath)))).Append("</p>");
         sb.Append("<div class=toast id=toast data-count=").Append(count).Append(" role=status><span>")
-          .Append(E(S("pending_toast", []))).Append("</span><form method=post action=/apply>")
+          .Append(E(S("pending_toast", []))).Append("</span><form method=post action=/apply><input type=hidden name=confirm_apply value=1>")
           .Append("<input type=hidden name=tab value=\"").Append(E(tab)).Append("\"><button>")
           .Append(E(S("btn_apply_pending", []))).Append("</button></form>")
           .Append("<button type=button class=ghost id=toast-x aria-label=\"").Append(E(S("btn_close", [])))
-          .Append("\">×</button></div>").Append(WebUi.ToastScript);
+          .Append("\">×</button></div>").Append(WebUi.ToastScript).Append("</div>");
     }
 
     /// <summary>Полоса и этап: видно, что операция идёт и на чём именно она стоит.</summary>
@@ -1703,7 +1669,7 @@ public sealed class WebServer
     }
 
     private void RenderState(StringBuilder sb, CehoConfig cfg, ControlState st, Func<string, object[], string> S,
-        string? wizard = null)
+        string? wizard = null, string? pickedPath = null)
     {
         string T(string ru, string en) => AppObservation.Text(cfg, ru, en);
         var step = !cfg.Subscriptions.Any(s => s.Enabled) ? 1 : !cfg.Apps.Any(a => a.Enabled) ? 2 : wizard == "3" ? 3 : 0;
@@ -1762,6 +1728,8 @@ public sealed class WebServer
               .Append(E(T("Проверить программы", "Check apps"))).Append("</a></div>");
         }
         sb.Append("</section>");
+        TunnelUi.Render(sb, cfg, PanelInstalledApps(cfg), "state", st.Running, Volatile.Read(ref _pending) > 0, power is not null, pickedPath);
+        RenderLiveApps(sb, cfg, st, guarded, S);
 
         sb.Append("<section>");
         if (power is null && st.Running && st.Probed && st.ExitIp is null)
@@ -1822,7 +1790,6 @@ public sealed class WebServer
         if (step > 0) RenderWizard(sb, cfg, st, step, S);
         if (step is 0 or 3)
         {
-            RenderLiveApps(sb, cfg, st, guarded, S);
             RenderCheckSummary(sb, cfg, S);
         }
 
@@ -2102,7 +2069,7 @@ public sealed class WebServer
         string tab = "state")
     {
         var apps = cfg.Apps.Where(a => a.Enabled).ToList();
-        sb.Append("<section data-live=apps><h2>").Append(E(S("apps_title", []))).Append("</h2>");
+        sb.Append("<section data-live=apps id=added-apps><h2>").Append(E(S("apps_title", []))).Append("</h2>");
         if (apps.Count == 0)
         {
             sb.Append("<p class=lede>").Append(E(S("live_no_apps", []))).Append("</p>")
@@ -2111,15 +2078,16 @@ public sealed class WebServer
         }
 
         var live = st.Running ? AppsLive() : null;
-        IReadOnlyList<InstalledAppCatalog.Entry> catalog;
-        try { catalog = InstalledAppCatalog.Detect(cfg.Language); }
-        catch { catalog = Array.Empty<InstalledAppCatalog.Entry>(); }
+        var catalog = PanelInstalledApps(cfg);
         sb.Append("<ul class=live-apps>");
         foreach (var app in apps)
         {
             var info = live?.FirstOrDefault(l => l.Folder == app.Folder);
             var result = AppObservation.Evaluate(cfg, app, info, st.Running, guarded, _appsLiveAtUtc, DateTime.UtcNow, _appsLiveFailed, AppRulesPending);
-            sb.Append("<li class=\"app-observation ").Append(result.Css).Append("\"><div class=app-identity>");
+            sb.Append("<li id=\"app-").Append(AppIdentity.Id(app)).Append("\" data-app-id=\"").Append(AppIdentity.Id(app))
+              .Append("\" data-app-path=\"").Append(E(AppIdentity.PathOf(app))).Append("\" data-rule-state=\"")
+              .Append(IsAppRuleApplied(app) ? "applied" : AppRulesPending ? "pending" : st.Running ? "unknown" : "inactive")
+              .Append("\" tabindex=-1 class=\"app-observation ").Append(result.Css).Append("\"><div class=app-identity>");
             AppIcon(sb, AppIcons.Source(app, catalog), app.Label);
             sb.Append("<b>").Append(E(app.Label)).Append("</b></div>");
             RenderAppObservation(sb, cfg, app, info, result);
@@ -2532,8 +2500,17 @@ public sealed class WebServer
         sb.Append("</select>");
     }
 
+    internal Func<IReadOnlyList<AiTools.Found>>? DetectedTools { get; set; }
+    internal Func<CehoConfig, IReadOnlyList<string>>? RunningBrowsers { get; set; }
+
+    private IReadOnlyList<InstalledAppCatalog.Entry> PanelInstalledApps(CehoConfig cfg)
+    {
+        try { return InstalledApps?.Invoke(cfg.Language) ?? InstalledAppCatalog.Detect(cfg.Language); }
+        catch { return Array.Empty<InstalledAppCatalog.Entry>(); }
+    }
+
     private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,
-        string? tunnelFolder)
+        string? tunnelFolder, string? pickedPath = null)
     {
         if (!string.IsNullOrEmpty(tunnelFolder))
         {
@@ -2544,7 +2521,7 @@ public sealed class WebServer
         sb.Append("<section><h2>").Append(E(S("apps_title", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("apps_lede", []))).Append("</p>");
 
-        var liveBrowsers = IsolatedAppBounce.RunningBrowserLabels(cfg);
+        var liveBrowsers = RunningBrowsers?.Invoke(cfg) ?? IsolatedAppBounce.RunningBrowserLabels(cfg);
         if (_state().Running && liveBrowsers.Count > 0)
         {
             sb.Append("<div class=\"flash warn\"><b>").Append(E(S("apps_browser_live_title", [])))
@@ -2553,23 +2530,25 @@ public sealed class WebServer
               .Append("<button>").Append(E(S("btn_bounce_network", []))).Append("</button></form></div>");
         }
 
-        IReadOnlyList<InstalledAppCatalog.Entry> installed;
-        try { installed = InstalledAppCatalog.Detect(cfg.Language, fresh: true); }
-        catch { installed = Array.Empty<InstalledAppCatalog.Entry>(); }
-
+        var installed = PanelInstalledApps(cfg);
         var state = _state();
+        TunnelUi.Render(sb, cfg, installed, "apps", state.Running, Volatile.Read(ref _pending) > 0, AppRulesPending && (Jobs.Active(JobApply) is not null || Jobs.Active(JobPower) is not null || Jobs.Active(JobRestore) is not null), pickedPath);
+        sb.Append("<div data-live=app-cards id=added-apps><h2 class=tunnel-added-title>").Append(E(AppObservation.Text(cfg, "Добавленные программы", "Added apps"))).Append("</h2>");
         var live = state.Running ? AppsLive() : null;
         var guarded = LeakGuard.IsActive(Root);
         if (cfg.Apps.Count == 0)
             sb.Append("<p class=empty>").Append(E(S("apps_empty", []))).Append("</p>");
         else
         {
-            sb.Append("<div data-live=app-cards><div class=app-cards>");
+            sb.Append("<div class=app-cards>");
             foreach (var a in cfg.Apps)
             {
                 var info = live?.FirstOrDefault(l => l.Folder == a.Folder);
                 var observation = AppObservation.Evaluate(cfg, a, info, state.Running, guarded, _appsLiveAtUtc, DateTime.UtcNow, _appsLiveFailed, AppRulesPending);
-                sb.Append("<article class=\"app-card ").Append(observation.Css).Append("\"><div class=app-identity>");
+                sb.Append("<article id=\"app-").Append(AppIdentity.Id(a)).Append("\" data-app-id=\"").Append(AppIdentity.Id(a))
+                  .Append("\" data-app-path=\"").Append(E(AppIdentity.PathOf(a))).Append("\" data-rule-state=\"")
+                  .Append(IsAppRuleApplied(a) ? "applied" : AppRulesPending ? "pending" : state.Running ? "unknown" : "inactive")
+                  .Append("\" tabindex=-1 class=\"app-card ").Append(observation.Css).Append("\"><div class=app-identity>");
                 AppIcon(sb, AppIcons.Source(a, installed), a.Label);
                 sb.Append("<h3 title=\"").Append(E(a.Folder)).Append("\">").Append(E(a.Label)).Append("</h3></div>");
                 if (a.VersionAgnostic) sb.Append("<span class=tag>Microsoft Store</span>");
@@ -2599,30 +2578,7 @@ public sealed class WebServer
                 "Selected apps use the configured VPN rules. Other apps may connect directly."))).Append("</p></div>");
         }
 
-        sb.Append("<div class=app-entry-grid><div class=app-entry><h3>")
-          .Append(E(S("apps_installed_title", [])))
-          .Append(" <a class=\"ghost small\" href=\"/?tab=apps\">").Append(E(S("apps_rescan", []))).Append("</a></h3>")
-          .Append("<p class=hint>").Append(E(S("apps_installed_hint", []))).Append("</p>");
-        if (installed.Count == 0)
-            sb.Append("<p class=empty>").Append(E(S("apps_installed_none", []))).Append("</p>");
-        else
-            RenderInstalledPicker(sb, S, installed.Where(e => !AppCoverage.IsEntryCovered(cfg, e.Path)).ToList(), "apps", null);
-        sb.Append("</div><div class=app-entry><h3>").Append(E(S("apps_manual_title", []))).Append("</h3>");
-
-        var placeholder = S(Os.Kind switch
-        {
-            OsKind.Windows => "apps_placeholder_win",
-            OsKind.Mac => "apps_placeholder_mac",
-            _ => "apps_placeholder_linux",
-        }, []);
-        sb.Append("<form class=\"row app-add\" method=post action=/apps/add><input type=hidden name=tab value=apps>")
-          .Append("<label class=sr-only for=manual-app-path>").Append(E(S("apps_manual_title", []))).Append("</label>");
-        sb.Append("<input id=manual-app-path type=text name=path placeholder=\"").Append(E(placeholder)).Append("\">");
-        sb.Append("<a class=\"ghost pick\" href=\"/apps/pick\">").Append(E(S("btn_pick_app", []))).Append("</a>");
-        sb.Append("<button>").Append(E(S("btn_add", []))).Append("</button></form>");
-        sb.Append("<p class=hint>").Append(E(S("apps_hint", []))).Append(' ')
-          .Append(E(Os.IsMac ? S("apps_hint_mac", []) : S("apps_hint_sysdir", []))).Append("</p>");
-        sb.Append("</div></div><p class=hint>").Append(E(S("rename_app_hint", []))).Append("</p>");
+        if (cfg.Apps.Count == 0) sb.Append("</div>");
 
         RenderDetected(sb, cfg, S);
         sb.Append("</section>");
@@ -2632,7 +2588,7 @@ public sealed class WebServer
         string folder)
     {
         var app = cfg.Apps.FirstOrDefault(a =>
-            a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase));
+            AppIdentity.SamePath(a.Folder, folder));
         if (app is null)
         {
             sb.Append("<section><h2>").Append(E(S("apps_title", []))).Append("</h2>");
@@ -2741,7 +2697,7 @@ public sealed class WebServer
     private void RenderDetected(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
         IReadOnlyList<AiTools.Found> found;
-        try { found = AiTools.Detect(); }
+        try { found = DetectedTools?.Invoke() ?? AiTools.Detect(); }
         catch { return; }
 
         sb.Append("</section><section><h2>").Append(E(S("ai_title", []))).Append("</h2>");

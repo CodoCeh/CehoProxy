@@ -475,9 +475,11 @@ public static class Ceho
         finally { CountryRefreshGate.Release(); }
     }
 
-    public static async Task<string> ApplyAsync(IStageReport? report = null)
+    public static Task<string> ApplyAsync(IStageReport? report = null) =>
+        ApplyConfigurationAsync(CehoConfig.Load(ConfigPath), report);
+
+    internal static async Task<string> ApplyConfigurationAsync(CehoConfig cfg, IStageReport? report = null)
     {
-        var cfg = CehoConfig.Load(ConfigPath);
         cfg.Validate();
         if (Os.IsWindows && Os.IsElevated()) LeakGuard.Apply(cfg, Root);
         var moved = DaemonControl.IsRunning(Root) ? null : Preflight.SaveProxyPortIfBusy(cfg, ConfigPath);

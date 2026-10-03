@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { expect } from '@playwright/test';
+import { runTunnelBrowserCases } from './tunnel-browser-cases.mjs';
 import { artifacts, languages, loadFixtures, launch, routeFixtures, fixtureUrl, fixtureHtml, jobPayload, injectHungBody, pauseClock } from './fixtures.mjs';
 
 await fs.mkdir(artifacts, { recursive: true });
@@ -35,6 +36,7 @@ async function run(name, language, body) {
 try {
   browser = await launch();
   for (const language of languages) {
+    await runTunnelBrowserCases(run, language);
     await run('mode-theme-and-mobile-layout', language, async ({ page, install, open }) => {
       await install(); await open();
       await expect(page.locator('form.mode button[role=switch]')).toHaveCount(1);

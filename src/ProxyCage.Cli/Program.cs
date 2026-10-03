@@ -404,30 +404,12 @@ switch (cmd)
             try { Console.WriteLine(await Ceho.ApplyAsync()); } catch (Exception ex) { Console.WriteLine(ex.Message); }
             return 0;
         }
-        var raw = args[1];
-        if (!File.Exists(raw) && !Directory.Exists(raw))
-        {
-            Console.Error.WriteLine(Cli.S(cfg0, "err_no_such_path", raw));
-            return 1;
-        }
-
-        AppDetector.Detection d;
-        try { d = AppDetector.Detect(raw, cfg0.Language); }
-        catch (InvalidOperationException ex) { Console.Error.WriteLine(ex.Message); return 1; }
-
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
-        if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
+        if (!Assistant.TryAddApp(cfg, args[1], out var d, out var error))
         {
-            Console.Error.WriteLine(Cli.S(cfg, "err_already_added"));
+            Console.Error.WriteLine(error);
             return 1;
         }
-        cfg.Apps.Add(new AppEntry
-        {
-            Name = d.Name, Folder = d.Folder,
-            VersionAgnostic = d.VersionAgnostic,
-            SingleFile = d.SingleFile,
-            Launch = File.Exists(raw) ? raw : null,
-        });
         cfg.Save(Ceho.ConfigPath);
         Console.WriteLine(Cli.S(cfg, "added_name", d.Name));
         Console.WriteLine((d.SingleFile ? Cli.S(cfg, "col_file") : Cli.S(cfg, "col_folder")) + ": " + d.Folder);
@@ -2005,6 +1987,7 @@ if (cmd is "daemon" or "web")
 
     SingBoxProcess? proc = null;
     CehoConfig? activeEngineConfig = null;
+    var admittedConfiguration = new AdmittedConfiguration(cfg);
     SingBoxProcess? guard = null;
     var guardConfigPath = TunCleanup.GuardConfigPath(Ceho.Root);
     var shuttingDown = false;
@@ -2013,6 +1996,7 @@ if (cmd is "daemon" or "web")
     var recovery = new RecoveryPolicy();
     var guardRecovery = new RecoveryPolicy();
     Action runtimeChanged = () => { };
+    Action<CehoConfig> rulesApplied = _ => { };
     string? exitCountry = null, exitIp = null;
     var probed = false;
     string? boundAddress = null;
@@ -2038,7 +2022,7 @@ if (cmd is "daemon" or "web")
             return;
         }
 
-        var c = CehoConfig.Load(Ceho.ConfigPath);
+        var c = admittedConfiguration.Snapshot();
         if (!c.FailClosed || !c.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)))
         {
             LeakGuard.SetTunnelGuard(Ceho.Root, false);
@@ -2130,7 +2114,7 @@ if (cmd is "daemon" or "web")
     }
 
     async Task<string?> StartTunnelLocked(IStageReport? report,
-        string reasonCode = "manual-start", string? triggerReason = null, bool automatic = false)
+        string reasonCode = "manual-start", string? triggerReason = null, bool automatic = false, bool preserveAdmitted = false)
     {
         if (shuttingDown) return Strings.T(cfg.Language, "stage_stopping");
         if (automatic && (!wanted || !recovery.Wanted)) return null;
@@ -2149,12 +2133,14 @@ if (cmd is "daemon" or "web")
             triggerReason ?? Strings.T(cfg.Language, "reconnect_manual_start"), report);
         report = connection;
         var succeeded = false;
+        CehoConfig? appliedRulesConfig = null;
         report?.StartupStep(1);
         DaemonControl.MarkStarting(Ceho.Root, recovering: lastError is not null);
         try
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            var c = CehoConfig.Load(Ceho.ConfigPath);
+            var keepAdmitted = automatic || preserveAdmitted;
+            var c = admittedConfiguration.ForStart(keepAdmitted, () => CehoConfig.Load(Ceho.ConfigPath));
             // Recheck every attempt, including starts requested through the panel.
             // Never download subscriptions or spawn probes with known blockers.
             c.Validate();
@@ -2173,7 +2159,8 @@ if (cmd is "daemon" or "web")
             if (leftover > 0) await Task.Delay(500);
             if (Preflight.TryMoveProxyPortIfBusy(c, out var busyPort, out var freePort))
             {
-                c.Save(Ceho.ConfigPath);
+                // An automatic retry must never overwrite newer deferred settings.
+                if (!keepAdmitted) c.Save(Ceho.ConfigPath);
                 Log.Info(Strings.T(c.Language, "proxy_port_moved", busyPort, freePort));
             }
             if (c.MixedPort == c.ClashApiPort || Preflight.TcpPortTaken(c.MixedPort) == true
@@ -2181,7 +2168,8 @@ if (cmd is "daemon" or "web")
                 throw new InvalidOperationException(c.Language == "ru"
                     ? "Порт прокси или API занят. Проверьте настройки сети; другие процессы не остановлены."
                     : "The proxy or API port is occupied. Check network settings; other processes were not stopped.");
-            // Keep the configured leak protection while subscriptions/probes wait.
+            // Only this admitted start may change network protection. Observers use its snapshot.
+            admittedConfiguration.Admit(c);
             LeakGuard.Apply(c, Ceho.Root);
 
             var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: reasonCode != "exit-unavailable", report);
@@ -2201,9 +2189,10 @@ if (cmd is "daemon" or "web")
             }
 
             report?.Phase(Strings.T(c.Language, "stage_writing_rules"));
-            // Список программ мог измениться, пока качались подписки.
-            c = CehoConfig.Load(Ceho.ConfigPath);
-            // A configuration edited while subscriptions loaded is validated again.
+            // Freeze the admitted routing input across subscription waits. A later saved
+            // edit is still pending, including during service-start without a panel job.
+            c = admittedConfiguration.Snapshot();
+            // Revalidate the admitted snapshot before generating its rules.
             c.Validate();
             configurationError = StartupPreflight.ConfigurationError(c);
             if (configurationError is not null) throw new InvalidOperationException(configurationError);
@@ -2212,6 +2201,7 @@ if (cmd is "daemon" or "web")
             VerifiedConfigStore.Candidate? candidate = null;
             try { candidate = VerifiedConfigStore.Capture(Ceho.Root, c, generatedRules); }
             catch { Log.Warn("Не удалось подготовить проверенную копию настроек."); }
+            admittedConfiguration.Admit(c);
             LeakGuard.Apply(c, Ceho.Root);
             Log.Info($"этап: подписки и правила {watch.Elapsed.TotalSeconds:F1} с");
 
@@ -2265,6 +2255,7 @@ if (cmd is "daemon" or "web")
                 Log.Info(
                     $"сброшены старые соединения {string.Join(", ", bounced.Labels)}: " +
                     $"процессы {bounced.Killed}, TCP {bounced.Connections}");
+            appliedRulesConfig = c;
             succeeded = true;
             return null;
         }
@@ -2281,6 +2272,7 @@ if (cmd is "daemon" or "web")
                 ScheduleRecoveryLocked("retry-after-failure", lastError ?? Strings.T(cfg.Language, "start_failed"));
             else DaemonControl.ClearStarting(Ceho.Root);
             runtimeChanged();
+            if (succeeded && appliedRulesConfig is not null) rulesApplied(appliedRulesConfig);
             connection.Complete(succeeded, succeeded
                 ? Strings.T(cfg.Language, "state_on")
                 : lastError ?? Strings.T(cfg.Language, "start_failed"));
@@ -2448,6 +2440,7 @@ if (cmd is "daemon" or "web")
         () => new WebServer.ControlState(proc is not null, exitCountry, exitIp, lastError, probed),
         Log.Info);
     runtimeChanged = web.NotifyEngineStateChanged;
+    rulesApplied = web.NotifyRulesApplied;
 
     async Task<string?> RestartTunnel(IStageReport? report,
         string reasonCode = "manual-restart", string? reason = null, bool onlyIfWanted = false)
@@ -2491,6 +2484,21 @@ if (cmd is "daemon" or "web")
         DaemonControl.ClearStarting(Ceho.Root);
         return Task.FromResult(StopTunnelLocked());
     };
+    web.OnRemoveLastApp = removed =>
+    {
+        using var gate = EngineMutex.Acquire(Ceho.Root);
+        wanted = false;
+        recovery.StopByUser();
+        guardRecovery.StopByUser();
+        admittedConfiguration.Admit(removed);
+        if (proc is not null) StopTunnelLocked();
+        StopGuard();
+        var guardError = LeakGuard.Apply(removed, Ceho.Root);
+        lastError = guardError;
+        runtimeChanged();
+        DaemonControl.ClearStarting(Ceho.Root);
+        return Task.FromResult(guardError);
+    };
     web.OnRestart = report => RestartTunnel(report);
     web.OnRestoreVerified = async (acknowledgeSecurity, expectedVerifiedUtc, report) =>
     {
@@ -2501,6 +2509,7 @@ if (cmd is "daemon" or "web")
         report.Phase(Strings.T(cfg.Language, "stage_restore_verified"));
         VerifiedConfigStore.Restore(Ceho.Root, acknowledgeSecurity, expectedVerifiedUtc);
         var restored = CehoConfig.Load(Ceho.ConfigPath);
+        admittedConfiguration.Admit(restored);
         if (!wasRunning)
         {
             // Refresh only an already-active fail-closed guard; restoring settings
@@ -2549,7 +2558,8 @@ if (cmd is "daemon" or "web")
             throw;
         }
     };
-    web.OnApply = report => TunnelRuleApply.RunAsync(
+    web.OnApply = report => ApplyRules(true, report);
+    Task<string> ApplyRules(bool allowRestart, IStageReport report) => TunnelRuleApply.RunAsync(
         report,
         () =>
         {
@@ -2563,8 +2573,17 @@ if (cmd is "daemon" or "web")
             StopTunnelLocked();
             return await StartTunnelLocked(p, "rules-changed", Strings.T(cfg.Language, "reconnect_rules"));
         },
-        Ceho.ApplyAsync,
-        Strings.T(cfg.Language, "rules_applied"));
+        async p =>
+        {
+            var admitted = CehoConfig.Load(Ceho.ConfigPath);
+            admittedConfiguration.Admit(admitted);
+            var result = await Ceho.ApplyConfigurationAsync(admitted, p);
+            // Off-tunnel apply is explicit too. Refresh an existing Unix fail-closed guard.
+            if (guard is not null) { StopGuard(); await StartGuard(); }
+            return result;
+        },
+        Strings.T(cfg.Language, "rules_applied"), allowRestart);
+    web.OnApplyWithRestartConfirmation = ApplyRules;
     web.WrappedNames = Cli.Wrapped;
     web.OnCheckSubs = async report =>
     {
@@ -2594,10 +2613,10 @@ if (cmd is "daemon" or "web")
                 var wasRunning = proc is not null;
                 if (wasRunning) StopTunnelLocked();
                 Installer.SwapEngine(Ceho.Root, fresh);
-                if (wasRunning && await StartTunnelLocked(report, "engine-update", S("reconnect_engine_update")) is { } error)
+                if (wasRunning && await StartTunnelLocked(report, "engine-update", S("reconnect_engine_update"), preserveAdmitted: true) is { } error)
                 {
                     Installer.RestoreEngine(Ceho.Root);
-                    await StartTunnelLocked(report, "engine-rollback", S("reconnect_engine_rollback"));
+                    await StartTunnelLocked(report, "engine-rollback", S("reconnect_engine_rollback"), preserveAdmitted: true);
                     throw new InvalidOperationException(S("engine_rolled_back", error));
                 }
             }
@@ -3068,7 +3087,12 @@ if (cmd is "daemon" or "web")
                 }
 
                 if (Os.IsWindows && Os.IsElevated())
-                    LeakGuard.Apply(CehoConfig.Load(Ceho.ConfigPath), Ceho.Root);
+                {
+                    // Snapshot selection and reconciliation share the apply/start queue,
+                    // so an older observer cannot reinstall superseded guard rules.
+                    using var gate = EngineMutex.Acquire(Ceho.Root);
+                    LeakGuard.Apply(admittedConfiguration.Snapshot(), Ceho.Root);
+                }
 
                 if (proc is null && guard is not null && !NodeProbe.TunnelIsUp(CehoConfig.GuardTunAddress))
                 {
@@ -3085,7 +3109,8 @@ if (cmd is "daemon" or "web")
 
                 if (proc is not null)
                 {
-                    var port = CehoConfig.Load(Ceho.ConfigPath).MixedPort;
+                    var current = activeEngineConfig ?? admittedConfiguration.Snapshot();
+                    var port = current.MixedPort;
                     var observedExit = await Ceho.ProbeExitAsync(port);
                     using (EngineMutex.Acquire(Ceho.Root))
                     {
@@ -3094,7 +3119,6 @@ if (cmd is "daemon" or "web")
                         probed = true;
                     }
 
-                    var current = CehoConfig.Load(Ceho.ConfigPath);
                     // Exit-IP metadata can be unavailable even when traffic works.
                     // Confirm loss of actual connectivity twice before recovery.
                     var online = observedExit.Item2 is not null

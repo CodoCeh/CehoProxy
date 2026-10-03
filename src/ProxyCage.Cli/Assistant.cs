@@ -303,34 +303,73 @@ public static class Assistant
 
     public static bool AddApp(CehoConfig cfg, string path)
     {
-        if (!File.Exists(path) && !Directory.Exists(path))
+        if (!TryAddApp(cfg, path, out var detected, out var error))
         {
-            Console.WriteLine("  " + Cli.S(cfg, "err_no_such_path", path));
+            Console.WriteLine("  " + error);
             return false;
         }
 
-        AppDetector.Detection d;
-        try { d = AppDetector.Detect(path, cfg.Language); }
-        catch (InvalidOperationException ex) { Console.WriteLine("  " + ex.Message); return false; }
+        Console.WriteLine("  " + Cli.S(cfg, "added_name", detected.Name));
+        Console.WriteLine("  " + detected.Folder);
+        if (AppDetector.ToRegexes(cfg.Apps[^1]).Count > 1)
+            Console.WriteLine("  " + Cli.S(cfg, "added_companion_paths"));
+        return true;
+    }
 
-        if (cfg.Apps.Any(a => a.Folder.Equals(d.Folder, StringComparison.OrdinalIgnoreCase)))
+    // Shared by direct add-app, interactive selection, and setup. Rejected additions
+    // do not change the configuration, so callers can skip persistence and rebuilding.
+    public static bool TryAddApp(CehoConfig cfg, string path,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AppDetector.Detection? detected,
+        out string? error)
+    {
+        detected = null;
+        error = null;
+        path = path.Trim().Trim('"');
+        if (!File.Exists(path) && !Directory.Exists(path))
         {
-            Console.WriteLine("  " + Cli.S(cfg, "err_already_added"));
+            error = Cli.S(cfg, "err_no_such_path", path);
+            return false;
+        }
+
+        var selected = AppIdentity.Normalize(path);
+        if (AppIdentity.Find(cfg.Apps, selected) is not null)
+        {
+            error = Cli.S(cfg, "err_already_added");
+            return false;
+        }
+
+        // A broad enabled rule can already cover this path without making it the
+        // same selected application. Keep that result distinct from an exact match.
+        string Covered(AppEntry app) => cfg.Language == "ru"
+            ? $"Путь уже покрывается правилом «{app.Label}». Новая программа не добавлена."
+            : $"This path is already covered by the rule for {app.Label}. No app was added.";
+        if (AppCoverage.FindCoveringApp(cfg.Apps, selected) is { } covering)
+        {
+            error = Covered(covering);
+            return false;
+        }
+
+        try { detected = AppDetector.Detect(selected, cfg.Language); }
+        catch (InvalidOperationException ex) { error = ex.Message; return false; }
+
+        if (AppCoverage.FindEquivalentRule(cfg.Apps, detected) is { } sameRule)
+        {
+            error = sameRule.Enabled ? Covered(sameRule)
+                : cfg.Language == "ru"
+                    ? $"Сохранённое правило «{sameRule.Label}» уже существует, но выключено. Новая программа не добавлена."
+                    : $"A saved rule for {sameRule.Label} already exists but is disabled. No app was added.";
             return false;
         }
 
         cfg.Apps.Add(new AppEntry
         {
-            Name = d.Name,
-            Folder = d.Folder,
-            VersionAgnostic = d.VersionAgnostic,
-            SingleFile = d.SingleFile,
-            Launch = File.Exists(path) ? path : null,
+            Name = detected.Name,
+            Folder = detected.Folder,
+            IdentityPath = selected,
+            VersionAgnostic = detected.VersionAgnostic,
+            SingleFile = detected.SingleFile,
+            Launch = File.Exists(selected) ? selected : null,
         });
-        Console.WriteLine("  " + Cli.S(cfg, "added_name", d.Name));
-        Console.WriteLine("  " + d.Folder);
-        if (AppDetector.ToRegexes(cfg.Apps[^1]).Count > 1)
-            Console.WriteLine("  " + Cli.S(cfg, "added_companion_paths"));
         return true;
     }
 

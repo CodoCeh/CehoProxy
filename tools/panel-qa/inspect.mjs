@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { expect } from '@playwright/test';
-import { artifacts, languages, states, loadFixtures, launch, routeFixtures, fixtureUrl, pauseClock } from './fixtures.mjs';
+import { artifacts, languages, states, loadFixtures, launch, routeFixtures, fixtureUrl, pauseClock, tunnelPayload } from './fixtures.mjs';
 
 const out = process.env.CEHO_SCREENSHOTS || path.join(artifacts, 'screenshots');
 await fs.mkdir(out, { recursive: true });
@@ -19,8 +19,15 @@ try {
         page.setDefaultTimeout(5000);
         const pageErrors = [];
         page.on('pageerror', error => pageErrors.push(String(error)));
-        const routes = await routeFixtures(context, { language, jobState: state.startsWith('startup-') ? state : 'job' });
+        const routes = await routeFixtures(context, { language, jobState: state.startsWith('startup-') ? state : 'job', tunnelState: state.startsWith('tunnel-') ? state : 'tunnel-ready' });
         try {
+          if (['tunnel-pending', 'tunnel-applied', 'tunnel-observed'].includes(state)) {
+            const app = tunnelPayload(state, language).apps.find(app => /[\\/]notes\.exe$/.test(app.path));
+            if (!app) throw new Error('Synthetic Notes identity missing');
+            await context.addInitScript(app => {
+              sessionStorage.setItem('ceho-tunnel-pending:' + location.origin, JSON.stringify({ id: app.id, path: app.path, name: 'Fixture Notes', at: Date.now() }));
+            }, app);
+          }
           await pauseClock(page);
           await page.goto(fixtureUrl(state, language));
           if (state.startsWith('startup-')) {
@@ -30,6 +37,12 @@ try {
             if (state === 'startup-delayed') await expect(page.locator('#job-status')).toHaveClass(/warn/);
           }
 
+          if (state === 'tunnel-confirmation') {
+            await page.locator('[data-tunnel-source][data-label="Fixture Notes"]').click();
+            await expect(page.locator('#tunnel-confirm')).toBeVisible();
+          }
+          if (state === 'tunnel-pending') await expect(page.locator('#tunnel-stage')).toHaveAttribute('data-phase', 'pending');
+          if (['tunnel-applied', 'tunnel-observed'].includes(state)) await expect(page.locator('#tunnel-stage')).toHaveAttribute('data-phase', 'applied');
           if (state === 'settings') await page.locator('#settings > summary').click();
           await expect(page.locator('html')).toHaveAttribute('lang', language);
           await expect(page.locator('.fixture-banner')).toBeVisible();

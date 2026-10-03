@@ -103,3 +103,6 @@ test('pagehide aborts an in-flight body and no late response changes the page',a
  await h.settle();await h.advance(20000);
  assert.equal(calls,1);assert.doesNotMatch(h.w.document.querySelector('#job-status').textContent,/Late stale failure/);h.close();
 });
+
+// Full RenderPage tunnel fixtures and production client-script regression cases.
+import "./tunnel-client-cases.mjs";

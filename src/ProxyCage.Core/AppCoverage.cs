@@ -7,6 +7,22 @@ namespace ProxyCage.Core;
 /// </summary>
 public static class AppCoverage
 {
+    /// <summary>Returns the existing enabled routing rule, without claiming exact app identity.</summary>
+    public static AppEntry? FindCoveringApp(IEnumerable<AppEntry> apps, string path)
+    {
+        var full = AppIdentity.Normalize(path);
+        var probes = Directory.Exists(full)
+            ? new[] { full, full.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar + "__ceho_coverage_probe__" }
+            : new[] { full };
+        return apps.FirstOrDefault(app => app.Enabled && !string.IsNullOrWhiteSpace(app.Folder)
+            && AppDetector.ToRegexes(app).Any(rx => probes.Any(probe =>
+                Regex.IsMatch(probe, rx, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))));
+    }
+
+    public static AppEntry? FindEquivalentRule(IEnumerable<AppEntry> apps, AppDetector.Detection detected) =>
+        apps.FirstOrDefault(app => app.SingleFile == detected.SingleFile
+            && AppIdentity.SamePath(app.Folder, detected.Folder));
+
     public static bool IsPathCovered(CehoConfig cfg, string processPath)
     {
         if (string.IsNullOrWhiteSpace(processPath)) return false;
@@ -14,7 +30,7 @@ public static class AppCoverage
         foreach (var app in cfg.Apps.Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)))
         foreach (var rx in AppDetector.ToRegexes(app))
         {
-            if (Regex.IsMatch(processPath, rx, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            if (Regex.IsMatch(processPath, rx, RegexOptions.CultureInvariant))
                 return true;
         }
         return false;
@@ -34,9 +50,9 @@ public static class AppCoverage
         }
 
         return cfg.Apps.Any(a => a.Enabled && (
-            a.Folder.Equals(tool.Path, StringComparison.OrdinalIgnoreCase) ||
+            AppIdentity.SamePath(a.Folder, tool.Path) ||
             tool.Path.StartsWith(a.Folder.TrimEnd('\\', '/') + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase)));
+                AppIdentity.Comparison())));
     }
 
     private static IEnumerable<string> SyntheticProbes(AiTools.Found tool)

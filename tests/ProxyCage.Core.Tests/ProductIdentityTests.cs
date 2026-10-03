@@ -73,7 +73,7 @@ public sealed class ProductIdentityTests
             var state = new WebServer.ControlState(false, null, null, null, false);
             var web = new WebServer(path, () => state, _ => { });
             var html = (string)typeof(WebServer).GetMethod("RenderPage", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .Invoke(web, new object?[] { cfg, state, "help", null, false, null, LogView.All, null, null })!;
+                .Invoke(web, new object?[] { cfg, state, "help", null, false, null, LogView.All, null, null, null })!;
             var footer = html[html.IndexOf("<footer>", StringComparison.Ordinal)..html.IndexOf("</footer>", StringComparison.Ordinal)];
             Assert.Contains("href=\"https://codoceh.ru\"", footer);
             Assert.Contains(System.Net.WebUtility.HtmlEncode("Выковано в КодоЦех"), footer);

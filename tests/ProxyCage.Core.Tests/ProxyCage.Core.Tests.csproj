@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ProxyCage.Core\ProxyCage.Core.csproj" />
+    <ProjectReference Include="..\..\src\ProxyCage.Cli\ProxyCage.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>

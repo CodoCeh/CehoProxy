@@ -89,7 +89,7 @@ public sealed class AppIconTests
             var installed = InstalledAppCatalog.Detect();
             if (installed.Count > 0)
             {
-                Assert.Contains("class=app-grid", html);
+                Assert.Contains("class=\"app-grid tunnel-catalog-grid\"", html);
                 Assert.Contains("class=app-card", html);
                 Assert.DoesNotContain("<option value=\"" + WebUtility.HtmlEncode(installed[0].Path), html);
                 Assert.Contains("/icon?path=", html);

@@ -7,8 +7,9 @@ export const root = process.env.CEHO_RENDER_DIR || '/tmp/cehoproxy-fixtures';
 export const artifacts = process.env.CEHO_ARTIFACTS || 'artifacts';
 export const origin = 'http://fixture.local';
 export const languages = ['en', 'ru'];
-export const states = ['state', 'idle', 'apps', 'wizard', 'subs', 'settings', 'doctor', 'help', 'leak', 'startup-progress', 'startup-delayed', 'startup-error'];
-const html = new Map(), jobs = new Map();
+export const tunnelStates = ['tunnel-ready', 'tunnel-confirmation', 'tunnel-pending', 'tunnel-applied', 'tunnel-observed'];
+export const states = ['state', 'idle', 'apps', 'wizard', 'subs', 'settings', 'doctor', 'help', 'leak', 'startup-progress', 'startup-delayed', 'startup-error', ...tunnelStates];
+const html = new Map(), jobs = new Map(), tunnels = new Map();
 
 export async function loadFixtures() {
   const files = [];
@@ -26,6 +27,14 @@ export async function loadFixtures() {
       if (data.id !== 'fixture-job') throw new Error(`Unexpected fixture job: ${state}-${language}`);
       jobs.set(`${state}-${language}`, data);
     }
+    if (tunnelStates.includes(state)) {
+      const name = `${state}-${language}.json`;
+      const content = await fs.readFile(path.join(root, name), 'utf8');
+      files.push({ name, sha256: crypto.createHash('sha256').update(content).digest('hex') });
+      const payload = JSON.parse(content);
+      if (!Array.isArray(payload.apps) || typeof payload.running !== 'boolean') throw new Error(`Invalid tunnel fixture: ${name}`);
+      tunnels.set(`${state}-${language}`, payload);
+    }
   }
   return { commit: process.env.GITHUB_SHA || null, fixtureType: 'real C# RenderPage HTML; synthetic observations; no live engine', files };
 }
@@ -35,8 +44,13 @@ export const fixtureHtml = (name = 'state', language = 'en') => {
   return value;
 };
 export const jobPayload = (name = 'job', language = 'en', changes = {}) => ({ ...jobs.get(`${name}-${language}`), ...changes });
+export const tunnelPayload = (name = 'tunnel-ready', language = 'en', changes = {}) => {
+  const value = tunnels.get(`${name}-${language}`);
+  if (!value) throw new Error(`Missing tunnel fixture ${name}-${language}`);
+  return { ...structuredClone(value), ...changes };
+};
 export const fixtureUrl = (name = 'state', language = 'en') => {
-  const tab = ['apps', 'subs', 'doctor', 'help'].includes(name) ? name : 'state';
+  const tab = name.startsWith('tunnel-') ? 'apps' : ['apps', 'subs', 'doctor', 'help'].includes(name) ? name : 'state';
   return `${origin}/?${new URLSearchParams({ fixture: name, lang: language, tab, ...(name === 'job' || name.startsWith('startup-') ? { job: 'fixture-job' } : {}) })}`;
 };
 export const launch = () => chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
@@ -55,6 +69,10 @@ export async function routeFixtures(context, options = {}) {
       if (request.method() !== 'GET') { unexpected.push(entry); await route.abort('blockedbyclient'); return; }
       if (url.pathname === '/icon' || url.pathname === '/favicon.ico') { await route.fulfill({ status: 204, body: '' }); return; }
       const language = url.searchParams.get('lang') || options.language || 'en';
+      if (url.pathname === '/apps/tunnel-state') {
+        await route.fulfill({ json: options.tunnel ? options.tunnel() : tunnelPayload(options.tunnelState || 'tunnel-ready', language) });
+        return;
+      }
       if (url.pathname === '/job') {
         await route.fulfill({ json: options.job ? options.job() : jobPayload(options.jobState || 'job', language) });
         return;

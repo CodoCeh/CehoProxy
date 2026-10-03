@@ -591,7 +591,7 @@ public static class WebUi
     <script>
     (function(){
       var api=window.CehoPanel;if(!api)return;
-      var last=Date.now(),busy=false,failed=false,timer,stamp=document.getElementById('freshness-text'),retry=document.getElementById('refresh-retry');
+      var last=Date.now(),busy=false,failed=false,queued=false,timer,stamp=document.getElementById('freshness-text'),retry=document.getElementById('refresh-retry');
       function paint(){
         var age=Math.max(0,Math.floor((Date.now()-last)/1000)),stale=failed||age>25;
         document.body.classList.toggle('panel-stale',stale);
@@ -599,7 +599,7 @@ public static class WebUi
         if(retry)retry.hidden=!stale;
       }
       function refresh(){
-        if(busy||!api.active())return;clearTimeout(timer);busy=true;
+        if(!api.active())return;if(busy){queued=true;return}clearTimeout(timer);busy=true;
         api.request(location.pathname+location.search,6500).then(function(r){return r.text()}).then(function(html){
           if(!api.active())return;
           var doc=new DOMParser().parseFromString(html,'text/html');
@@ -617,10 +617,11 @@ public static class WebUi
             fresh.querySelectorAll('details').forEach(function(d,i){if(open[i]!==undefined)d.open=open[i]});
             fresh.style.animation='none';now.replaceWith(fresh);
           });
-          last=Date.now();failed=false;
-        }).catch(function(){if(api.active())failed=true}).finally(function(){busy=false;paint();if(api.active())timer=setTimeout(refresh,10000)});
+          last=Date.now();failed=false;document.dispatchEvent(new CustomEvent('ceho:refreshed'));
+        }).catch(function(){if(api.active())failed=true}).finally(function(){busy=false;paint();if(api.active()){timer=setTimeout(refresh,queued?0:10000);queued=false}});
       }
       if(retry)retry.addEventListener('click',refresh);
+      document.addEventListener('ceho:refresh',refresh);
       function resume(){if(!api.active())return;failed=true;paint();refresh()}
       addEventListener('online',resume);addEventListener('offline',function(){failed=true;paint()});
       document.addEventListener('visibilitychange',function(){if(!document.hidden)resume()});
@@ -651,17 +652,12 @@ public static class WebUi
     public const string AppFilterScript = """
     <script>
     (function(){
-      document.querySelectorAll('input.app-filter').forEach(function(box){
-        var cards=box.parentElement.querySelectorAll('button.app-card');
-        box.addEventListener('input',function(){
-          var text=box.value.trim().toLowerCase();
-          cards.forEach(function(card){
-            card.hidden=text.length>0&&card.getAttribute('data-name').indexOf(text)<0;
-          });
-          box.parentElement.querySelectorAll('.app-group').forEach(function(g){
-            g.hidden=!g.querySelector('button.app-card:not([hidden])');
-          });
-        });
+      document.addEventListener('input',function(e){
+        var box=e.target;if(!box.matches('input.app-filter'))return;
+        var owner=box.closest('form'),text=box.value.trim().toLowerCase(),shown=0;if(!owner)return;
+        owner.querySelectorAll('button.app-card').forEach(function(card){card.hidden=text.length>0&&(card.getAttribute('data-name')||'').indexOf(text)<0;if(!card.hidden)shown++});
+        owner.querySelectorAll('.app-group').forEach(function(g){g.hidden=!g.querySelector('button.app-card:not([hidden])')});
+        var none=owner.querySelector('#tunnel-no-results');if(none)none.hidden=shown>0;
       });
     })();
     </script>
@@ -670,14 +666,10 @@ public static class WebUi
     public const string ToastScript = """
     <script>
     (function(){
-      var t=document.getElementById('toast'),x=document.getElementById('toast-x');
-      if(!t)return;
-      var key='ceho-toast-'+t.dataset.count;
-      try{if(sessionStorage.getItem(key))t.hidden=true}catch(e){}
-      if(x)x.addEventListener('click',function(){
-        t.hidden=true;
-        try{sessionStorage.setItem(key,'1')}catch(e){}
-      });
+      if(window.CehoToastReady)return;window.CehoToastReady=true;
+      function sync(){var t=document.getElementById('toast');if(!t)return;try{if(sessionStorage.getItem('ceho-toast-'+t.dataset.count))t.hidden=true}catch(e){}}
+      document.addEventListener('click',function(e){var x=e.target.closest('#toast-x');if(!x)return;var t=x.closest('#toast');if(!t)return;t.hidden=true;try{sessionStorage.setItem('ceho-toast-'+t.dataset.count,'1')}catch(e){}});
+      document.addEventListener('ceho:refreshed',sync);sync();
     })();
     </script>
     """;
@@ -755,11 +747,11 @@ public static class WebUi
       'use strict';
       var ru=document.documentElement.lang==='ru';
       var alive=true, generation=0, pending=new Set();
-      function request(url, timeout){
+      function request(url, timeout, options){
         var controller=new AbortController(), myGeneration=generation;
         pending.add(controller);
         var timer=setTimeout(function(){controller.abort()},timeout||6000);
-        return fetch(url,{credentials:'same-origin',cache:'no-store',signal:controller.signal}).then(function(r){
+        return fetch(url,Object.assign({},options||{},{credentials:'same-origin',cache:'no-store',signal:controller.signal})).then(function(r){
           if(!alive||myGeneration!==generation)throw new Error('superseded');
           if(!r.ok)throw new Error('HTTP '+r.status);
           if(r.redirected&&new URL(r.url).pathname==='/login')throw new Error('auth');
@@ -770,7 +762,7 @@ public static class WebUi
           });
         }).finally(function(){clearTimeout(timer);pending.delete(controller)});
       }
-      window.CehoPanel={request:request,text:function(a,b){return ru?a:b},active:function(){return alive},generation:function(){return generation}};
+      window.CehoPanel={request:request,text:function(a,b){return ru?a:b},active:function(){return alive},generation:function(){return generation},invalidate:function(){generation++;pending.forEach(function(c){c.abort()});pending.clear()}};
       addEventListener('pagehide',function(){alive=false;generation++;pending.forEach(function(c){c.abort()});pending.clear()});
       addEventListener('pageshow',function(e){if(e.persisted){alive=true;generation++;location.reload()}});
       document.addEventListener('input',function(e){if(e.target.form)e.target.form.dataset.dirty='1'});

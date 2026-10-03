@@ -15,6 +15,9 @@ public sealed class AppEntry
 
     public string Folder { get; set; } = "";
 
+    /// <summary>Canonical selected application path, independent of the routing folder.</summary>
+    public string? IdentityPath { get; set; }
+
     /// <summary>Путь к exe для запуска; пусто — папка.</summary>
     public string? Launch { get; set; }
 

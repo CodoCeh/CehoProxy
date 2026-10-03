@@ -165,7 +165,7 @@ public sealed class VerifiedPanelRenderTests : IDisposable
     private void Set(string name, object value) => typeof(WebServer).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(_web, value);
     private object? Call(string name, params object?[] args) => typeof(WebServer).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(_web, args);
     private string Render(string tab = "state", string? wizard = null, Job? job = null) => (string)Call("RenderPage", _cfg, _state, tab, null, false, job,
-        LogView.All, null, wizard)!;
+        LogView.All, null, wizard, null)!;
     private string RenderMethod(string name, params object?[] extra)
     {
         var sb = new StringBuilder();
