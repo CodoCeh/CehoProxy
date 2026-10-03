@@ -275,6 +275,7 @@ public static class DaemonControl
 
         return $$"""
             $ErrorActionPreference = 'Stop'
+            try { [System.IO.File]::WriteAllText((Join-Path '{{Q(root)}}' 'update-helper.started'), [string]$PID) } catch { }
             $watch = {{pid}}
             $exe = '{{Q(exe)}}'
             $downloaded = '{{Q(downloaded)}}'
@@ -401,7 +402,7 @@ public static class DaemonControl
             Environment.ProcessId, exe, downloaded, root, Autostart.IsEnabled(), expectedVersion, jobId,
             UpdateHandoff.PathFor(root)));
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SSH_CONNECTION"))
-            && RunOutsideSession($"powershell -NoProfile -ExecutionPolicy Bypass -File \\\"{script}\\\""))
+            && RunOutsideSession($"powershell -NoProfile -ExecutionPolicy Bypass -File \\\"{script}\\\"", root))
             return;
         using var helper = Process.Start(new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
         {
@@ -411,9 +412,22 @@ public static class DaemonControl
 
     public const string UpdateHelperTask = "CehoProxyUpdate";
 
-    private static bool RunOutsideSession(string command) =>
-        Os.Run("schtasks", $"/Create /TN {UpdateHelperTask} /TR \"{command}\" /SC ONCE /ST 23:59 /RU SYSTEM /F").Code == 0
-        && Os.Run("schtasks", $"/Run /TN {UpdateHelperTask}").Code == 0;
+    private static bool RunOutsideSession(string command, string root)
+    {
+        var marker = Path.Combine(root, "update-helper.started");
+        try { File.Delete(marker); } catch (IOException) { }
+        Os.Run("schtasks", $"/End /TN {UpdateHelperTask}");
+        if (Os.Run("schtasks", $"/Create /TN {UpdateHelperTask} /TR \"{command}\" /SC ONCE /ST 23:59 /RU SYSTEM /F").Code != 0
+            || Os.Run("schtasks", $"/Run /TN {UpdateHelperTask}").Code != 0)
+            return false;
+        for (var i = 0; i < 20; i++)
+        {
+            if (File.Exists(marker)) return true;
+            Thread.Sleep(500);
+        }
+        Os.Run("schtasks", $"/End /TN {UpdateHelperTask}");
+        return false;
+    }
 
     public static bool RestartAfterUpdate(string exe, string root, bool autostart, int timeoutMs = 30000)
     {

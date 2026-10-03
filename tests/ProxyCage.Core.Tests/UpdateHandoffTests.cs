@@ -47,6 +47,18 @@ public sealed class UpdateHandoffTests
     }
 
     [Fact]
+    public void Windows_helper_announces_that_it_started_before_waiting_for_the_command()
+    {
+        var script = DaemonControl.WindowsUpdateRelaunchScript(
+            42, @"C:\ProgramData\CehoProxy\cehoproxy.exe", @"C:\ProgramData\CehoProxy\cehoproxy.exe.new",
+            @"C:\ProgramData\CehoProxy", autostart: true, expectedVersion: "1.2.70", jobId: "update-12",
+            statusPath: @"C:\ProgramData\CehoProxy\update-status.json");
+        var marker = script.IndexOf("update-helper.started", StringComparison.Ordinal);
+        Assert.True(marker >= 0);
+        Assert.True(marker < script.IndexOf("Get-Process -Id $watch", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Windows_helper_verifies_binary_and_daemon_before_success_and_rolls_back_on_failure()
     {
         var script = DaemonControl.WindowsUpdateRelaunchScript(
