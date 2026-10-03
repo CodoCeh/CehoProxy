@@ -461,6 +461,7 @@ public static class WebUi
     .app-cards{display:grid;gap:14px;margin:20px 0}
     article.app-card{display:grid;grid-template-columns:minmax(150px,1fr) minmax(240px,1.8fr) auto;gap:18px;align-items:start;
       padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+    .app-identity .dot{width:12px;height:12px}.app-card.on .app-observation-body>p.hint{display:none}
     .app-identity{display:flex;gap:12px;align-items:center;min-width:0}.app-identity h3{overflow-wrap:anywhere}
     .app-identity .ico{width:38px;height:38px;object-fit:contain;filter:none!important}
     .app-card-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;max-width:190px;font-size:var(--fs-s)}

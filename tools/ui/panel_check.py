@@ -5,9 +5,15 @@
 Работает на русском и английском интерфейсе (язык берётся со страницы). Только лабораторные машины.
 Состояние не меняется: ошибочные формы отклоняются, режим (простой/профи) возвращается как был.
 Код возврата 1, если что-то не прошло.
+
+--full: сверх этого проходит настоящий сценарий на самой машине (только лабораторные!): добавляет две программы и
+«Свой сервер», убирает «Свой сервер», нажимает «Применить» (одно применение на пачку правок), проверяет, что защита
+работает, выключает и включает её, убирает обе программы, снова применяет и возвращает исходное состояние.
+--apps ПУТЬ1,ПУТЬ2 задаёт две программы для добавления (по умолчанию подбираются под систему).
 """
 import re
 import sys
+import time
 import pathlib
 from urllib.parse import quote
 from playwright.sync_api import sync_playwright
@@ -17,13 +23,17 @@ via = sys.argv[sys.argv.index("--via") + 1] if "--via" in sys.argv else None
 shots = pathlib.Path(sys.argv[sys.argv.index("--shots") + 1]) if "--shots" in sys.argv else None
 if shots:
     shots.mkdir(parents=True, exist_ok=True)
+FULL = "--full" in sys.argv
+APPS = sys.argv[sys.argv.index("--apps") + 1].split(",") if "--apps" in sys.argv else None
 failures = []
 BAD = re.compile(r"\{\d\}|undefined|NaN")
 MSG = {
     "ru": {"mismatch": "не совпали", "no_parts": "Отметьте, что переносить", "no_path": "Такого пути нет",
-           "bad_link": "не похоже на ссылку"},
+           "bad_link": "не похоже на ссылку", "applied": "Защита перезапущена", "off": "Защита выключена",
+           "connected": "Туннель подключён", "already": "уже есть права администратора"},
     "en": {"mismatch": "do not match", "no_parts": "Choose what to move", "no_path": "No such path",
-           "bad_link": "does not look like a link"},
+           "bad_link": "does not look like a link", "applied": "Protection restarted", "off": "Protection is off",
+           "connected": "Tunnel connected", "already": "already has administrator rights"},
 }
 
 
@@ -80,10 +90,18 @@ def install_proxy(context):
         headers["Host"] = base.replace("http://", "")
         req = urllib.request.Request(r.url.replace(base, "http://127.0.0.1:" + via, 1),
                                      data=r.post_data_buffer, method=r.method, headers=headers)
-        try:
-            resp = opener.open(req, timeout=90)
-        except urllib.error.HTTPError as e:
-            resp = e
+        resp = None
+        for attempt in range(40):
+            try:
+                resp = opener.open(req, timeout=90)
+                break
+            except urllib.error.HTTPError as e:
+                resp = e
+                break
+            except (urllib.error.URLError, ConnectionError, TimeoutError):
+                if attempt == 39:
+                    raise
+                time.sleep(3)
         body = resp.read()
         out = {k: v for k, v in resp.headers.items()
                if k.lower() not in ("content-length", "transfer-encoding", "connection")}
@@ -95,6 +113,138 @@ def install_proxy(context):
         route.fulfill(status=resp.status, headers=out, body=body)
 
     context.route(base + "/**", handle)
+
+
+def full_scenario(pg, M):
+    pg.on("dialog", lambda d: d.accept())
+
+    def body():
+        return pg.locator("body").inner_text()
+
+    def wait_for(pred, seconds, every=3):
+        end = __import__("time").time() + seconds
+        while __import__("time").time() < end:
+            try:
+                if pred():
+                    return True
+            except Exception:
+                pass
+            pg.wait_for_timeout(every * 1000)
+        return False
+
+    def reload_tab(tab):
+        go(pg, f"{base}/?tab={tab}")
+
+    def label_of(path):
+        return re.split(r"[\\/]", path)[-1].rsplit(".", 1)[0].lower()
+
+    def add_app(path):
+        reload_tab("apps")
+        pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+        pg.fill("form[action='/apps/add'] input[name=path]", path)
+        pg.locator("form[action='/apps/add'] button").first.click()
+        pg.wait_for_selector("#tunnel-confirm-add", state="visible", timeout=15000)
+        pg.locator("#tunnel-confirm-add").click()
+        return wait_for(lambda: label_of(path) in body().lower() and M["no_path"] not in body(), 30, 1)
+
+    def remove_app(path):
+        reload_tab("apps")
+        card = pg.locator("article.app-card").filter(has_text=label_of(path)).first
+        if not card.count():
+            return False
+        card.evaluate("e => e.querySelectorAll('details').forEach(d => d.open = true)")
+        with pg.expect_navigation(wait_until="load", timeout=30000):
+            card.locator("form[action='/apps/remove'] button").first.click()
+        return True
+
+    def pending_count():
+        el = pg.locator("form.pending")
+        if not el.count():
+            return 0
+        m = re.search(r"(\d+)", el.first.inner_text())
+        return int(m.group(1)) if m else 1
+
+    def apply_pending(seconds=480):
+        pg.locator("form.pending button").first.click()
+        return wait_for(lambda: M["applied"] in body() and not pg.locator("form.pending").count(), seconds, 3)
+
+    def connected(seconds=300):
+        def ok():
+            reload_tab("state")
+            return M["connected"] in body()
+        return wait_for(ok, seconds, 5)
+
+    reload_tab("apps")
+    is_win = "C:\\" in (pg.evaluate("(document.querySelector('form[action=\"/apps/add\"] input[name=path]')||{}).placeholder||''") or "")
+    is_mac = "/Applications" in (pg.evaluate("(document.querySelector('form[action=\"/apps/add\"] input[name=path]')||{}).placeholder||''") or "")
+    paths = APPS or ([r"C:\Windows\System32\notepad.exe", r"C:\Windows\System32\cmd.exe"] if is_win
+                     else ["/usr/bin/nc", "/usr/bin/host"] if is_mac else ["/usr/bin/wget", "/usr/bin/ssh"])
+    reload_tab("state")
+    was_running = pg.locator("button[formaction='/control/stop']").count() > 0
+    print(f"сценарий на самой машине: защита {'включена' if was_running else 'выключена'}, программы {paths}")
+    reload_tab("apps")
+    busy = [x for x in paths if pg.locator("article.app-card").filter(has_text=label_of(x)).count()]
+    if busy:
+        check("сценарий: выбранные программы ещё не добавлены на машине", False, busy)
+        return
+    base_pending = pending_count()
+    try:
+        check("пакет: первая программа добавлена", add_app(paths[0]), body()[:200])
+        reload_tab("subs")
+        pg.locator("form[action='/subs/add'] input[name=kind][value=naive]").evaluate(
+            "e => { e.checked = true; e.dispatchEvent(new Event('input', {bubbles: true})); e.dispatchEvent(new Event('change', {bubbles: true})); }")
+        pg.fill("form[action='/subs/add'] input[name=name]", "ceho-test")
+        pg.fill("form[action='/subs/add'] input[name=server]", "test.invalid")
+        pg.fill("form[action='/subs/add'] input[name=username]", "u")
+        pg.fill("form[action='/subs/add'] input[name=password]", "p")
+        with pg.expect_navigation(wait_until="load", timeout=30000):
+            pg.locator("form[action='/subs/add'] button").last.click()
+        check("пакет: «Свой сервер» добавлен", "ceho-test" in body(), body()[:200])
+        check("пакет: вторая программа добавлена", add_app(paths[1]), body()[:200])
+        reload_tab("subs")
+        with pg.expect_navigation(wait_until="load", timeout=30000):
+            pg.locator("form[action='/subs/remove']").filter(has=pg.locator("input[value='ceho-test']")).first.locator("button").click()
+        check("пакет: «Свой сервер» убран", not pg.locator("form[action='/subs/remove']").filter(has=pg.locator("input[value='ceho-test']")).count(), body()[:200])
+        reload_tab("state")
+        if was_running:
+            n = pending_count()
+            check("пакет: счётчик неприменённых правок вырос и защита не перезапускалась", n >= base_pending + 3, n)
+            check("пакет: видно уведомление «Применить»", pg.locator("form.pending").count() > 0)
+            check("применение одной кнопкой перезапускает защиту", apply_pending(), body()[:300])
+            check("после применения туннель подключён", connected())
+        reload_tab("apps")
+        check("добавленные программы в списке", all(pg.locator("article.app-card").filter(has_text=label_of(x)).count() for x in paths))
+        reload_tab("state")
+        check("страница состояния говорит, что заменить ничего не нужно", "undefined" not in body())
+
+        if was_running:
+            reload_tab("state")
+            pg.locator("button[formaction='/control/stop']").click()
+            check("«Выключить» выключает защиту", wait_for(lambda: M["off"] in body() or pg.locator("button[formaction='/control/start']").count() > 0, 180), body()[:200])
+            reload_tab("state")
+            pg.locator("button[formaction='/control/start']").click()
+            check("«Включить» включает защиту", connected(420))
+
+        r = pg.evaluate("fetch('/elevate',{method:'POST',body:new URLSearchParams({tab:'doctor'})}).then(r=>r.text())")
+        where = re.search(r"location.replace\('([^']+)'", r)
+        if where:
+            go(pg, base + where.group(1))
+        check("кнопка прав администратора: у запущенной с правами программы просьба не повторяется",
+              wait_for(lambda: M["already"] in body(), 40, 2), body()[:300])
+    finally:
+        for x in paths:
+            try:
+                remove_app(x)
+            except Exception as e:
+                failures.append("уборка " + x)
+                print("FAIL уборка", x, e)
+        reload_tab("state")
+        if pg.locator("form.pending").count():
+            check("уборка: применение возвращает исходные правила", apply_pending(), body()[:300])
+        reload_tab("apps")
+        check("уборка: добавленных программ не осталось", not any(pg.locator("article.app-card").filter(has_text=label_of(x)).count() for x in paths), body()[:200])
+        if was_running:
+            check("уборка: защита включена, как была", connected())
 
 
 with sync_playwright() as p:
@@ -210,6 +360,9 @@ with sync_playwright() as p:
     for view in ("important", "all", "ours", "engine", "crashes"):
         go(page, f"{base}/?tab=log&view={view}")
         check(f"журнал, вид {view}", page.locator("body").inner_text().strip() != "")
+
+    if FULL:
+        full_scenario(page, M)
 
     # Узкий экран.
     mobile = browser.new_context(viewport={"width": 375, "height": 812})

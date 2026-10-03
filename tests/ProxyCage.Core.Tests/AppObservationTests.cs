@@ -243,7 +243,6 @@ public sealed class VerifiedPanelRenderTests : IDisposable
         Assert.Contains("action=/apps/check", html);
         Assert.Contains("name=tab value=\"doctor\"", html);
         Assert.Contains("General checks found no issues", html);
-        Assert.Contains("Helper processes are counted", html);
     }
 
     [Fact]
@@ -252,11 +251,10 @@ public sealed class VerifiedPanelRenderTests : IDisposable
         _cfg.Apps[0].DisplayName = "<script>alert(1)</script>";
         var html = Render("apps");
         Assert.Contains("class=app-cards", html);
-        Assert.Contains("Configured:", html);
+        Assert.Contains("class=dot", html);
         Assert.Contains("action=/apps/remove", html);
         Assert.Contains("action=/apps/rename", html);
         Assert.Contains("tunnel=", html);
-        Assert.Contains("Last sample:", html);
         Assert.DoesNotContain("<script>alert(1)</script>", html);
         Assert.Contains("&lt;script&gt;", html);
     }

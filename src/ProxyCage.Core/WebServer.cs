@@ -2095,16 +2095,14 @@ public sealed partial class WebServer
             sb.Append("<li id=\"app-").Append(AppIdentity.Id(app)).Append("\" data-app-id=\"").Append(AppIdentity.Id(app))
               .Append("\" data-app-path=\"").Append(E(AppIdentity.PathOf(app))).Append("\" data-rule-state=\"")
               .Append(IsAppRuleApplied(app) ? "applied" : AppRulesPending ? "pending" : st.Running ? "unknown" : "inactive")
-              .Append("\" tabindex=-1 class=\"app-observation ").Append(result.Css).Append("\"><div class=app-identity>");
+              .Append("\" tabindex=-1 class=\"app-observation ").Append(result.Css).Append("\"><div class=app-identity><span class=dot aria-hidden=true></span>");
             AppIcon(sb, AppIcons.Source(app, catalog), app.Label);
             sb.Append("<b>").Append(E(app.Label)).Append("</b></div>");
             RenderAppObservation(sb, cfg, app, info, result);
             AppendAppRecheck(sb, cfg, app, tab);
             sb.Append("</li>");
         }
-        sb.Append("</ul><p class=scope-note>").Append(E(AppObservation.Text(cfg,
-            "Остальные программы не выбраны для VPN и могут подключаться напрямую.",
-            "Other apps are not selected for VPN and may connect directly."))).Append("</p>")
+        sb.Append("</ul>")
           .Append("<a href=\"/?tab=apps\">").Append(E(AppObservation.Text(cfg, "Все программы →", "All apps →"))).Append("</a></section>");
     }
 
@@ -2113,12 +2111,11 @@ public sealed partial class WebServer
         string T(string ru, string en) => AppObservation.Text(cfg, ru, en);
         sb.Append("<div class=app-observation-body><span class=\"observation-badge ").Append(result.Css)
           .Append("\" data-observation=\"").Append(result.Kind).Append("\">").Append(E(result.Title))
-          .Append("</span><p class=configured-route>").Append(E(T("Настроено: ", "Configured: ") + AppObservation.ConfiguredRoute(cfg, app)))
-          .Append("</p><p class=hint>").Append(E(result.Advice)).Append("</p><p class=observation-meta>")
-          .Append(E(info is null || _appsLiveAtUtc == default ? T("Наблюдений ещё нет", "No observations yet")
-              : T("Последняя выборка: ", "Last sample: ") + _appsLiveAtUtc.ToLocalTime().ToString("dd.MM HH:mm:ss")
-                  + (result.Fresh ? T(" · свежая", " · current") : T(" · не подтверждает текущий маршрут", " · does not verify current routing"))))
-          .Append("</p><details class=route-details><summary>").Append(E(T("Путь, процессы и исключения", "Path, processes and exceptions")))
+          .Append("</span>");
+        if (app.NoInternet || !app.Enabled || app.AllowedNodes.Count > 0)
+            sb.Append("<p class=configured-route>").Append(E(T("Настроено: ", "Configured: ") + AppObservation.ConfiguredRoute(cfg, app))).Append("</p>");
+        sb.Append("<p class=hint>").Append(E(result.Advice)).Append("</p>")
+          .Append("<details class=route-details><summary>").Append(E(T("Подробности", "Details")))
           .Append("</summary><dl class=kv><dt>").Append(E(T("Путь", "Path"))).Append("</dt><dd class=path>").Append(E(app.Folder)).Append("</dd>");
         if (info is not null)
         {
@@ -2128,19 +2125,7 @@ public sealed partial class WebServer
               .Append("<dt>").Append(E(T("Вне туннеля", "Outside tunnel"))).Append("</dt><dd>").Append(info.Direct).Append("</dd>")
               .Append("<dt>").Append(E(T("Напрямую по правилам", "Direct by rules"))).Append("</dt><dd>").Append(info.EngineDirect).Append("</dd>");
         }
-        sb.Append("</dl><p class=hint>").Append(E(app.SingleFile
-            ? T("Выбран один файл. Отдельные вспомогательные программы могут не входить в это правило.", "A single file is selected. Separate helper apps may not be included in this rule.")
-            : T("Вспомогательные процессы учитываются, если их путь совпадает с правилом. Процессы вне выбранной папки не подтверждены этой проверкой.", "Helper processes are counted when their paths match the rule. Processes outside the selected folder are not verified by this check.")))
-          .Append("</p><p class=hint>").Append(E(cfg.SitesOnly
-            ? T("Только сайты из списка направляются через VPN; прочие могут идти напрямую.", "Only listed sites use VPN; other sites may go direct.")
-            : T("Сайты-исключения могут идти напрямую согласно настройке списка.", "Site exceptions may go direct according to the site-list settings.")))
-          .Append("</p>");
-        if (cfg.DirectSites.Count > 0)
-            sb.Append("<p class=path>").Append(E(string.Join(", ", cfg.DirectSites.Take(5))))
-              .Append(cfg.DirectSites.Count > 5 ? " …" : "").Append("</p>");
-        sb.Append("<a href=\"/?tab=sites\">").Append(E(T("Проверить правила сайтов", "Review site rules"))).Append("</a>")
-          .Append("<p class=hint>").Append(E(T("Выборка не проверяет весь будущий трафик и не устанавливает отдельный выходной IP программы.",
-              "A sample does not verify all future traffic or establish the app's own exit IP."))).Append("</p></details></div>");
+        sb.Append("</dl></details></div>");
     }
 
     private static void AppendAppRecheck(StringBuilder sb, CehoConfig cfg, AppEntry app, string tab, string? wizard = null)
@@ -2556,7 +2541,7 @@ public sealed partial class WebServer
                 sb.Append("<article id=\"app-").Append(AppIdentity.Id(a)).Append("\" data-app-id=\"").Append(AppIdentity.Id(a))
                   .Append("\" data-app-path=\"").Append(E(AppIdentity.PathOf(a))).Append("\" data-rule-state=\"")
                   .Append(IsAppRuleApplied(a) ? "applied" : AppRulesPending ? "pending" : state.Running ? "unknown" : "inactive")
-                  .Append("\" tabindex=-1 class=\"app-card ").Append(observation.Css).Append("\"><div class=app-identity>");
+                  .Append("\" tabindex=-1 class=\"app-card ").Append(observation.Css).Append("\"><div class=app-identity><span class=dot aria-hidden=true></span>");
                 AppIcon(sb, AppIcons.Source(a, installed), a.Label);
                 sb.Append("<h3 title=\"").Append(E(a.Folder)).Append("\">").Append(E(a.Label)).Append("</h3></div>");
                 if (a.VersionAgnostic) sb.Append("<span class=tag>Microsoft Store</span>");
@@ -2581,9 +2566,7 @@ public sealed partial class WebServer
                   .Append("<input type=hidden name=folder value=\"").Append(E(a.Folder)).Append("\"><button class=danger>")
                   .Append(E(S("btn_remove", []))).Append("</button></form></details></div></article>");
             }
-            sb.Append("</div><p class=scope-note>").Append(E(AppObservation.Text(cfg,
-                "Выбранные программы используют настроенные правила VPN. Остальные могут подключаться напрямую.",
-                "Selected apps use the configured VPN rules. Other apps may connect directly."))).Append("</p></div>");
+            sb.Append("</div></div>");
         }
 
         if (cfg.Apps.Count == 0) sb.Append("</div>");
