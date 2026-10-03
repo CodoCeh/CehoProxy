@@ -365,6 +365,65 @@ public sealed class AppAddAdmissionTests : IDisposable
         Assert.Empty(CehoConfig.Load(ConfigPath).Apps);
     }
 
+    [Fact]
+    public async Task Literal_alias_rule_does_not_claim_canonical_coverage_or_redirect_another_rows_controls()
+    {
+        if (OperatingSystem.IsWindows()) return; // No privileged symlink setup in these tests.
+        var executable = AppIdentity.Normalize(App("physical-alias-fixture"));
+        var physicalFolder = Path.GetDirectoryName(executable)!;
+        var aliasFolder = Path.Combine(_root, "saved-alias-rule");
+        Directory.CreateSymbolicLink(aliasFolder, physicalFolder);
+        var config = CehoConfig.Load(ConfigPath);
+        config.Apps.Add(new AppEntry { Name = "legacy alias", Folder = aliasFolder });
+        config.Save(ConfigPath);
+        var added = await Post("/apps/add", new() { ["path"] = executable });
+        Assert.False(added.IsError);
+        Assert.Contains("Rule saved", added.Message);
+        Assert.Equal(2, CehoConfig.Load(ConfigPath).Apps.Count);
+
+        await Post("/apps/rename", new() { ["folder"] = physicalFolder, ["displayName"] = "physical row only" });
+        var rows = CehoConfig.Load(ConfigPath).Apps;
+        Assert.Null(rows[0].DisplayName);
+        Assert.Equal("physical row only", rows[1].DisplayName);
+        _running = true; // Remaining-rule rebuild stays deferred; no engine invocation.
+        var removed = await Post("/apps/remove", new() { ["folder"] = physicalFolder });
+        Assert.False(removed.IsError);
+        Assert.Null(removed.JobId);
+        Assert.Equal(aliasFolder, Assert.Single(CehoConfig.Load(ConfigPath).Apps).Folder);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Same_stored_folder_with_different_rule_shape_is_a_noop_without_coverage_claim(bool enabled)
+    {
+        var path = App("stored-key-collision");
+        var detected = AppDetector.Detect(AppIdentity.Normalize(path), "en");
+        var cfg = CehoConfig.Load(ConfigPath);
+        cfg.Apps.Add(new AppEntry
+        {
+            Name = "existing settings", Folder = detected.Folder,
+            IdentityPath = Path.Combine(detected.Folder, "other-selected-file"),
+            Enabled = enabled, SingleFile = !detected.SingleFile,
+        });
+        cfg.Save(ConfigPath);
+        Assert.Null(AppCoverage.FindEquivalentRule(cfg.Apps, detected));
+        var before = File.ReadAllBytes(ConfigPath);
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var result = await Post("/apps/add", new() { ["path"] = path });
+            Assert.False(result.IsError);
+            Assert.Null(result.JobId);
+            Assert.Contains("different settings", result.Message);
+            Assert.DoesNotContain("covered", result.Message);
+            Assert.Equal(before, File.ReadAllBytes(ConfigPath));
+            Assert.Equal(enabled, Assert.Single(CehoConfig.Load(ConfigPath).Apps).Enabled);
+        }
+        Assert.Equal(0, _applies + _restarts);
+        await Post("/apps/rename", new() { ["folder"] = detected.Folder, ["displayName"] = "existing row only" });
+        Assert.Equal("existing row only", Assert.Single(CehoConfig.Load(ConfigPath).Apps).DisplayName);
+    }
+
     private JsonElement State() => JsonSerializer.SerializeToElement(_web.TunnelState(CehoConfig.Load(ConfigPath)));
     private Task<(string? Message, bool IsError, string? JobId)> Post(string route, Dictionary<string, string> form)
     {

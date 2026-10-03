@@ -19,9 +19,30 @@ public static class AppCoverage
                 Regex.IsMatch(probe, rx, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))));
     }
 
-    public static AppEntry? FindEquivalentRule(IEnumerable<AppEntry> apps, AppDetector.Detection detected) =>
-        apps.FirstOrDefault(app => app.SingleFile == detected.SingleFile
-            && AppIdentity.SamePath(app.Folder, detected.Folder));
+    /// <summary>Forms address the stored Folder key even when two rule shapes are not equivalent.</summary>
+    public static AppEntry? FindStoredRule(IEnumerable<AppEntry> apps, AppDetector.Detection detected) =>
+        apps.FirstOrDefault(app => AppIdentity.SameConfiguredPath(app.Folder, detected.Folder));
+
+    public static AppEntry? FindEquivalentRule(IEnumerable<AppEntry> apps, AppDetector.Detection detected)
+    {
+        // Literal configured paths become engine regexes. Filesystem identity alone cannot
+        // establish equivalent coverage (for example /var versus /private/var on macOS).
+        // The primary expression encodes folder/file and version-agnostic scope; additional
+        // app-family expressions do not invalidate an already identical primary rule.
+        var primary = AppDetector.ToRegex(new AppEntry
+        {
+            Name = detected.Name, Folder = detected.Folder,
+            SingleFile = detected.SingleFile, VersionAgnostic = detected.VersionAgnostic,
+        });
+        return apps.FirstOrDefault(app =>
+        {
+            var existing = AppDetector.ToRegex(app);
+            var comparison = primary.StartsWith("(?i)", StringComparison.Ordinal)
+                && existing.StartsWith("(?i)", StringComparison.Ordinal)
+                ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            return existing.Equals(primary, comparison);
+        });
+    }
 
     public static bool IsPathCovered(CehoConfig cfg, string processPath)
     {
@@ -50,7 +71,7 @@ public static class AppCoverage
         }
 
         return cfg.Apps.Any(a => a.Enabled && (
-            AppIdentity.SamePath(a.Folder, tool.Path) ||
+            AppIdentity.SameConfiguredPath(a.Folder, tool.Path) ||
             tool.Path.StartsWith(a.Folder.TrimEnd('\\', '/') + Path.DirectorySeparatorChar,
                 AppIdentity.Comparison())));
     }

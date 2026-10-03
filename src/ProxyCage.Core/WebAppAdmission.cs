@@ -71,6 +71,11 @@ public sealed partial class WebServer
                     $"The rule for {sameRule.Label} already covers this folder. No app was added."),
                     false, "covered", AppIdentity.Id(sameRule), AppIdentity.PathOf(sameRule));
 
+            if (AppCoverage.FindStoredRule(cfg.Apps, detected) is { } storedRule)
+                return new(T($"Программа «{storedRule.Label}» уже использует этот путь правила с другими настройками. Проверьте сохранённое правило. Новая программа не добавлена.",
+                    $"A saved app ({storedRule.Label}) already uses this rule path with different settings. Review the existing rule. No app was added."),
+                    false, "existing_rule", AppIdentity.Id(storedRule), AppIdentity.PathOf(storedRule));
+
             var app = new AppEntry
             {
                 Name = known?.Name ?? (route == "/apps/detected" ? form.GetValueOrDefault("name", detected.Name) : detected.Name),

@@ -452,4 +452,38 @@ for (const language of ['en', 'ru']) {
     } finally { h.close(); }
   });
 
+
+  test(`tunnel ${language}: delayed pending response schedules its next poll after fake time settles`, async () => {
+    let releaseBody, held = false, server = 'tunnel-ready';
+    const replies = [];
+    const h = setup(language, { handle: request => {
+      if (request.method === 'POST') return jsonResponse(addResult(language));
+      if (!request.url.startsWith('/apps/tunnel-state')) return undefined;
+      const payload = tunnelFixture(server, language, 'json'); replies.push(server);
+      if (server === 'tunnel-pending' && !held) {
+        held = true;
+        return jsonResponse(payload, { text: () => new Promise(resolve => {
+          releaseBody = () => resolve(JSON.stringify(payload));
+        }) });
+      }
+      return jsonResponse(payload);
+    } });
+    try {
+      await h.settle();
+      h.source('Fixture Notes').click(); server = 'tunnel-pending'; h.server(server); h.confirm(); await h.settle();
+      assert.ok(releaseBody, 'Hold the actual response body, after headers and saved acknowledgment');
+      await h.advance(2600);
+      server = 'tunnel-applied'; h.server(server);
+      await h.advance(2600);
+      releaseBody(); await h.settle();
+      // Changing the server fixture alone is not evidence received by the UI.
+      assert.equal(h.phase(), 'pending');
+      assert.equal(replies.includes('tunnel-applied'), false);
+      await h.advance(2500);
+      assert.equal(replies.includes('tunnel-applied'), true);
+      assert.equal(h.phase(), 'applied');
+      assert.equal(h.posts().length, 1); h.noUnexpectedErrors();
+    } finally { h.close(); }
+  });
+
 }

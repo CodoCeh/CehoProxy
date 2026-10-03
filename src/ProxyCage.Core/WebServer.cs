@@ -618,7 +618,7 @@ public sealed partial class WebServer
                     if (Jobs.Active(JobPower) is { } activePower)
                         return (Strings.T(cfg.Language, "job_conflict", activePower.Title), true, activePower.Id);
                     var folder = f.GetValueOrDefault("folder", "");
-                    cfg.Apps.RemoveAll(a => AppIdentity.SamePath(a.Folder, folder));
+                    cfg.Apps.RemoveAll(a => AppIdentity.SameConfiguredPath(a.Folder, folder));
                     Save(cfg);
                     var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
                         ? ApplyOrDefer(cfg, restartIfRunning: true)
@@ -738,7 +738,7 @@ public sealed partial class WebServer
                 {
                     var folder = f.GetValueOrDefault("folder", "");
                     var app = cfg.Apps.FirstOrDefault(a =>
-                        AppIdentity.SamePath(a.Folder, folder));
+                        AppIdentity.SameConfiguredPath(a.Folder, folder));
                     if (app is null) return (S("app_tunnel_missing"), true, null);
                     return CheckApp(cfg, app);
                 }
@@ -747,7 +747,7 @@ public sealed partial class WebServer
                 {
                     var folder = f.GetValueOrDefault("folder", "");
                     var app = cfg.Apps.FirstOrDefault(a =>
-                        AppIdentity.SamePath(a.Folder, folder));
+                        AppIdentity.SameConfiguredPath(a.Folder, folder));
                     if (app is null) return (S("app_tunnel_missing"), true, null);
 
                     var displayName = f.GetValueOrDefault("displayName", "").Trim();
@@ -760,7 +760,7 @@ public sealed partial class WebServer
                 {
                     var folder = f.GetValueOrDefault("folder", "");
                     var app = cfg.Apps.FirstOrDefault(a =>
-                        AppIdentity.SamePath(a.Folder, folder));
+                        AppIdentity.SameConfiguredPath(a.Folder, folder));
                     if (app is null) return (S("app_tunnel_missing"), true, null);
 
                     var shown = (f.GetValueOrDefault("all", "") ?? "")
@@ -787,7 +787,7 @@ public sealed partial class WebServer
                 {
                     var folder = f.GetValueOrDefault("folder", "");
                     var app = cfg.Apps.FirstOrDefault(a =>
-                        AppIdentity.SamePath(a.Folder, folder));
+                        AppIdentity.SameConfiguredPath(a.Folder, folder));
                     if (app is null) return (S("app_tunnel_missing"), true, null);
 
                     app.NoInternet = f.ContainsKey("enable");
@@ -2588,7 +2588,7 @@ public sealed partial class WebServer
         string folder)
     {
         var app = cfg.Apps.FirstOrDefault(a =>
-            AppIdentity.SamePath(a.Folder, folder));
+            AppIdentity.SameConfiguredPath(a.Folder, folder));
         if (app is null)
         {
             sb.Append("<section><h2>").Append(E(S("apps_title", []))).Append("</h2>");

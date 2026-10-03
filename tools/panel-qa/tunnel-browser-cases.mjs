@@ -99,14 +99,21 @@ export async function runTunnelBrowserCases(run, language) {
     expect(await page.evaluate(() => window.__fileReads)).toBe(0);
   });
 
-  await run('tunnel-double-save-pending-authoritative-apply-and-reduced-motion', language, async ({ page, install, open, text }) => {
+  await run('tunnel-double-save-pending-authoritative-apply-and-reduced-motion', language, async ({ page, install, open, text, record }) => {
     let state = 'tunnel-ready', release;
-    const posts = [];
-    await install({ tunnel: () => tunnelPayload(state, language), handle: async (route, request, url) => {
+    const posts = [], stateReplies = [], clockCheckpoints = [];
+    record('tunnelStateReplies', stateReplies); record('clockCheckpoints', clockCheckpoints);
+    await install({ handle: async (route, request, url) => {
       if (request.method === 'POST') {
         expect(url.pathname).toBe('/apps/installed'); posts.push(request);
         await new Promise(resolve => { release = resolve; });
         await route.fulfill({ json: resultFor(language) }); return true;
+      }
+      if (url.pathname === '/apps/tunnel-state') {
+        const payload = tunnelPayload(state, language);
+        const witness = { fixture: state, delivered: false, payload };
+        stateReplies.push(witness);
+        await route.fulfill({ json: payload }); witness.delivered = true; return true;
       }
       if (request.type === 'fetch' && url.pathname === '/') {
         await route.fulfill({ contentType: 'text/html', body: fixtureHtml(state, language) }); return true;
@@ -128,12 +135,26 @@ export async function runTunnelBrowserCases(run, language) {
     const fields = new URLSearchParams(posts[0].body);
     expect(fields.get('intent')).toBe('tunnel'); expect(fields.get('confirm_add')).toBe('1');
     expect(fields.has('confirm_apply')).toBe(false);
-    state = 'tunnel-applied'; await page.clock.runFor(2600);
+    state = 'tunnel-applied';
+    const appId = resultFor(language).appId;
+    // Route/body delivery runs on real time. A pending response may finish after
+    // a runFor() ends and only then schedule the next 2500ms poll. Keep the
+    // virtual clock moving until both the authoritative response and its DOM
+    // result are witnessed; retain the original 5s real assertion deadline.
+    await expect.poll(async () => {
+      await page.clock.runFor(2600);
+      const snapshot = await page.evaluate(() => ({ phase: document.querySelector('#tunnel-stage').dataset.phase, virtualNow: Date.now() }));
+      const authoritativeAppliedReply = stateReplies.some(reply => reply.delivered && reply.payload.running === true
+        && reply.payload.pending === false && reply.payload.busy === false
+        && reply.payload.apps.some(app => app.id === appId && app.ruleApplied === true));
+      clockCheckpoints.push({ ...snapshot, authoritativeAppliedReply, replies: stateReplies.length });
+      return { phase: snapshot.phase, authoritativeAppliedReply };
+    }, { timeout: 5000, message: 'A delivered, matching ruleApplied response must be reflected by the tunnel while virtual time advances' })
+      .toEqual({ phase: 'applied', authoritativeAppliedReply: true });
     await expect(page.locator('#tunnel-stage')).toHaveAttribute('data-phase', 'applied');
     await expect(page.locator('#tunnel-status')).toContainText(text('check its traffic', 'проверьте её трафик'));
     expect(await page.locator('#tunnel-token').evaluate(element => getComputedStyle(element).animationName)).toBe('none');
     expect(await page.locator('#tunnel-token').evaluate(element => getComputedStyle(element).opacity)).toBe('0');
-    const appId = resultFor(language).appId;
     await expect(page.locator(`#app-${appId} [data-observation]`)).toHaveAttribute('data-observation', 'quiet');
     await source(page, 'Fixture Notes').click(); await expect(page.locator(`#app-${appId}`)).toBeFocused();
     expect(posts).toHaveLength(1);

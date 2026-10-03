@@ -13,7 +13,7 @@ async function run(name, language, body) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 1000 }, serviceWorkers: 'block', reducedMotion: 'reduce' });
   const page = await context.newPage();
   page.setDefaultTimeout(5000); page.setDefaultNavigationTimeout(8000);
-  const pageErrors = [];
+  const pageErrors = [], observations = {};
   page.on('pageerror', error => pageErrors.push(String(error)));
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
   let routing;
@@ -21,14 +21,14 @@ async function run(name, language, body) {
   const open = async (state = 'state') => { await pauseClock(page); await page.goto(fixtureUrl(state, language)); };
   const text = (en, ru) => language === 'ru' ? ru : en;
   try {
-    await body({ context, page, install, open, language, text });
+    await body({ context, page, install, open, language, text, record: (key, value) => { observations[key] = value; } });
     expect(pageErrors).toEqual([]);
     expect(routing?.errors || []).toEqual([]);
     expect(routing?.unexpected || []).toEqual([]);
-    results.push({ name: label, status: 'passed' });
+    results.push({ name: label, status: 'passed', ...(Object.keys(observations).length ? { observations } : {}) });
     await context.tracing.stop();
   } catch (error) {
-    results.push({ name: label, status: 'failed', error: String(error), pageErrors, routingErrors: routing?.errors, unexpectedRequests: routing?.unexpected });
+    results.push({ name: label, status: 'failed', error: String(error), pageErrors, observations, routingErrors: routing?.errors, unexpectedRequests: routing?.unexpected });
     await page.screenshot({ path: path.join(artifacts, `${label}-failure.png`), fullPage: true, animations: 'disabled' }).catch(() => {});
     await context.tracing.stop({ path: path.join(artifacts, `${label}-trace.zip`) }).catch(() => {});
   } finally { await context.close(); }

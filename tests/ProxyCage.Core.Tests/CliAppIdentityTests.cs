@@ -196,10 +196,15 @@ public sealed class CliAppIdentityTests : IDisposable
         Assert.Equal(before, JsonSerializer.Serialize(cfg));
     }
 
-    [Fact]
-    public void Direct_add_rejection_returns_before_persistence_and_rebuild()
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Direct_add_rejection_returns_before_persistence_and_rebuild(string lineEnding)
     {
-        var source = Between(ReadSource("Program.cs"), "    case \"add-app\":", "    case \"apps\":");
+        // Exercise both checkout styles on every platform, including the Windows
+        // CRLF source that previously made the multi-line boundary unfindable.
+        var program = ReadSource("Program.cs").ReplaceLineEndings(lineEnding);
+        var source = Between(program, "    case \"add-app\":", "    case \"apps\":");
         var direct = Between(source, "        var cfg = CehoConfig.Load", "        return 0;\n    }");
         var rejection = Between(direct, "if (!Assistant.TryAddApp", "        cfg.Save");
         Assert.Contains("Console.Error.WriteLine(error)", rejection);
@@ -221,6 +226,7 @@ public sealed class CliAppIdentityTests : IDisposable
         Assert.Contains("AppIdentity.Find(cfg.Apps, selected)", helper);
         Assert.Contains("AppCoverage.FindCoveringApp(cfg.Apps, selected)", helper);
         Assert.Contains("AppCoverage.FindEquivalentRule(cfg.Apps, detected)", helper);
+        Assert.Contains("AppCoverage.FindStoredRule(cfg.Apps, detected)", helper);
         Assert.Contains("IdentityPath = selected", helper);
         Assert.DoesNotContain(".Save(", helper);
         Assert.DoesNotContain("ApplyAsync", helper);
@@ -232,6 +238,32 @@ public sealed class CliAppIdentityTests : IDisposable
         Assert.Contains("else if (AddApp(cfg, tool.Path))", assistant);
         Assert.Contains("if (AddApp(cfg, app.Path))", assistant);
         Assert.Contains("else Assistant.AddApp(cfg, path);", ReadSource("Cli.cs"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Same_stored_folder_with_different_rule_shape_is_preserved_without_coverage_claim(bool enabled)
+    {
+        var path = Fixture("StoredKeyCollision");
+        var detected = AppDetector.Detect(AppIdentity.Normalize(path), "en");
+        var cfg = new CehoConfig { Language = "en" };
+        cfg.Apps.Add(new AppEntry
+        {
+            Name = "existing settings", Folder = detected.Folder,
+            IdentityPath = Path.Combine(detected.Folder, "other-selected-file"),
+            Enabled = enabled, SingleFile = !detected.SingleFile,
+        });
+        Assert.Null(AppCoverage.FindEquivalentRule(cfg.Apps, detected));
+        var before = JsonSerializer.Serialize(cfg);
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            Assert.False(Assistant.TryAddApp(cfg, path, out _, out var error));
+            Assert.Contains("different settings", error);
+            Assert.DoesNotContain("covered", error);
+            Assert.Equal(before, JsonSerializer.Serialize(cfg));
+            Assert.Equal(enabled, Assert.Single(cfg.Apps).Enabled);
+        }
     }
 
     private static string ReadSource(string name)
@@ -246,6 +278,7 @@ public sealed class CliAppIdentityTests : IDisposable
 
     private static string Between(string source, string begin, string end)
     {
+        source = source.ReplaceLineEndings("\n");
         var first = source.IndexOf(begin, StringComparison.Ordinal);
         Assert.True(first >= 0, begin);
         var last = source.IndexOf(end, first + begin.Length, StringComparison.Ordinal);

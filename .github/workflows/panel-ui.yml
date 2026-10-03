@@ -77,8 +77,49 @@ jobs:
           name: panel-ui-evidence-${{ github.sha }}
           path: |
             tools/panel-qa/artifacts
+            !tools/panel-qa/artifacts/screenshots/**
             ${{ runner.temp }}/cehoproxy-fixtures
           if-no-files-found: error
+          retention-days: 7
+      - name: Upload ru desktop screenshots (bounded artifact)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: panel-screenshots-ru-desktop-${{ github.sha }}
+          path: |
+            tools/panel-qa/artifacts/screenshots/*-ru-desktop-*.png
+            tools/panel-qa/artifacts/screenshots/screenshot-results.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload ru mobile screenshots (bounded artifact)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: panel-screenshots-ru-mobile-${{ github.sha }}
+          path: |
+            tools/panel-qa/artifacts/screenshots/*-ru-mobile-*.png
+            tools/panel-qa/artifacts/screenshots/screenshot-results.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload en desktop screenshots (bounded artifact)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: panel-screenshots-en-desktop-${{ github.sha }}
+          path: |
+            tools/panel-qa/artifacts/screenshots/*-en-desktop-*.png
+            tools/panel-qa/artifacts/screenshots/screenshot-results.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload en mobile screenshots (bounded artifact)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: panel-screenshots-en-mobile-${{ github.sha }}
+          path: |
+            tools/panel-qa/artifacts/screenshots/*-en-mobile-*.png
+            tools/panel-qa/artifacts/screenshots/screenshot-results.json
+          if-no-files-found: warn
           retention-days: 7
   safe-platform:
     name: Safe regression (${{ matrix.os }})

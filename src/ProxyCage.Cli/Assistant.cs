@@ -361,6 +361,14 @@ public static class Assistant
             return false;
         }
 
+        if (AppCoverage.FindStoredRule(cfg.Apps, detected) is { } storedRule)
+        {
+            error = cfg.Language == "ru"
+                ? $"Программа «{storedRule.Label}» уже использует этот путь правила с другими настройками. Проверьте сохранённое правило. Новая программа не добавлена."
+                : $"A saved app ({storedRule.Label}) already uses this rule path with different settings. Review the existing rule. No app was added.";
+            return false;
+        }
+
         cfg.Apps.Add(new AppEntry
         {
             Name = detected.Name,

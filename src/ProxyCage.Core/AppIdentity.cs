@@ -28,6 +28,10 @@ public static class AppIdentity
     public static bool SamePath(string a, string b, OsKind? platform = null) =>
         string.Equals(Normalize(a, platform), Normalize(b, platform), Comparison(platform));
 
+    /// <summary>Routing controls address the stored key, not another row at a filesystem alias.</summary>
+    public static bool SameConfiguredPath(string a, string b) =>
+        string.Equals(a, b, Comparison());
+
     public static AppEntry? Find(IEnumerable<AppEntry> apps, string path) =>
         apps.FirstOrDefault(app => SamePath(PathOf(app), path));
 
