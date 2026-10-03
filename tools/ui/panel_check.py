@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Проверка панели CehoProxy реальными кликами в Chrome.
 
-Запуск: tools/ui/.venv/bin/python tools/ui/panel_check.py http://127.0.0.1:8899 [--shots папка]
+Запуск: tools/ui/.venv/bin/python tools/ui/panel_check.py http://127.0.0.1:8899 [--shots папка] [--via ПОРТ]
 Работает на русском и английском интерфейсе (язык берётся со страницы). Только лабораторные машины.
 Состояние не меняется: ошибочные формы отклоняются, режим (простой/профи) возвращается как был.
 Код возврата 1, если что-то не прошло.
@@ -13,6 +13,7 @@ from urllib.parse import quote
 from playwright.sync_api import sync_playwright
 
 base = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8899").rstrip("/")
+via = sys.argv[sys.argv.index("--via") + 1] if "--via" in sys.argv else None
 shots = pathlib.Path(sys.argv[sys.argv.index("--shots") + 1]) if "--shots" in sys.argv else None
 if shots:
     shots.mkdir(parents=True, exist_ok=True)
@@ -62,9 +63,45 @@ def overflow(page):
     }""")
 
 
+def install_proxy(context):
+    """--via ПОРТ: страница открывается по адресу base, а запросы идут на проброшенный порт (если свой порт занят)."""
+    import urllib.request
+    import urllib.error
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+
+    opener = urllib.request.build_opener(NoRedirect)
+
+    def handle(route):
+        r = route.request
+        headers = {k: v for k, v in r.headers.items() if k.lower() not in ("host", "accept-encoding")}
+        headers["Host"] = base.replace("http://", "")
+        req = urllib.request.Request(r.url.replace(base, "http://127.0.0.1:" + via, 1),
+                                     data=r.post_data_buffer, method=r.method, headers=headers)
+        try:
+            resp = opener.open(req, timeout=90)
+        except urllib.error.HTTPError as e:
+            resp = e
+        body = resp.read()
+        out = {k: v for k, v in resp.headers.items()
+               if k.lower() not in ("content-length", "transfer-encoding", "connection")}
+        if resp.status in (301, 302, 303, 307):
+            where = out.pop("Location", "/")
+            route.fulfill(status=200, headers={**out, "Content-Type": "text/html"},
+                          body=f"<script>location.replace({where!r})</script>".encode())
+            return
+        route.fulfill(status=resp.status, headers=out, body=body)
+
+    context.route(base + "/**", handle)
+
+
 with sync_playwright() as p:
     browser = p.chromium.launch(channel="chrome", headless=True)
     ctx = browser.new_context(viewport={"width": 1280, "height": 900})
+    if via:
+        install_proxy(ctx)
     page = ctx.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -147,6 +184,8 @@ with sync_playwright() as p:
 
     # Узкий экран.
     mobile = browser.new_context(viewport={"width": 375, "height": 812})
+    if via:
+        install_proxy(mobile)
     m = mobile.new_page()
     for tab in ("state", "apps", "subs"):
         go(m, f"{base}/?tab={tab}")
