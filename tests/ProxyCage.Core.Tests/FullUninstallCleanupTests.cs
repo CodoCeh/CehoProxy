@@ -26,11 +26,16 @@ public class FullUninstallCleanupTests
                          "dbip-country-lite.mmdb.gz.tmp", "dbip-country-lite.mmdb.bundled.tmp",
                          "sing-box-1.14.0-windows-amd64.zip", "sing-box-1.14.0-linux-amd64.tar.gz",
                          "update-relaunch.ps1", "pick-app.ps1", "pick-app-launch.vbs",
-                         "pick-app-result.txt", "user-alias.path", ".write-probe"
+                         "pick-app-result.txt", "user-alias.path", ".write-probe",
+                         ".ceho-private-1a2b", "config.import.json", "controller.lock", "restart.request", "starting",
+                         "update-helper.started", "update-was-protected", "keep-engine", "cehoproxy-support.txt",
+                         "guard.json", "cehoproxy.pid", "panel.port",
+                         "cehoproxy-tray.exe", "cehoproxy-tray.exe.old", "debug.log", "rolled-back-1.2.129",
+                         "LICENSE", "README.md", "THIRD-PARTY.md"
                      })
                 File.WriteAllText(Path.Combine(root, name), "test");
 
-            foreach (var name in new[] { "geo-probes", "geoip", "engine-tmp" })
+            foreach (var name in new[] { "geo-probes", "geoip", "engine-tmp", "engine-new" })
             {
                 var dir = Path.Combine(root, name);
                 Directory.CreateDirectory(dir);

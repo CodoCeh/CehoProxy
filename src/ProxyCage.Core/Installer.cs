@@ -457,6 +457,7 @@ public static class Installer
         {
             LeakGuard.Remove(root);
             AppPathPicker.CleanupForUninstall();
+            RemoveWindowsShortcutsAndRegistration();
             Os.Run("schtasks", $"/Delete /TN {DaemonControl.UpdateHelperTask} /F");
             try
             {
@@ -555,6 +556,49 @@ public static class Installer
         catch { return false; }
     }
 
+    private const string WindowsUninstallKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{6E2C3F41-8B7A-4E2D-9C1F-2A5D7B0E9C33}_is1";
+
+    /// <summary>Ярлыки и запись «Программы и компоненты», которые ставит установщик: без них после «chp uninstall» оставались бы пустые ссылки.</summary>
+    private static void RemoveWindowsShortcutsAndRegistration()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        void Drop(string? path)
+        {
+            try
+            {
+                if (path is null) return;
+                if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                else if (File.Exists(path)) File.Delete(path);
+            }
+            catch { }
+        }
+
+        string Folder(Environment.SpecialFolder f) { try { return Environment.GetFolderPath(f); } catch { return ""; } }
+        var commonDesktop = Folder(Environment.SpecialFolder.CommonDesktopDirectory);
+        var commonPrograms = Folder(Environment.SpecialFolder.CommonPrograms);
+        var commonStartup = Folder(Environment.SpecialFolder.CommonStartup);
+        if (commonDesktop.Length > 0) Drop(Path.Combine(commonDesktop, "CehoProxy.lnk"));
+        if (commonPrograms.Length > 0) Drop(Path.Combine(commonPrograms, "CehoProxy"));
+        if (commonStartup.Length > 0) Drop(Path.Combine(commonStartup, "CehoProxy.lnk"));
+
+        try
+        {
+            var users = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\", "Users");
+            foreach (var home in Directory.GetDirectories(users))
+            {
+                Drop(Path.Combine(home, "Desktop", "CehoProxy.lnk"));
+                Drop(Path.Combine(home, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs", "CehoProxy"));
+                Drop(Path.Combine(home, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "CehoProxy.lnk"));
+            }
+        }
+        catch { }
+
+        foreach (var hive in new[] { Microsoft.Win32.Registry.LocalMachine, Microsoft.Win32.Registry.CurrentUser })
+            foreach (var key in new[] { WindowsUninstallKey, WindowsUninstallKey.Replace(@"SOFTWARE\", @"SOFTWARE\WOW6432Node\") })
+                try { hive.DeleteSubKeyTree(key, throwOnMissingSubKey: false); } catch { }
+    }
+
     internal static void RemoveRuntimeFiles(string root)
     {
         if (!Directory.Exists(root)) return;
@@ -579,7 +623,12 @@ public static class Installer
                      "relaunch.ps1", "relaunch.sh",
                      "update-relaunch.ps1", "update-relaunch.sh", "pick-app.ps1",
                      "pick-app-launch.vbs", "pick-app-result.txt", "user-alias.path",
-                     ".write-probe", ".write-test"
+                     ".write-probe", ".write-test",
+                     ".ceho-private-*", "config.import.json", "controller.lock", "restart.request", "starting",
+                     "update-helper.started", "update-was-protected", "keep-engine", "cehoproxy-support.txt",
+                     "guard.json", "cehoproxy.pid", "panel.port",
+                     "cehoproxy-tray.exe", "cehoproxy-tray.exe.old", "cehoproxy-tray.exe.new", "debug.log",
+                     "rolled-back-*", "LICENSE", "README.md", "THIRD-PARTY.md",
                  })
         {
             string[] files;
@@ -589,7 +638,7 @@ public static class Installer
                 try { File.Delete(file); } catch { }
         }
 
-        foreach (var name in new[] { "geo-probes", "geoip", "engine-tmp" })
+        foreach (var name in new[] { "geo-probes", "geoip", "engine-tmp", "engine-new" })
         {
             var path = Path.Combine(root, name);
             try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch { }

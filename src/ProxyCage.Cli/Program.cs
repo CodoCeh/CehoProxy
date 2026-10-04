@@ -10,7 +10,11 @@ catch { }
 
 CehoConfig cfg0;
 try { cfg0 = CehoConfig.Load(Ceho.ConfigPath); }
-catch { cfg0 = new CehoConfig(); }
+catch (Exception loadError)
+{
+    cfg0 = new CehoConfig();
+    Assistant.ConfigUnreadable = loadError is UnauthorizedAccessException && File.Exists(Ceho.ConfigPath);
+}
 
 Log.Init(Ceho.Root, args.Length > 0 ? args[0] : "chp", !Cli.IsReadOnlyCommand(args));
 
@@ -1641,6 +1645,9 @@ switch (cmd)
             {
                 var self = Installer.BinaryPath(Ceho.Root);
                 if (File.Exists(self)) File.Delete(self);
+                if (args.Contains("--purge"))
+                    foreach (var program in new[] { "/usr/local/bin/cehoproxy", Ceho.OwnExecutablePath }.Distinct())
+                        try { if (File.Exists(program)) File.Delete(program); } catch { }
                 if (Directory.Exists(Ceho.Root) && Directory.GetFileSystemEntries(Ceho.Root).Length == 0)
                     Directory.Delete(Ceho.Root);
                 Console.WriteLine(Cli.S(cfg, "inst_removed"));
@@ -1699,6 +1706,7 @@ switch (cmd)
             : daemon && DaemonControl.IsRecovering(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_recovering"), Preflight.Level.Warning)
             : daemon && DaemonControl.IsStarting(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_starting"), Preflight.Level.Warning)
             : LeakGuard.IsActive(Ceho.Root) ? Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)
+            : daemon && !cfg.Apps.Any(a => a.Enabled) ? Cli.Paint(Cli.S(cfg, "state_no_apps"), Preflight.Level.Warning)
             : daemon ? Cli.Paint(Cli.S(cfg, "state_broken"), Preflight.Level.Blocker)
             : Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning));
 
@@ -2002,6 +2010,7 @@ if (cmd is "daemon" or "web")
     SingBoxProcess? proc = null;
     CehoConfig? activeEngineConfig = null;
     var adoptEngineOnce = true;
+    var waitingForSetup = false;
     DaemonControl.ClearKeepEngine(Ceho.Root);
     Autostart.EnsureKeepEngineDropIn();
     var engineAdopted = false;
@@ -2621,7 +2630,23 @@ if (cmd is "daemon" or "web")
             throw;
         }
     };
-    web.OnApply = report => ApplyRules(true, report);
+    // Служба поднялась без программ и ждёт настройки: как только препятствий нет, защиту включаем сама.
+    async Task<string?> StartIfWaitingForSetup(IStageReport? report)
+    {
+        if (!waitingForSetup || proc is not null || shuttingDown) return null;
+        var blocked = Preflight.Run(CehoConfig.Load(Ceho.ConfigPath), Ceho.Root)
+            .Any(c => c.Level == Preflight.Level.Blocker && c.Repair is not (Repair.PanelPort or Repair.ProxyPort));
+        if (blocked) return null;
+        waitingForSetup = false;
+        return await StartTunnel(report, "setup-complete", Strings.T(cfg.Language, "reconnect_service_start"));
+    }
+
+    web.OnApply = async report =>
+    {
+        var applied = await ApplyRules(true, report);
+        if (await StartIfWaitingForSetup(report) is { } startError) throw new InvalidOperationException(startError);
+        return proc is not null ? Strings.T(cfg.Language, "state_on") : applied;
+    };
     Task<string> ApplyRules(bool allowRestart, IStageReport report) => TunnelRuleApply.RunAsync(
         report,
         () =>
@@ -2939,7 +2964,11 @@ if (cmd is "daemon" or "web")
             if (proc is null)
                 try { await Task.Run(() => EngineMutex.Acquire(Ceho.Root).Dispose()); }
                 catch (TimeoutException) { }
-            if (proc is null) return (true, "");
+            if (proc is null)
+            {
+                if (await StartIfWaitingForSetup(new DelegateReport(Log.Info)) is { } startError) return (false, startError);
+                return (true, proc is not null ? Strings.T(language, "state_on") : "");
+            }
             var error = await RestartTunnel(new DelegateReport(Log.Info));
             return error is null ? (true, Strings.T(language, "rules_applied")) : (false, error);
         }
@@ -3039,7 +3068,10 @@ if (cmd is "daemon" or "web")
         var tunnelBlockers = startupBlockers
             .Where(c => c.Repair is not (Repair.PanelPort or Repair.ProxyPort)).ToList();
         if (tunnelBlockers.Count > 0)
+        {
+            waitingForSetup = true;
             Console.Error.WriteLine(Strings.T(cfg.Language, "panel_only", cfg.WebPort));
+        }
         else
         {
             var err = await StartTunnel(null, "service-start", Strings.T(cfg.Language, "reconnect_service_start"));

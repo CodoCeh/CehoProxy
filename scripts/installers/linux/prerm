@@ -2,7 +2,7 @@
 
 case "$1" in
   remove|purge)
-    [ -x /usr/local/bin/cehoproxy ] && /usr/local/bin/cehoproxy uninstall --yes </dev/null || true
+    [ -x /usr/local/bin/cehoproxy ] && /usr/local/bin/cehoproxy uninstall --yes --purge </dev/null || true
     ;;
 esac
 exit 0

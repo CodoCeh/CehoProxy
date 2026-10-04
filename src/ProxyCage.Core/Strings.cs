@@ -107,6 +107,9 @@ public static class Strings
         ["stop_cleaned"] = new(
             "Служба не работала; следы прошлого запуска сняты.",
             "The service was not running; leftovers from the previous run were removed."),
+        ["state_no_apps"] = new(
+            "Защита выключена: не выбрано ни одной программы. Добавьте её: chp add-app",
+            "Protection is off: no app is selected. Add one: chp add-app"),
         ["state_broken"] = new(
             "Защита не работает: служба запущена, но туннель не поднялся",
             "Protection is not working: the service runs, but the tunnel did not come up"),
@@ -1005,6 +1008,7 @@ public static class Strings
         ["upd_none"] = new("Обновлений нет, у вас последняя версия.", "No updates, you have the latest version."),
         ["upd_found"] = new("Доступна версия {0}.", "Version {0} is available."),
         ["upd_apply"] = new("Обновить и перезапустить", "Update and restart"),
+        ["state_need_sudo"] = new("Настройки читает только администратор, поэтому подписки и программы здесь не видны. Полная картина: {0}chp", "Only an administrator can read the settings, so subscriptions and apps are not shown here. Full picture: {0}chp"),
         ["upd_keeping_tun"] = new("Защита остаётся включённой: новая версия подхватит туннель", "Protection stays on: the new version takes over the tunnel"),
         ["upd_stopping_tun"] = new("Выключаю защиту перед обновлением", "Turning protection off before update"),
         ["upd_need_reboot"] = new(

@@ -65,6 +65,8 @@ public static class Assistant
         catch { return false; }
     }
 
+    public static bool ConfigUnreadable { get; set; }
+
     public static void PrintState(CehoConfig cfg)
     {
         var daemon = DaemonControl.IsRunning(Ceho.Root);
@@ -74,11 +76,21 @@ public static class Assistant
         Console.WriteLine();
         Console.WriteLine("  CehoProxy " + Updater.CurrentVersion + " · " +
             (up ? Cli.Paint(Cli.S(cfg, "state_on"), Preflight.Level.Ok)
+                : daemon && !ConfigUnreadable && !cfg.Apps.Any(a => a.Enabled) ? Cli.Paint(Cli.S(cfg, "state_no_apps"), Preflight.Level.Warning)
                 : daemon ? Cli.Paint(Cli.S(cfg, "state_broken"), Preflight.Level.Blocker)
                 : Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)));
         if (!daemon && tunnel)
             Console.WriteLine("  " + Cli.S(cfg, "state_leftovers", Os.IsWindows ? "" : "sudo "));
         Console.WriteLine();
+
+        if (ConfigUnreadable)
+        {
+            Console.WriteLine("  " + Cli.S(cfg, "state_need_sudo", Os.IsWindows ? "" : "sudo "));
+            Console.WriteLine();
+            Row("Web", $"http://127.0.0.1:{cfg.WebPort}");
+            Row(Cli.S(cfg, "product_page"), Brand.RepoUrl(cfg.UpdateRepo));
+            return;
+        }
 
         var subs = cfg.Subscriptions.Count == 0
             ? Cli.S(cfg, "empty")
