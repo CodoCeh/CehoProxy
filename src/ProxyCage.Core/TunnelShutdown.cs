@@ -18,6 +18,13 @@ public static class TunnelShutdown
 
         var wasRunning = DaemonControl.IsRunning(root);
         var autostartWasOn = Autostart.IsEnabled();
+        var keepEngine = wasRunning && DaemonControl.CanKeepEngine
+            && TunCleanup.IsOurEngineRunning(runtimeConfigPath, root);
+        if (keepEngine)
+        {
+            log?.Invoke("туннель остаётся включённым: новая служба подхватит движок");
+            DaemonControl.MarkKeepEngine(root);
+        }
 
         if (wasRunning)
         {
@@ -25,10 +32,14 @@ public static class TunnelShutdown
             DaemonControl.RequestStop(root);
             if (!WaitUntilDaemonGone(root, 20000, log))
             {
-                TunCleanup.KillOurProcesses(runtimeConfigPath, log);
+                if (keepEngine) DaemonControl.KillDaemon(root);
+                else TunCleanup.KillOurProcesses(runtimeConfigPath, log);
                 WaitUntilDaemonGone(root, 8000, log);
             }
         }
+
+        if (keepEngine) return new Result(true, null, null)
+            with { DaemonWasRunning = wasRunning, AutostartWasOn = autostartWasOn };
 
         return Release(cfg, root, runtimeConfigPath, log)
             with { DaemonWasRunning = wasRunning, AutostartWasOn = autostartWasOn };
@@ -40,6 +51,13 @@ public static class TunnelShutdown
     {
         var wasRunning = DaemonControl.IsRunning(root);
         var autostartWasOn = Autostart.IsEnabled();
+        var keepEngine = wasRunning && DaemonControl.CanKeepEngine
+            && TunCleanup.IsOurEngineRunning(runtimeConfigPath, root);
+        if (keepEngine)
+        {
+            log?.Invoke("туннель остаётся включённым: новая служба подхватит движок");
+            DaemonControl.MarkKeepEngine(root);
+        }
 
         var result = StopBeforeRelease(
             () => DaemonControl.IsRunning(root),
@@ -51,8 +69,9 @@ public static class TunnelShutdown
             () => WaitUntilDaemonGone(root, 20000, log),
             () => DaemonControl.StopInstalledWindowsDaemons(root),
             () => WaitUntilDaemonGone(root, 8000, log),
-            () => Release(cfg, root, runtimeConfigPath, log),
+            () => keepEngine ? new Result(true, null, null) : Release(cfg, root, runtimeConfigPath, log),
             () => RestoreWindowsDaemon(root, wasRunning, autostartWasOn, log));
+        if (!result.Ok) DaemonControl.ClearKeepEngine(root);
         return result with { DaemonWasRunning = wasRunning, AutostartWasOn = autostartWasOn };
     }
 
@@ -62,8 +81,16 @@ public static class TunnelShutdown
         string runtimeConfigPath,
         Action stopLocalTunnel,
         Func<Task> restoreLocalTunnel,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        bool keepEngine = false)
     {
+        if (keepEngine)
+        {
+            log?.Invoke("туннель остаётся включённым: новая служба подхватит движок");
+            DaemonControl.MarkKeepEngine(root);
+            return new Result(true, null, null);
+        }
+
         try { stopLocalTunnel(); }
         catch
         {
@@ -78,6 +105,7 @@ public static class TunnelShutdown
 
     public static void RestoreAfterUpdateHandoffFailure(Result prepared, string root, Action<string>? log = null)
     {
+        DaemonControl.ClearKeepEngine(root);
         if (!OperatingSystem.IsWindows() || !prepared.Ok) return;
         RestoreWindowsDaemon(root, prepared.DaemonWasRunning, prepared.AutostartWasOn, log);
     }

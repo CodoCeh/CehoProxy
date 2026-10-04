@@ -35,6 +35,8 @@ public static class TunCleanup
     public static bool IsOurEngineRunning(string runtimeConfigPath, string? root = null) =>
         OurEnginePids(runtimeConfigPath).Any();
 
+    public static int? OurEnginePid(string runtimeConfigPath) => OurEnginePids(runtimeConfigPath).Cast<int?>().FirstOrDefault();
+
     private static IEnumerable<int> OurEnginePids(string runtimeConfigPath)
     {
         if (Os.IsWindows)

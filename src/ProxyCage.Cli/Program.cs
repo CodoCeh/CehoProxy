@@ -1055,7 +1055,9 @@ switch (cmd)
                 },
                 () =>
                 {
-                    Console.WriteLine("  " + Cli.S(cfg, "upd_stopping_tun"));
+                    var keeping = DaemonControl.CanKeepEngine && DaemonControl.IsRunning(Ceho.Root)
+                        && TunCleanup.IsOurEngineRunning(Ceho.RuntimeConfigPath, Ceho.Root);
+                    Console.WriteLine("  " + Cli.S(cfg, keeping ? "upd_keeping_tun" : "upd_stopping_tun"));
                     return Task.FromResult(TunnelShutdown.PrepareForUpdate(
                         cfg, Ceho.Root, Ceho.RuntimeConfigPath, Console.WriteLine));
                 });
@@ -1987,6 +1989,10 @@ if (cmd is "daemon" or "web")
 
     SingBoxProcess? proc = null;
     CehoConfig? activeEngineConfig = null;
+    var adoptEngineOnce = true;
+    DaemonControl.ClearKeepEngine(Ceho.Root);
+    Autostart.EnsureKeepEngineDropIn();
+    var engineAdopted = false;
     var admittedConfiguration = new AdmittedConfiguration(cfg);
     SingBoxProcess? guard = null;
     var guardConfigPath = TunCleanup.GuardConfigPath(Ceho.Root);
@@ -2155,16 +2161,23 @@ if (cmd is "daemon" or "web")
                     && check.Title == Strings.T(c.Language, "pf_cronet_missing"))).ToArray();
             if (blockers.Length > 0)
                 throw new InvalidOperationException(string.Join(" ", blockers.Select(check => check.Title + " " + check.Fix)));
-            var leftover = TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
+            int? keepEngine = null;
+            if (adoptEngineOnce)
+            {
+                adoptEngineOnce = false;
+                keepEngine = TunCleanup.OurEnginePid(Ceho.RuntimeConfigPath);
+            }
+            engineAdopted = false;
+            var leftover = keepEngine is null ? TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info) : 0;
             if (leftover > 0) await Task.Delay(500);
-            if (Preflight.TryMoveProxyPortIfBusy(c, out var busyPort, out var freePort))
+            if (keepEngine is null && Preflight.TryMoveProxyPortIfBusy(c, out var busyPort, out var freePort))
             {
                 // An automatic retry must never overwrite newer deferred settings.
                 if (!keepAdmitted) c.Save(Ceho.ConfigPath);
                 Log.Info(Strings.T(c.Language, "proxy_port_moved", busyPort, freePort));
             }
-            if (c.MixedPort == c.ClashApiPort || Preflight.TcpPortTaken(c.MixedPort) == true
-                || Preflight.TcpPortTaken(c.ClashApiPort) == true)
+            if (c.MixedPort == c.ClashApiPort || (keepEngine is null && (Preflight.TcpPortTaken(c.MixedPort) == true
+                || Preflight.TcpPortTaken(c.ClashApiPort) == true)))
                 throw new InvalidOperationException(c.Language == "ru"
                     ? "Порт прокси или API занят. Проверьте настройки сети; другие процессы не остановлены."
                     : "The proxy or API port is occupied. Check network settings; other processes were not stopped.");
@@ -2197,6 +2210,16 @@ if (cmd is "daemon" or "web")
             configurationError = StartupPreflight.ConfigurationError(c);
             if (configurationError is not null) throw new InvalidOperationException(configurationError);
             var generatedRules = SingBoxConfigGenerator.GenerateForConfig(nodes, c);
+            if (keepEngine is not null)
+            {
+                string? previousRules = null;
+                try { previousRules = File.ReadAllText(Ceho.RuntimeConfigPath); } catch { }
+                if (previousRules != generatedRules)
+                {
+                    Log.Info("правила изменились: работающий движок будет перезапущен");
+                    keepEngine = null;
+                }
+            }
             PrivateFile.Write(Ceho.RuntimeConfigPath, generatedRules);
             VerifiedConfigStore.Candidate? candidate = null;
             try { candidate = VerifiedConfigStore.Capture(Ceho.Root, c, generatedRules); }
@@ -2205,7 +2228,7 @@ if (cmd is "daemon" or "web")
             LeakGuard.Apply(c, Ceho.Root);
             Log.Info($"этап: подписки и правила {watch.Elapsed.TotalSeconds:F1} с");
 
-            var reason = await BringEngineUp(c, report);
+            var reason = await BringEngineUp(c, report, keepEngine);
             for (var attempt = 1;
                  reason is not null
                  && EngineAdapterStuck(reason)
@@ -2247,14 +2270,17 @@ if (cmd is "daemon" or "web")
             }
             probed = false;
             boundAddress = Os.PhysicalBindAddress(c.TunAddress)?.ToString();
-            report?.Phase(Strings.T(c.Language, "stage_bounce_apps"));
-            watch.Restart();
-            var bounced = IsolatedAppBounce.ResetNetwork(c, Log.Info);
-            Log.Info($"этап: сброс соединений программ {watch.Elapsed.TotalSeconds:F1} с");
-            if (bounced.Killed + bounced.Connections > 0)
-                Log.Info(
-                    $"сброшены старые соединения {string.Join(", ", bounced.Labels)}: " +
-                    $"процессы {bounced.Killed}, TCP {bounced.Connections}");
+            if (!engineAdopted)
+            {
+                report?.Phase(Strings.T(c.Language, "stage_bounce_apps"));
+                watch.Restart();
+                var bounced = IsolatedAppBounce.ResetNetwork(c, Log.Info);
+                Log.Info($"этап: сброс соединений программ {watch.Elapsed.TotalSeconds:F1} с");
+                if (bounced.Killed + bounced.Connections > 0)
+                    Log.Info(
+                        $"сброшены старые соединения {string.Join(", ", bounced.Labels)}: " +
+                        $"процессы {bounced.Killed}, TCP {bounced.Connections}");
+            }
             appliedRulesConfig = c;
             succeeded = true;
             return null;
@@ -2309,10 +2335,35 @@ if (cmd is "daemon" or "web")
         await StartGuard();
     }
 
-    async Task<string?> BringEngineUp(CehoConfig c, IStageReport? report)
+    async Task<string?> BringEngineUp(CehoConfig c, IStageReport? report, int? keepEngine = null)
     {
-        report?.Phase(Strings.T(c.Language, "stage_cleanup"));
         var watch = System.Diagnostics.Stopwatch.StartNew();
+        if (keepEngine is int keptPid)
+        {
+            report?.Phase(Strings.T(c.Language, "stage_engine_wait"), waiting: true);
+            var kept = new SingBoxProcess();
+            try
+            {
+                kept.Attach(keptPid);
+                var keptReady = await EngineReadiness.WaitAsync(
+                    () => kept.IsRunning,
+                    () => SingBoxProcess.ListensAsync(c.MixedPort, c.ClashApiPort));
+                if (keptReady == EngineReadinessResult.Ready && kept.IsRunning)
+                {
+                    Log.Info($"движок pid {keptPid} подхвачен без перезапуска, туннель не прерывался");
+                    proc = kept;
+                    activeEngineConfig = c;
+                    engineAdopted = true;
+                    return null;
+                }
+            }
+            catch (Exception ex) { Log.Warn($"движок pid {keptPid} подхватить не удалось: {ex.Message}"); }
+            Log.Info("подхваченный движок не отвечает: запускаю заново");
+            kept.Dispose();
+            await Task.Delay(500);
+        }
+
+        report?.Phase(Strings.T(c.Language, "stage_cleanup"));
 
         var handover = guard is not null;
         StopGuard();
@@ -2670,10 +2721,12 @@ if (cmd is "daemon" or "web")
             },
             () =>
             {
-                report.Stage(Strings.T(c.Language, "upd_stopping_tun"), 80);
+                report.Stage(Strings.T(c.Language,
+                    DaemonControl.CanKeepEngine && proc is { IsRunning: true } ? "upd_keeping_tun" : "upd_stopping_tun"), 80);
                 return TunnelShutdown.PrepareFromRunningDaemonAsync(
                     c, Ceho.Root, Ceho.RuntimeConfigPath, () => { StopTunnel(); },
-                    async () => { await StartTunnel(null); }, m => report.Note(m));
+                    async () => { await StartTunnel(null); }, m => report.Note(m),
+                    keepEngine: DaemonControl.CanKeepEngine && proc is { IsRunning: true });
             });
         if (!shut.Ok)
             throw new InvalidOperationException(Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot"));
@@ -2696,6 +2749,7 @@ if (cmd is "daemon" or "web")
             {
                 try { if (File.Exists(downloaded)) File.Delete(downloaded); } catch { }
                 try { UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Failed(handoffId, release.Version)); } catch { }
+                DaemonControl.ClearKeepEngine(Ceho.Root);
                 try { await StartTunnel(null); } catch { }
                 throw;
             }
@@ -2713,6 +2767,7 @@ if (cmd is "daemon" or "web")
         if (!applied.Ok)
         {
             try { UpdateHandoff.Write(Ceho.Root, UpdateHandoff.Failed(handoffId, release.Version)); } catch { }
+            DaemonControl.ClearKeepEngine(Ceho.Root);
             try { await StartTunnel(null); } catch { }
             throw new InvalidOperationException(
                 Strings.T(c.Language, "upd_not_applied",
@@ -3209,7 +3264,10 @@ if (cmd is "daemon" or "web")
     DaemonControl.WaitForStop();
     cts.Cancel();
     shuttingDown = true;
-    StopTunnel();
+    if (DaemonControl.KeepEngineRequested(Ceho.Root) && proc is { IsRunning: true })
+        Log.Info("служба остановлена для обновления: движок оставлен работать");
+    else
+        StopTunnel();
     StopGuard();
     TunCleanup.KillOurProcesses(guardConfigPath, Log.Info);
     web.Stop();

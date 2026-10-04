@@ -7,6 +7,23 @@ public static class Autostart
     public const string LaunchdLabel = "ru.codoceh.cehoproxy";
 
     private const string UnitPath = "/etc/systemd/system/cehoproxy.service";
+    private const string DropInDir = "/etc/systemd/system/cehoproxy.service.d";
+    private const string DropInPath = DropInDir + "/keep-engine.conf";
+
+    /// <summary>Без KillMode=process systemd при любой смене службы убивает и движок: туннель рвётся.</summary>
+    public static bool KeepsEngineAcrossRestart => !Os.IsLinux || !File.Exists(UnitPath) || File.Exists(DropInPath);
+
+    public static void EnsureKeepEngineDropIn()
+    {
+        if (!Os.IsLinux || !File.Exists(UnitPath) || File.Exists(DropInPath) || !Os.IsElevated()) return;
+        try
+        {
+            Directory.CreateDirectory(DropInDir);
+            File.WriteAllText(DropInPath, "[Service]\nKillMode=process\n");
+            Os.Run("systemctl", "daemon-reload");
+        }
+        catch { }
+    }
     private const string PlistPath = "/Library/LaunchDaemons/ru.codoceh.cehoproxy.plist";
 
     public static bool IsEnabled() => Os.Kind switch
@@ -75,6 +92,7 @@ public static class Autostart
             if (Os.IsLinux && File.Exists(UnitPath))
             {
                 File.Delete(UnitPath);
+                if (Directory.Exists(DropInDir)) Directory.Delete(DropInDir, recursive: true);
                 Os.Run("systemctl", "daemon-reload");
             }
             if (Os.IsMac && File.Exists(PlistPath)) File.Delete(PlistPath);
@@ -128,7 +146,12 @@ public static class Autostart
             WantedBy=multi-user.target
             """;
 
-        try { File.WriteAllText(UnitPath, unit); }
+        try
+        {
+            File.WriteAllText(UnitPath, unit);
+            Directory.CreateDirectory(DropInDir);
+            File.WriteAllText(DropInPath, "[Service]\nKillMode=process\n");
+        }
         catch (Exception ex) { return $"не удалось записать {UnitPath}: {ex.Message}"; }
 
         var (reloadCode, reloadOut) = Os.Run("systemctl", "daemon-reload");

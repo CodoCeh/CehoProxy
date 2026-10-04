@@ -85,6 +85,17 @@ public sealed class SingBoxProcess : IDisposable
 
     public uint ProcessId { get; private set; }
 
+    /// <summary>Движок запущен не нами: подхвачен после перезапуска демона, его вывод нам недоступен.</summary>
+    public bool Attached { get; private set; }
+
+    public void Attach(int pid)
+    {
+        _drained = new ManualResetEventSlim(true);
+        _unix = System.Diagnostics.Process.GetProcessById(pid);
+        ProcessId = (uint)pid;
+        Attached = true;
+    }
+
     private readonly Queue<string> _engineLines = new();
 
     private ManualResetEventSlim _drained = new(true);
@@ -345,6 +356,12 @@ public sealed class SingBoxProcess : IDisposable
     {
         var p = _unix!;
         if (p.HasExited) return true;
+
+        if (OperatingSystem.IsWindows())
+        {
+            try { p.Kill(); p.WaitForExit(2000); } catch { }
+            return false;
+        }
 
         PosixKill(p.Id, SIGTERM);
         if (p.WaitForExit(gracefulTimeoutMs)) return true;

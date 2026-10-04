@@ -482,7 +482,9 @@ public static class Ceho
     {
         cfg.Validate();
         if (Os.IsWindows && Os.IsElevated()) LeakGuard.Apply(cfg, Root);
-        var moved = DaemonControl.IsRunning(Root) ? null : Preflight.SaveProxyPortIfBusy(cfg, ConfigPath);
+        var moved = DaemonControl.IsRunning(Root) || TunCleanup.IsOurEngineRunning(RuntimeConfigPath, Root)
+            ? null
+            : Preflight.SaveProxyPortIfBusy(cfg, ConfigPath);
         var nodes = await LoadAllNodesAsync(cfg, preferCache: false, report);
         report?.Phase(Strings.T(cfg.Language, "stage_writing_rules"));
         var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg);

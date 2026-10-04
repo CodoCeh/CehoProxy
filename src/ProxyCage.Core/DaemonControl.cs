@@ -182,6 +182,32 @@ public static class DaemonControl
         catch { }
     }
 
+    public static string KeepEngineMarker(string root) => Path.Combine(root, "keep-engine");
+
+    /// <summary>Пока движок умеет переживать смену службы (подхватывается новой), обновление его не гасит.</summary>
+    public static bool CanKeepEngine => Os.IsWindows || (Os.IsLinux && Autostart.KeepsEngineAcrossRestart);
+
+    public static void MarkKeepEngine(string root)
+    {
+        try { File.WriteAllText(KeepEngineMarker(root), DateTime.UtcNow.ToString("o")); } catch { }
+    }
+
+    public static void ClearKeepEngine(string root)
+    {
+        try { File.Delete(KeepEngineMarker(root)); } catch { }
+    }
+
+    /// <summary>Отметка живёт пять минут: забытая после сорванного обновления не должна оставлять движок при обычной остановке.</summary>
+    public static bool KeepEngineRequested(string root, int maxAgeMinutes = 5)
+    {
+        try
+        {
+            var marker = KeepEngineMarker(root);
+            return File.Exists(marker) && DateTime.UtcNow - File.GetLastWriteTimeUtc(marker) < TimeSpan.FromMinutes(maxAgeMinutes);
+        }
+        catch { return false; }
+    }
+
     public static void ClearRunning(string root)
     {
         try { File.Delete(PidPath(root)); } catch { }
@@ -435,6 +461,11 @@ public static class DaemonControl
 
         Autostart.Restart();
         return WaitUntilRunning(root, timeoutMs);
+    }
+
+    public static void KillDaemon(string root)
+    {
+        if (RunningPid(root) is { } pid && !Os.IsWindows) PosixKill(pid, 9);
     }
 
     public static bool RequestStop(string root)

@@ -1005,6 +1005,7 @@ public static class Strings
         ["upd_none"] = new("Обновлений нет, у вас последняя версия.", "No updates, you have the latest version."),
         ["upd_found"] = new("Доступна версия {0}.", "Version {0} is available."),
         ["upd_apply"] = new("Обновить и перезапустить", "Update and restart"),
+        ["upd_keeping_tun"] = new("Защита остаётся включённой: новая версия подхватит туннель", "Protection stays on: the new version takes over the tunnel"),
         ["upd_stopping_tun"] = new("Выключаю защиту перед обновлением", "Turning protection off before update"),
         ["upd_need_reboot"] = new(
             "TUN-адаптер не снялся. Перезагрузите Windows и повторите обновление.",
