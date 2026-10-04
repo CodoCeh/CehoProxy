@@ -2996,21 +2996,7 @@ if (cmd is "daemon" or "web")
     if (withTunnel && Os.IsElevated())
         _ = Task.Run(() => TrayInstaller.EnsureAsync(Ceho.Root, cfg.UpdateRepo, true, Log.Info, cfg.Language));
 
-    if (withTunnel && !Os.IsWindows && cfg.TunIpv6)
-    {
-        var routeV4 = Os.DefaultRouteInterface(false);
-        var routeV6 = Os.DefaultRouteInterface(true);
-        if (routeV6 is null)
-        {
-            SingBoxConfigGenerator.Ipv6Allowed = false;
-            Log.Info(Strings.T(cfg.Language, "tun_ipv6_none"));
-        }
-        else if (routeV4 is not null && !routeV4.Equals(routeV6, StringComparison.Ordinal))
-        {
-            SingBoxConfigGenerator.Ipv6Allowed = false;
-            Log.Warn(Strings.T(cfg.Language, "tun_ipv6_split", routeV4, routeV6));
-        }
-    }
+    if (withTunnel) Ceho.DecideTunnelIpv6(cfg, Log.Info, Log.Warn);
 
     var preflight = Preflight.Run(CehoConfig.Load(Ceho.ConfigPath), Ceho.Root);
     var startupBlockers = preflight.Where(c => c.Level == Preflight.Level.Blocker).ToList();

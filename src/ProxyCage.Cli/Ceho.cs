@@ -478,9 +478,31 @@ public static class Ceho
     public static Task<string> ApplyAsync(IStageReport? report = null) =>
         ApplyConfigurationAsync(CehoConfig.Load(ConfigPath), report);
 
+    /// <summary>
+    /// IPv6 в туннеле зависит от маршрутов машины. Решение должно быть одинаковым у службы и у команд,
+    /// которые собирают правила, иначе правила не совпадут и движок при обновлении придётся перезапускать.
+    /// </summary>
+    public static void DecideTunnelIpv6(CehoConfig cfg, Action<string> info, Action<string> warn)
+    {
+        if (Os.IsWindows || !cfg.TunIpv6 || !SingBoxConfigGenerator.Ipv6Allowed) return;
+        var routeV4 = Os.DefaultRouteInterface(false);
+        var routeV6 = Os.DefaultRouteInterface(true);
+        if (routeV6 is null)
+        {
+            SingBoxConfigGenerator.Ipv6Allowed = false;
+            info(Strings.T(cfg.Language, "tun_ipv6_none"));
+        }
+        else if (routeV4 is not null && !routeV4.Equals(routeV6, StringComparison.Ordinal))
+        {
+            SingBoxConfigGenerator.Ipv6Allowed = false;
+            warn(Strings.T(cfg.Language, "tun_ipv6_split", routeV4, routeV6));
+        }
+    }
+
     internal static async Task<string> ApplyConfigurationAsync(CehoConfig cfg, IStageReport? report = null)
     {
         cfg.Validate();
+        DecideTunnelIpv6(cfg, _ => { }, _ => { });
         if (Os.IsWindows && Os.IsElevated()) LeakGuard.Apply(cfg, Root);
         var moved = DaemonControl.IsRunning(Root) || TunCleanup.IsOurEngineRunning(RuntimeConfigPath, Root)
             ? null
