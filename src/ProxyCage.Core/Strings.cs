@@ -1333,6 +1333,7 @@ public static class Strings
             "Такого пути нет: {0}",
             "No such path: {0}"),
         ["err_already_added"] = new("Это уже добавлено.", "Already added."),
+        ["err_app_name_ambiguous"] = new("Под именем «{0}» несколько программ. Укажите путь:", "Several apps are named \"{0}\". Give the path:"),
         ["err_not_in_list"] = new("Такого в списке нет.", "Not in the list."),
         ["err_need_sub_args"] = new(
             "Нужно: sub-add <имя> <ссылка>", "Usage: sub-add <name> <link>"),

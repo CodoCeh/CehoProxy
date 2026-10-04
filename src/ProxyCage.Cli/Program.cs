@@ -474,6 +474,18 @@ switch (cmd)
         }
         else if (int.TryParse(which, out var idx) && idx >= 1 && idx <= cfg.Apps.Count)
             which = cfg.Apps[idx - 1].Folder;
+        else if (!cfg.Apps.Any(a => a.Folder.Equals(which, StringComparison.OrdinalIgnoreCase)
+                                 || a.Folder.Equals(Os.RealPath(which), StringComparison.OrdinalIgnoreCase)))
+        {
+            var named = AppLookup.ByName(cfg.Apps, which);
+            if (named.Count > 1)
+            {
+                Console.Error.WriteLine(Cli.S(cfg, "err_app_name_ambiguous", which));
+                foreach (var a in named) Console.Error.WriteLine($"  {a.Folder}");
+                return 1;
+            }
+            if (named.Count == 1) which = named[0].Folder;
+        }
 
         var target = Os.RealPath(which);
         var n = cfg.Apps.RemoveAll(a =>

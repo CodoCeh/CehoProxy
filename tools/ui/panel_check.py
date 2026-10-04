@@ -283,6 +283,11 @@ def full_scenario(pg, M):
             except Exception as e:
                 failures.append("уборка " + x)
                 print("FAIL уборка", x, e)
+                try:
+                    pg.screenshot(path="/tmp/panel_cleanup_fail.png", full_page=True)
+                    print("карточка:", pg.locator("article.app-card").filter(has_text=label_of(x)).first.evaluate("e => e.outerHTML")[:1500])
+                except Exception:
+                    pass
         reload_tab("state")
         if pg.locator("form.pending").count():
             check("уборка: применение возвращает исходные правила", apply_pending(), body()[:300])
