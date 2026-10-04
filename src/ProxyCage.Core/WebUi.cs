@@ -464,7 +464,7 @@ public static class WebUi
     .app-proof{color:var(--ok-ink);font-weight:600;margin:6px 0 0;font-size:var(--fs-s)}.country-form{margin:8px 0 0}.country-form label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:var(--fs-s)}.country-form select{width:auto;max-width:100%}.recommend{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin:16px 0}.recommend h2{margin:0 0 6px}
     details.node-help{margin-top:8px}details.node-help summary{cursor:pointer;color:var(--brand-ink);font-size:var(--fs-s)}.node-help-actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.node-help-actions form{margin:0}form.node-word{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 8px}form.node-word input{width:auto;min-width:190px}
     .app-identity .dot{width:12px;height:12px}.app-card.on .app-observation-body>p.hint{display:none}
-    .app-identity{display:flex;gap:12px;align-items:center;min-width:0}.app-identity h3{overflow-wrap:anywhere}
+    .app-identity{display:flex;gap:12px;align-items:center;min-width:0}.app-identity h3,.app-identity b{overflow-wrap:anywhere;min-width:0}
     .app-identity .ico{width:38px;height:38px;object-fit:contain;filter:none!important}
     .app-card-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;max-width:190px;font-size:var(--fs-s)}
     .app-card-actions form{margin:0}.app-card-actions>details{width:100%}.app-card-actions summary{cursor:pointer;color:var(--muted)}
