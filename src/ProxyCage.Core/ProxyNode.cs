@@ -9,6 +9,8 @@ public enum ProxyProtocol
     Hysteria2,
     Tuic,
     Naive,
+    Http,
+    Socks,
 }
 
 public sealed class ProxyNode

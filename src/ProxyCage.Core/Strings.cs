@@ -935,8 +935,8 @@ public static class Strings
             "Прокси работает, только пока защита включена.",
             "The proxy works only while protection is on."),
         ["sub_url_bad"] = new(
-            "Это не похоже на ссылку. Ссылка подписки начинается с https://, ссылка на узел — с naive://, vless:// и подобного.",
-            "That does not look like a link. A subscription link starts with https://, a node link with naive://, vless:// and similar."),
+            "Это не похоже на ссылку. Ссылка подписки начинается с https://, ссылка на узел — с naive://, vless://, http://, socks5:// и подобного.",
+            "That does not look like a link. A subscription link starts with https://, a node link with naive://, vless://, http://, socks5:// and similar."),
         ["naive_uri_bad"] = new(
             "Строка naive:// не распознана. Проверьте формат: naive://user:pass@host:8443?sni=…",
             "Could not parse naive:// line. Expected: naive://user:pass@host:8443?sni=…"),
@@ -1770,10 +1770,12 @@ public static class Strings
         ["sub_where_formats"] = new(
             "Мы понимаем ссылку http(s), которая отдаёт список серверов текстом или в base64, файл Clash (YAML) " +
             "и файл sing-box (JSON). Вместо подписки можно вставить и одну ссылку на сервер: vless://, vmess://, " +
-            "trojan://, ss://, hysteria2:// (hy2://), tuic:// или naive://.",
+            "trojan://, ss://, hysteria2:// (hy2://), tuic://, naive://, а также обычный прокси: http://логин:пароль@адрес:порт " +
+            "или socks5://логин:пароль@адрес:порт.",
             "We understand an http(s) link that returns a list of servers as plain text or base64, a Clash file " +
             "(YAML) and a sing-box file (JSON). Instead of a subscription you can paste a single server link: " +
-            "vless://, vmess://, trojan://, ss://, hysteria2:// (hy2://), tuic:// or naive://."),
+            "vless://, vmess://, trojan://, ss://, hysteria2:// (hy2://), tuic://, naive:// or a plain proxy: " +
+            "http://user:password@host:port or socks5://user:password@host:port."),
         ["sub_where_get"] = new(
             "Ссылку выдаёт любой VPN-сервис, который разрешает сторонние программы: ищите в его личном кабинете " +
             "или боте пункт «Подписка», «Импорт» или «Добавить в клиент».",

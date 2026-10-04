@@ -5,3 +5,5 @@ ss://YWVzLTI1Ni1nY206c3MtcGFzc3dvcmQ@ss.example.com:8388#%F0%9F%87%AB%F0%9F%87%A
 hysteria2://hy2-password@hy2.example.com:443?sni=hy2.example.com&insecure=1&obfs=salamander&obfs-password=obfs-secret#%F0%9F%87%B9%F0%9F%87%B7%20hysteria2
 tuic://00000000-0000-4000-8000-000000000002:tuic-password@tuic.example.com:443?sni=tuic.example.com&congestion_control=bbr&alpn=h3#%F0%9F%87%B5%F0%9F%87%B1%20tuic
 naive://user:pass@naive.example.com:8443?sni=naive.example.com#Naive
+http://proxy-user:proxy-pass@http-proxy.example.net:3128#HTTP proxy
+socks5://proxy-user:proxy-pass@socks-proxy.example.net:1080#SOCKS5 proxy

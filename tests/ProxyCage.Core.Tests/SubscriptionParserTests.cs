@@ -66,7 +66,7 @@ public class SubscriptionParserTests
     public void Parses_every_supported_protocol()
     {
         var nodes = SubscriptionParser.Parse(Fixture("sub-protocols.txt"));
-        Assert.Equal(7, nodes.Count);
+        Assert.Equal(9, nodes.Count);
         foreach (var expected in Enum.GetValues<ProxyProtocol>())
             Assert.Contains(nodes, n => n.Protocol == expected);
     }

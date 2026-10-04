@@ -825,7 +825,7 @@ public static class SingBoxConfigGenerator
         // NaiveProxy — один фиксированный upstream (Caddy), не VPN-нода со страной в remark.
         // Фильтр «стран выхода» к нему не применяется: иначе при naive-only и выключенном «??»
         // пул пустеет, хотя подписка включена и нода загружена.
-        if (node.Protocol == ProxyProtocol.Naive) return true;
+        if (node.Protocol is ProxyProtocol.Naive or ProxyProtocol.Http or ProxyProtocol.Socks) return true;
 
         var code = node.CountryCode ?? CountryResolver.Unknown;
         return !cfg.ExcludedCountries.Contains(code, StringComparer.OrdinalIgnoreCase)

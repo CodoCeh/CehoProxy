@@ -13,6 +13,8 @@ public static class OutboundBuilder
         ProxyProtocol.Hysteria2 => BuildHysteria2(n),
         ProxyProtocol.Tuic => BuildTuic(n),
         ProxyProtocol.Naive => BuildNaive(n),
+        ProxyProtocol.Http => BuildProxy(n, "http"),
+        ProxyProtocol.Socks => BuildProxy(n, "socks"),
         _ => throw new NotSupportedException($"протокол {n.Protocol} не поддержан"),
     };
 
@@ -79,6 +81,18 @@ public static class OutboundBuilder
         o["password"] = n.TuicPassword ?? "";
         o["congestion_control"] = string.IsNullOrEmpty(n.CongestionControl) ? "bbr" : n.CongestionControl;
         AddTls(o, n, forceTls: true);
+        return o;
+    }
+
+    private static JsonObject BuildProxy(ProxyNode n, string type)
+    {
+        var o = Base(n, type);
+        if (type == "socks") o["version"] = "5";
+        if (!string.IsNullOrEmpty(n.Credential))
+        {
+            o["username"] = n.Credential;
+            o["password"] = n.TuicPassword ?? "";
+        }
         return o;
     }
 

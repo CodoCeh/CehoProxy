@@ -64,7 +64,6 @@ public static class NaiveProxyHelper
             return true;
 
         if (trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             || trimmed.StartsWith("http2://", StringComparison.OrdinalIgnoreCase)
             || trimmed.StartsWith("quic://", StringComparison.OrdinalIgnoreCase))
         {

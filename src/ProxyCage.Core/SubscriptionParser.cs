@@ -20,10 +20,22 @@ public static class SubscriptionParser
         ("hy2://", ProxyProtocol.Hysteria2),
         ("tuic://", ProxyProtocol.Tuic),
         ("naive://", ProxyProtocol.Naive),
+        ("socks5://", ProxyProtocol.Socks),
+        ("socks5h://", ProxyProtocol.Socks),
+        ("socks://", ProxyProtocol.Socks),
     };
+
+    // У http:// без пути и с явным портом это прокси, а не подписка: у подписки всегда есть путь с токеном.
+    private static readonly System.Text.RegularExpressions.Regex HttpProxyShape = new(
+        @"^http://(?:[^/@\s]+@)?(?:\[[0-9a-fA-F:]+\]|[^/@:\s]+):(\d{1,5})/?(?:#.*)?$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    public static bool IsHttpProxyUri(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && HttpProxyShape.IsMatch(text.Trim());
 
     public static bool LooksLikeNodeUri(string text) =>
         Schemes.Any(x => text.TrimStart().StartsWith(x.Scheme, StringComparison.OrdinalIgnoreCase))
+        || IsHttpProxyUri(text)
         || NaiveProxyHelper.IsNaiveUri(text);
 
     public static bool IsAcceptableSource(string source) =>
@@ -46,6 +58,12 @@ public static class SubscriptionParser
             var line = NormalizeNaiveShareUri(rawLine.Trim());
             if (line.Length == 0) continue;
 
+            if (IsHttpProxyUri(line))
+            {
+                if (ParseProxyUri(line, ProxyProtocol.Http, ++index, lang) is { } httpNode) nodes.Add(httpNode);
+                continue;
+            }
+
             var match = Schemes.FirstOrDefault(s =>
                 line.StartsWith(s.Scheme, StringComparison.OrdinalIgnoreCase));
             if (match.Scheme is null) continue;
@@ -55,6 +73,7 @@ public static class SubscriptionParser
                 ProxyProtocol.Vmess => ParseVmess(line, ++index, lang),
                 ProxyProtocol.Shadowsocks => ParseShadowsocks(line, ++index, lang),
                 ProxyProtocol.Naive => ParseNaive(line, ++index, lang),
+                ProxyProtocol.Socks => ParseProxyUri(line, ProxyProtocol.Socks, ++index, lang),
                 _ => ParseUriStyle(line, match.Scheme, match.Protocol, ++index, lang),
             };
             if (node is not null) nodes.Add(node);
@@ -99,6 +118,7 @@ public static class SubscriptionParser
     private static string Decode(string body)
     {
         if (Schemes.Any(s => body.Contains(s.Scheme, StringComparison.OrdinalIgnoreCase))
+            || body.Split('\n').Any(l => IsHttpProxyUri(l))
             || body.Contains("naive+https://", StringComparison.OrdinalIgnoreCase)
             || body.Contains("naive+quic://", StringComparison.OrdinalIgnoreCase)
             || NaiveProxyHelper.IsNaiveUri(body))
@@ -118,6 +138,64 @@ public static class SubscriptionParser
         catch (FormatException)
         {
             return body;
+        }
+    }
+
+    /// <summary>http://user:pass@host:port и socks5://user:pass@host:port; имя после # необязательно.</summary>
+    internal static ProxyNode? ParseProxyUri(string uri, ProxyProtocol protocol, int index, string lang)
+    {
+        try
+        {
+            var rest = uri.Trim();
+            rest = rest[(rest.IndexOf("://", StringComparison.Ordinal) + 3)..];
+
+            var fragment = "";
+            var hash = rest.IndexOf('#');
+            if (hash >= 0)
+            {
+                fragment = Uri.UnescapeDataString(rest[(hash + 1)..]);
+                rest = rest[..hash];
+            }
+
+            var slash = rest.IndexOf('/');
+            if (slash >= 0) rest = rest[..slash];
+
+            var user = "";
+            var password = "";
+            var at = rest.LastIndexOf('@');
+            if (at >= 0)
+            {
+                var info = rest[..at];
+                rest = rest[(at + 1)..];
+                var colon = info.IndexOf(':');
+                user = Uri.UnescapeDataString(colon >= 0 ? info[..colon] : info);
+                password = colon >= 0 ? Uri.UnescapeDataString(info[(colon + 1)..]) : "";
+            }
+
+            var portAt = rest.LastIndexOf(':');
+            if (portAt < 0 || !int.TryParse(rest[(portAt + 1)..], out var port) || port is < 1 or > 65535) return null;
+            var host = rest[..portAt].Trim('[', ']');
+            if (host.Length == 0) return null;
+
+            var country = CountryResolver.ResolveCode(fragment);
+            var node = new ProxyNode
+            {
+                Tag = $"p{index:00}",
+                Protocol = protocol,
+                Server = host,
+                Port = port,
+                Credential = user,
+                TuicPassword = password,
+                Remark = fragment.Length > 0 ? fragment : $"{host}:{port}",
+                CountryCode = country,
+                CountryName = CountryResolver.DisplayName(country, lang),
+            };
+            node.IsMeta = IsMeta(node.Remark, country);
+            return node;
+        }
+        catch
+        {
+            return null;
         }
     }
 
