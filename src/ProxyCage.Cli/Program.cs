@@ -2025,6 +2025,7 @@ if (cmd is "daemon" or "web")
     var shuttingDown = false;
     string? lastError = null;
     var wanted = false;
+    var stopRequested = false;
     var recovery = new RecoveryPolicy();
     var guardRecovery = new RecoveryPolicy();
     Action runtimeChanged = () => { };
@@ -2259,6 +2260,7 @@ if (cmd is "daemon" or "web")
             for (var attempt = 1;
                  reason is not null
                  && EngineAdapterStuck(reason)
+                 && !Volatile.Read(ref stopRequested)
                  && attempt < 5;
                  attempt++)
             {
@@ -2553,6 +2555,7 @@ if (cmd is "daemon" or "web")
     };
     web.OnStop = () =>
     {
+        Volatile.Write(ref stopRequested, true);
         using var gate = EngineMutex.Acquire(Ceho.Root);
         wanted = false;
         recovery.StopByUser();
@@ -2561,7 +2564,9 @@ if (cmd is "daemon" or "web")
         runtimeChanged();
         DaemonControl.ClearStarting(Ceho.Root);
         DaemonControl.MarkStoppedByUser(Ceho.Root);
-        return Task.FromResult(StopTunnelLocked());
+        var stopError = StopTunnelLocked();
+        Volatile.Write(ref stopRequested, false);
+        return Task.FromResult(stopError);
     };
     web.OnRemoveLastApp = removed =>
     {

@@ -222,6 +222,13 @@ public static class TunCleanup
             return true;
         }
 
+        if (DeviceRemoval.TryRemove(instanceId, out var removeError))
+        {
+            log?.Invoke($"снят Wintun {name ?? "без интерфейса"} через SetupAPI: {instanceId}");
+            return true;
+        }
+        log?.Invoke($"SetupAPI не снял {instanceId}: {removeError}");
+
         if (DisableDeviceWithPowerShell(instanceId, log))
         {
             log?.Invoke($"выключен Wintun {name ?? "без интерфейса"}: {instanceId}");

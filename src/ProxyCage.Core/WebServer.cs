@@ -1778,10 +1778,10 @@ public sealed partial class WebServer
               "VPN is configured for selected apps only. Their actual connections are checked separately."))).Append("</p></div>")
           .Append("<form method=post><input type=hidden name=tab value=state>");
         if (power is not null) { }
-        else if (st.Running)
+        else if (st.Running || DaemonControl.IsRecovering(Root))
         {
             sb.Append("<button type=submit formaction=\"/control/stop\" class=danger>").Append(E(S("btn_off", []))).Append("</button>");
-            if (!cfg.SimplePanel)
+            if (!cfg.SimplePanel && st.Running)
                 sb.Append("<button type=submit formaction=\"/control/restart\" class=ghost>").Append(E(S("btn_restart", []))).Append("</button>");
         }
         else
