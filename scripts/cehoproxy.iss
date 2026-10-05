@@ -1,5 +1,5 @@
 #define AppName "CehoProxy"
-#define AppVersion "1.2.165"
+#define AppVersion "1.2.166"
 #define AppPublisher "КодоЦех"
 #define AppUrl "https://codoceh.ru"
 #define RepoUrl "https://github.com/CodoCeh/CehoProxy"
