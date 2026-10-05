@@ -1633,8 +1633,10 @@ switch (cmd)
                     $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & del /f /q \"{Path.Combine(Ceho.Root, "chp.cmd")}\" & rmdir /q \"{Ceho.Root}\"")
                 {
                     CreateNoWindow = true,
-                    UseShellExecute = false
+                    UseShellExecute = false,
+                    WorkingDirectory = Environment.SystemDirectory,
                 };
+                try { Environment.CurrentDirectory = Environment.SystemDirectory; } catch { }
                 System.Diagnostics.Process.Start(psi);
             }
             catch { }
@@ -2934,8 +2936,10 @@ if (cmd is "daemon" or "web")
                         $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & del /f /q \"{Path.Combine(Ceho.Root, "chp.cmd")}\" & rmdir /q \"{Ceho.Root}\"")
                     {
                         CreateNoWindow = true,
-                        UseShellExecute = false
+                        UseShellExecute = false,
+                        WorkingDirectory = Environment.SystemDirectory,
                     };
+                    try { Environment.CurrentDirectory = Environment.SystemDirectory; } catch { }
                     System.Diagnostics.Process.Start(psi);
                 }
                 catch { }

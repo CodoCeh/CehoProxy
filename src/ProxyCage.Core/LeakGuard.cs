@@ -76,7 +76,15 @@ public static class LeakGuard
     public static void Remove(string root)
     {
         if (Os.IsWindows)
+        {
             Os.Run("netsh", $"advfirewall firewall delete rule name=\"{RuleName}\"", 30000);
+            // Правило «sing-tun (путь\ceho-engine.exe)» заводит сам движок и убирает при мягком выходе;
+            // после принудительной остановки оно остаётся.
+            var like = root.TrimEnd('\\').Replace("'", "''");
+            Os.Run("powershell",
+                "-NoProfile -Command \"Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'sing-tun (*' -and $_.DisplayName -like '*" + like + "*' } | Remove-NetFirewallRule -ErrorAction SilentlyContinue\"",
+                60000);
+        }
         try { File.Delete(Path.Combine(root, StateFile)); } catch { }
     }
 

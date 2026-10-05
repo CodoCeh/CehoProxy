@@ -465,8 +465,13 @@ public static class Installer
             try
             {
                 foreach (var leftover in Directory.GetFiles(root, "unins*.*"))
-                    DeleteAtReboot(leftover, log, lang);
-                DeleteAtReboot(root, log, lang);
+                {
+                    // Свой деинсталлятор Windows держит открытым и удалит сам; иначе файл уходит сразу.
+                    try { File.Delete(leftover); }
+                    catch { DeleteAtReboot(leftover, log, lang); }
+                }
+                try { Directory.Delete(root); }
+                catch { DeleteAtReboot(root, log, lang); }
             }
             catch { }
 
