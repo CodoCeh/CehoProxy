@@ -1,6 +1,8 @@
 using ProxyCage.Core;
 using ProxyCage.Cli;
 
+Os.RestartWithoutPrecompiledCodeOnMac(args);
+
 try
 {
     Console.OutputEncoding = System.Text.Encoding.UTF8;

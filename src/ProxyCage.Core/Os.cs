@@ -354,6 +354,30 @@ public static class Os
         }
     }
 
+    [DllImport("libc", EntryPoint = "execve", SetLastError = true)]
+    private static extern int ExecveNative(string path, string?[] argv, string?[] envp);
+
+    public static void RestartWithoutPrecompiledCodeOnMac(string[] args)
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        if (Environment.GetEnvironmentVariable("DOTNET_ReadyToRun") == "0") return;
+        var self = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(self)) return;
+        try
+        {
+            var argv = new List<string?> { self };
+            argv.AddRange(args);
+            argv.Add(null);
+            var env = new List<string?>();
+            foreach (System.Collections.DictionaryEntry e in Environment.GetEnvironmentVariables())
+                if (e.Key as string is { } k && k != "DOTNET_ReadyToRun") env.Add(k + "=" + e.Value);
+            env.Add("DOTNET_ReadyToRun=0");
+            env.Add(null);
+            ExecveNative(self, argv.ToArray(), env.ToArray());
+        }
+        catch { }
+    }
+
     [DllImport("libc", EntryPoint = "geteuid")]
     private static extern uint GetEuid();
 
