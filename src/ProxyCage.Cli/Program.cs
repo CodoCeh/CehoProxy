@@ -1630,7 +1630,7 @@ switch (cmd)
             {
                 var binary = Installer.BinaryPath(Ceho.Root);
                 var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe",
-                    $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & rmdir /q \"{Ceho.Root}\"")
+                    $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & del /f /q \"{Path.Combine(Ceho.Root, "chp.cmd")}\" & rmdir /q \"{Ceho.Root}\"")
                 {
                     CreateNoWindow = true,
                     UseShellExecute = false
@@ -2931,7 +2931,7 @@ if (cmd is "daemon" or "web")
                 {
                     var binary = Installer.BinaryPath(Ceho.Root);
                     var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe",
-                        $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & rmdir /q \"{Ceho.Root}\"")
+                        $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & del /f /q \"{Path.Combine(Ceho.Root, "chp.cmd")}\" & rmdir /q \"{Ceho.Root}\"")
                     {
                         CreateNoWindow = true,
                         UseShellExecute = false

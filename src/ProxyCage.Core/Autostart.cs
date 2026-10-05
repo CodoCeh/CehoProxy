@@ -54,6 +54,9 @@ public static class Autostart
         {
             case OsKind.Windows:
                 Os.Run("schtasks", $"/end /tn {TaskName}");
+                // Служба, запущенная установкой, не из задания: «/end» её не трогает, а она держит замок и мешает новой.
+                if (OperatingSystem.IsWindows())
+                    DaemonControl.StopInstalledWindowsDaemons(Environment.GetEnvironmentVariable("CEHOPROXY_HOME") ?? Os.DefaultRoot);
                 Thread.Sleep(1000);
                 Os.Run("schtasks", $"/run /tn {TaskName}");
                 break;

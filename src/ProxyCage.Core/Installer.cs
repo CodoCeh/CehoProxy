@@ -401,6 +401,9 @@ public static class Installer
         {
             Os.Run("taskkill", "/F /IM " + TrayWindowsFileName);
             Os.Run("schtasks", $"/Delete /TN {TrayInstaller.WindowsSessionTask} /F");
+            Thread.Sleep(700);
+            foreach (var name in new[] { TrayWindowsFileName, TrayWindowsFileName + ".old", TrayWindowsFileName + ".new" })
+                try { File.Delete(Path.Combine(root, name)); } catch { }
             foreach (var folder in new[]
                      {
                          Environment.SpecialFolder.CommonStartup,
@@ -500,7 +503,9 @@ public static class Installer
                 RemoveOwnedAlias(link, root);
         }
 
-        foreach (var name in new[] { "chp.cmd", "chp" })
+        // На Windows chp.cmd читает сама команда, которая сейчас удаляет программу: убрать его на ходу нельзя
+        // (cmd выдаст «The batch file cannot be found»). Его убирает отложенная команда после выхода.
+        foreach (var name in Os.IsWindows ? new[] { "chp" } : new[] { "chp.cmd", "chp" })
             try
             {
                 var f = Path.Combine(root, name);
