@@ -77,6 +77,7 @@ public static class Assistant
         Console.WriteLine("  CehoProxy " + Updater.CurrentVersion + " · " +
             (up ? Cli.Paint(Cli.S(cfg, "state_on"), Preflight.Level.Ok)
                 : daemon && !ConfigUnreadable && !cfg.Apps.Any(a => a.Enabled) ? Cli.Paint(Cli.S(cfg, "state_no_apps"), Preflight.Level.Warning)
+                : daemon && File.Exists(DaemonControl.StoppedByUserMarker(Ceho.Root)) ? Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)
                 : daemon ? Cli.Paint(Cli.S(cfg, "state_broken"), Preflight.Level.Blocker)
                 : Cli.Paint(Cli.S(cfg, "state_off"), Preflight.Level.Warning)));
         if (!daemon && tunnel)

@@ -152,9 +152,18 @@ def full_scenario(pg, M):
         card = pg.locator("article.app-card").filter(has_text=label_of(path)).first
         if not card.count():
             return False
-        card.evaluate("e => e.querySelectorAll('details').forEach(d => d.open = true)")
-        with pg.expect_navigation(wait_until="load", timeout=30000):
-            card.locator("form[action='/apps/remove'] button").first.click()
+        # Живое обновление может подменить карточку и закрыть «Убрать программу»: открываем заново перед каждой попыткой.
+        for attempt in range(4):
+            card = pg.locator("article.app-card").filter(has_text=label_of(path)).first
+            card.evaluate("e => e.querySelectorAll('details').forEach(d => d.open = true)")
+            try:
+                with pg.expect_navigation(wait_until="load", timeout=15000):
+                    card.locator("form[action='/apps/remove'] button").first.click(timeout=8000)
+                return True
+            except Exception:
+                if attempt == 3:
+                    raise
+                reload_tab("apps")
         return True
 
     def pending_count():

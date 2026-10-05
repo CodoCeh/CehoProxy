@@ -2014,6 +2014,7 @@ if (cmd is "daemon" or "web")
     var adoptEngineOnce = true;
     var waitingForSetup = false;
     DaemonControl.ClearKeepEngine(Ceho.Root);
+    DaemonControl.ClearStoppedByUser(Ceho.Root);
     Autostart.EnsureKeepEngineDropIn();
     var engineAdopted = false;
     var admittedConfiguration = new AdmittedConfiguration(cfg);
@@ -2149,6 +2150,7 @@ if (cmd is "daemon" or "web")
         if (automatic && (!wanted || !recovery.Wanted)) return null;
         if (!automatic)
         {
+            DaemonControl.ClearStoppedByUser(Ceho.Root);
             recovery.StartByUser();
             guardRecovery.StartByUser();
         }
@@ -2556,6 +2558,7 @@ if (cmd is "daemon" or "web")
         lastError = null;
         runtimeChanged();
         DaemonControl.ClearStarting(Ceho.Root);
+        DaemonControl.MarkStoppedByUser(Ceho.Root);
         return Task.FromResult(StopTunnelLocked());
     };
     web.OnRemoveLastApp = removed =>

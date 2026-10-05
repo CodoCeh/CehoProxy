@@ -183,6 +183,9 @@ public static class DaemonControl
     }
 
     public static string KeepEngineMarker(string root) => Path.Combine(root, "keep-engine");
+    public static string StoppedByUserMarker(string root) => Path.Combine(root, "stopped-by-user");
+    public static void MarkStoppedByUser(string root) { try { File.WriteAllText(StoppedByUserMarker(root), DateTime.UtcNow.ToString("o")); } catch { } }
+    public static void ClearStoppedByUser(string root) { try { File.Delete(StoppedByUserMarker(root)); } catch { } }
 
     /// <summary>Пока движок умеет переживать смену службы (подхватывается новой), обновление его не гасит.</summary>
     public static bool CanKeepEngine => Os.IsWindows || (Os.IsLinux && Autostart.KeepsEngineAcrossRestart);

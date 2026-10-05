@@ -635,7 +635,7 @@ public static class Installer
                      "pick-app-launch.vbs", "pick-app-result.txt", "user-alias.path",
                      ".write-probe", ".write-test",
                      ".ceho-private-*", "config.import.json", "controller.lock", "restart.request", "starting",
-                     "update-helper.started", "update-was-protected", "keep-engine", "cehoproxy-support.txt",
+                     "update-helper.started", "update-was-protected", "keep-engine", "stopped-by-user", "cehoproxy-support.txt",
                      "guard.json", "cehoproxy.pid", "panel.port",
                      "cehoproxy-tray.exe", "cehoproxy-tray.exe.old", "cehoproxy-tray.exe.new", "debug.log",
                      "rolled-back-*", "LICENSE", "README.md", "THIRD-PARTY.md",
