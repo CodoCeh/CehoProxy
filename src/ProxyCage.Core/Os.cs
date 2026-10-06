@@ -241,6 +241,38 @@ public static class Os
         return (b[0] == 100 && b[1] >= 64 && b[1] <= 127) || (b[0] == 198 && (b[1] == 18 || b[1] == 19));
     }
 
+    public static bool UdpDnsAnswers(string server) => Answers(server);
+
+    public static bool TcpDnsAnswers(string server)
+    {
+        try
+        {
+            using var tcp = new System.Net.Sockets.TcpClient();
+            tcp.ReceiveTimeout = 2000;
+            tcp.SendTimeout = 2000;
+            if (!tcp.ConnectAsync(server, 53).Wait(2000)) return false;
+
+            var query = new byte[] {
+                0x00, 0x1d,
+                0x2a, 0x2a, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                7, (byte)'e', (byte)'x', (byte)'a', (byte)'m', (byte)'p', (byte)'l', (byte)'e',
+                3, (byte)'c', (byte)'o', (byte)'m', 0x00, 0x00, 0x01, 0x00, 0x01,
+            };
+            var stream = tcp.GetStream();
+            stream.Write(query, 0, query.Length);
+
+            var answer = new byte[512];
+            var read = 0;
+            while (read < 14) { var n = stream.Read(answer, read, answer.Length - read); if (n <= 0) break; read += n; }
+            return read >= 14 && answer[2] == 0x2a && answer[3] == 0x2a
+                   && (answer[4] & 0x80) != 0 && (answer[5] & 0x0F) == 0 && ((answer[8] << 8) | answer[9]) > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool Answers(string server)
     {
         try

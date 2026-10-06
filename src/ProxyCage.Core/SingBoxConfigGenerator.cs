@@ -963,7 +963,23 @@ public static class SingBoxConfigGenerator
             return servers;
         }
 
-        var system = Os.SystemDnsServers(tunAddress)
+        var found = Os.SystemDnsServers(tunAddress);
+        if (found is [Os.PublicResolver]
+            && !Os.UdpDnsAnswers(Os.PublicResolver) && !Os.UdpDnsAnswers("9.9.9.9"))
+        {
+            if (Os.TcpDnsAnswers(Os.PublicResolver) || Os.TcpDnsAnswers("9.9.9.9"))
+            {
+                servers.Add(DirectTcpDnsServer("dns-direct", Os.PublicResolver, tunAddress));
+                servers.Add(DirectTcpDnsServer("dns-direct-2", "9.9.9.9", tunAddress));
+                return servers;
+            }
+
+            servers.Add(DirectHttpsDnsServer("dns-direct", Os.PublicResolver, tunAddress));
+            servers.Add(DirectHttpsDnsServer("dns-direct-2", "9.9.9.9", tunAddress));
+            return servers;
+        }
+
+        var system = found
             .Where(a => a is not ("8.8.8.8" or "8.8.4.4"))
             .ToList();
 
@@ -994,6 +1010,30 @@ public static class SingBoxConfigGenerator
         var dns = new JsonObject
         {
             ["type"] = "udp",
+            ["tag"] = tag,
+            ["server"] = server,
+        };
+        ApplyPhysicalBind(dns, tunAddress);
+        return dns;
+    }
+
+    private static JsonObject DirectTcpDnsServer(string tag, string server, string? tunAddress)
+    {
+        var dns = new JsonObject
+        {
+            ["type"] = "tcp",
+            ["tag"] = tag,
+            ["server"] = server,
+        };
+        ApplyPhysicalBind(dns, tunAddress);
+        return dns;
+    }
+
+    private static JsonObject DirectHttpsDnsServer(string tag, string server, string? tunAddress)
+    {
+        var dns = new JsonObject
+        {
+            ["type"] = "https",
             ["tag"] = tag,
             ["server"] = server,
         };
