@@ -57,8 +57,7 @@ public static class DeviceRemoval
                 var data = new SpDevinfoData { cbSize = (uint)Marshal.SizeOf<SpDevinfoData>() };
                 if (!SetupDiEnumDeviceInfo(set, i, ref data))
                 {
-                    error = "устройство не найдено";
-                    return false;
+                    return true;
                 }
 
                 if (!SetupDiGetDeviceInstanceId(set, ref data, buffer, (uint)buffer.Length, out var len)) continue;

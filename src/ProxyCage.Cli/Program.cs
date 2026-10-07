@@ -2255,6 +2255,7 @@ if (cmd is "daemon" or "web")
             admittedConfiguration.Admit(c);
             LeakGuard.Apply(c, Ceho.Root);
             Log.Info($"этап: подписки и правила {watch.Elapsed.TotalSeconds:F1} с");
+            foreach (var networkLine in Os.DescribePhysicalNetwork(c.TunAddress)) Log.Info(networkLine);
 
             var reason = await BringEngineUp(c, report, keepEngine);
             for (var attempt = 1;

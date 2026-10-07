@@ -243,6 +243,44 @@ public static class Os
 
     public static bool UdpDnsAnswers(string server) => Answers(server);
 
+    public static IReadOnlyList<string> DescribePhysicalNetwork(string? tunAddress)
+    {
+        var lines = new List<string>();
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                var props = nic.GetIPProperties();
+                var addresses = props.UnicastAddresses
+                    .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    .Select(a => a.Address.ToString());
+                var gateways = props.GatewayAddresses
+                    .Where(g => g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    .Select(g => g.Address.ToString());
+                var dns = props.DnsAddresses
+                    .Where(d => d.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    .Select(d => d.ToString());
+                lines.Add($"сеть: {nic.Name} [{nic.Description}] ip {string.Join(",", addresses)} шлюз {string.Join(",", gateways)} dns {string.Join(",", dns)}");
+            }
+            lines.Add($"сеть: физический адрес для обхода туннеля {PhysicalBindAddress(tunAddress)?.ToString() ?? "не найден"}");
+            if (IsWindows)
+            {
+                var (_, route) = Run("route", "print -4 0.0.0.0", 5000);
+                foreach (var line in route.Split('\n'))
+                {
+                    var t = line.Trim();
+                    if (t.StartsWith("0.0.0.0", StringComparison.Ordinal)) lines.Add("маршрут: " + t);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            lines.Add("сеть: не удалось описать: " + ex.Message);
+        }
+        return lines;
+    }
+
     public static bool TcpDnsAnswers(string server)
     {
         try
