@@ -2017,6 +2017,7 @@ if (cmd is "daemon" or "web")
     var waitingForSetup = false;
     DaemonControl.ClearKeepEngine(Ceho.Root);
     DaemonControl.ClearStoppedByUser(Ceho.Root);
+    if (!TunCleanup.IsOurEngineRunning(Ceho.RuntimeConfigPath, Ceho.Root)) ForwardingGuard.Restore(Ceho.Root, Log.Info);
     Autostart.EnsureKeepEngineDropIn();
     var engineAdopted = false;
     var admittedConfiguration = new AdmittedConfiguration(cfg);
@@ -2324,6 +2325,7 @@ if (cmd is "daemon" or "web")
         }
         finally
         {
+            if (proc is null) ForwardingGuard.Restore(Ceho.Root, Log.Info);
             if (proc is null && wanted)
                 ScheduleRecoveryLocked("retry-after-failure", lastError ?? Strings.T(cfg.Language, "start_failed"));
             else DaemonControl.ClearStarting(Ceho.Root);
@@ -2423,6 +2425,7 @@ if (cmd is "daemon" or "web")
             TunCleanup.PrepareWintunForStart(Log.Info);
             await Task.Delay(1500);
         }
+        ForwardingGuard.Apply(Ceho.Root, c.TunAddress, Log.Info);
         Log.Info($"этап: подготовка к запуску {watch.Elapsed.TotalSeconds:F1} с");
         watch.Restart();
 
@@ -2511,6 +2514,7 @@ if (cmd is "daemon" or "web")
             attempts: 5, aggressive: true, beforeStart: TunCleanup.Devices());
         if (Os.IsWindows && TunCleanup.LastReleaseClean)
             (cleanedAt, cleanedDevices) = (Environment.TickCount64, TunCleanup.Devices());
+        ForwardingGuard.Restore(Ceho.Root, Log.Info);
         Log.Info($"этап: уборка после остановки {watch.Elapsed.TotalSeconds:F1} с");
         StartGuard().GetAwaiter().GetResult();
         return null;

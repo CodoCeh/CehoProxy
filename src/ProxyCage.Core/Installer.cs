@@ -613,6 +613,8 @@ public static class Installer
     {
         if (!Directory.Exists(root)) return;
 
+        ForwardingGuard.Restore(root, null);
+
         foreach (var pattern in new[]
                  {
                      "singbox.json", VerifiedConfigStore.FileName, "hwid.txt", "node-country-cache.json",
