@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 
 namespace ProxyCage.Core;
 
@@ -50,14 +51,23 @@ public static class ForwardingGuard
         "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"Set-NetIPInterface -InterfaceAlias '" +
         alias.Replace("'", "''") + "' -AddressFamily IPv4 -Forwarding " + state + "\"";
 
+    [DllImport("iphlpapi.dll")]
+    private static extern uint GetIpInterfaceEntry(IntPtr row);
+
     private static bool IsEnabled(string alias)
     {
+        var buffer = IntPtr.Zero;
         try
         {
-            var nic = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.Name == alias);
-            if (nic is not null) return nic.GetIPProperties().GetIPv4Properties().IsForwardingEnabled;
+            var nic = NetworkInterface.GetAllNetworkInterfaces().First(n => n.Name == alias);
+            buffer = Marshal.AllocHGlobal(256);
+            for (var i = 0; i < 256; i++) Marshal.WriteByte(buffer, i, 0);
+            Marshal.WriteInt16(buffer, 0, 2);
+            Marshal.WriteInt32(buffer, 16, nic.GetIPProperties().GetIPv4Properties().Index);
+            if (GetIpInterfaceEntry(buffer) == 0) return Marshal.ReadByte(buffer, 41) != 0;
         }
         catch { }
+        finally { if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer); }
         var (code, output) = Os.Run("powershell",
             "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"(Get-NetIPInterface -InterfaceAlias '" +
             alias.Replace("'", "''") + "' -AddressFamily IPv4).Forwarding\"", 20000);
