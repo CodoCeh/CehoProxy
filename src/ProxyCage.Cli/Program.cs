@@ -3106,6 +3106,25 @@ if (cmd is "daemon" or "web")
     using var cts = new CancellationTokenSource();
     // Состояние процесса проверяем отдельно от сетевого probe: тот может ждать таймаут,
     // а упавший движок нужно поднимать сразу.
+    if (Os.IsWindows)
+        _ = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(10), cts.Token); } catch { return; }
+                try
+                {
+                    if (proc is not null && proc.IsRunning)
+                    {
+                        using var gate = EngineMutex.Acquire(Ceho.Root);
+                        if (proc is not null && proc.IsRunning)
+                            ForwardingGuard.Apply(Ceho.Root, CehoConfig.Load(Ceho.ConfigPath).TunAddress, Log.Info);
+                    }
+                }
+                catch (Exception ex) { Log.Error("проверка пересылки IP не удалась", ex); }
+            }
+        });
+
     _ = Task.Run(async () =>
     {
         while (!cts.IsCancellationRequested)

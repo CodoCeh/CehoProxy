@@ -52,6 +52,12 @@ public static class ForwardingGuard
 
     private static bool IsEnabled(string alias)
     {
+        try
+        {
+            var nic = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.Name == alias);
+            if (nic is not null) return nic.GetIPProperties().GetIPv4Properties().IsForwardingEnabled;
+        }
+        catch { }
         var (code, output) = Os.Run("powershell",
             "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"(Get-NetIPInterface -InterfaceAlias '" +
             alias.Replace("'", "''") + "' -AddressFamily IPv4).Forwarding\"", 20000);
