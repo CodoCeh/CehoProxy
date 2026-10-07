@@ -111,6 +111,7 @@ public sealed partial class WebServer
     private async Task ServeAsync(HttpListenerContext ctx)
     {
         try { await HandleAsync(ctx); }
+        catch (HttpListenerException ex) when (ex.ErrorCode is 64 or 995 or 1229) { }
         catch (Exception ex)
         {
             Log.Error($"панель не смогла ответить на {ctx.Request.Url?.AbsolutePath}", ex);
