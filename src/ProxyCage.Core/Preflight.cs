@@ -132,10 +132,39 @@ public static class Preflight
         if (TcpPortTaken(from) != true) return false;
 
         to = NextFreePort(from);
-        if (to == cfg.WebPort) to = NextFreePort(to);
-        if (to == from || TcpPortTaken(to) == true) return false;
+        if (to > 65535) return false;
+        while (to == cfg.WebPort || to == cfg.ClashApiPort || TcpPortTaken(to) == true)
+        {
+            if (to >= 65534) return false;
+            to = NextFreePort(to);
+            if (to > 65535) return false;
+        }
+        if (to == from) return false;
 
         cfg.MixedPort = to;
+        return true;
+    }
+
+    /// <summary>
+    /// The Clash-compatible API is an internal control port. If another service
+    /// already owns it, choose a free port without disturbing that service.
+    /// </summary>
+    public static bool TryMoveClashApiPortIfBusy(CehoConfig cfg, out int from, out int to)
+    {
+        from = cfg.ClashApiPort;
+        to = from;
+        if (TcpPortTaken(from) != true) return false;
+
+        to = NextFreePort(from);
+        if (to > 65535) return false;
+        while (to == cfg.WebPort || to == cfg.MixedPort || TcpPortTaken(to) == true)
+        {
+            if (to >= 65534) return false;
+            to = NextFreePort(to);
+            if (to > 65535) return false;
+        }
+        if (to == from) return false;
+        cfg.ClashApiPort = to;
         return true;
     }
 

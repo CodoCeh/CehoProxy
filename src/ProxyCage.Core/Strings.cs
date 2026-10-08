@@ -218,6 +218,9 @@ public static class Strings
         ["proxy_port_moved"] = new(
             "Порт прокси {0} занят, взял свободный {1}",
             "Proxy port {0} is taken, switched to free port {1}"),
+        ["api_port_moved"] = new(
+            "Порт API {0} занят, взял свободный {1}",
+            "API port {0} is taken, switched to free port {1}"),
         ["pf_no_subs"] = new("Не добавлено ни одной подписки", "No subscriptions added"),
         ["pf_no_subs_detail"] = new(
             "Программа поставляется без подписок: ссылку выдаёт ваш VPN-сервис.",

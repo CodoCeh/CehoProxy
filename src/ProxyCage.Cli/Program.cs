@@ -2205,11 +2205,23 @@ if (cmd is "daemon" or "web")
                 if (!keepAdmitted) c.Save(Ceho.ConfigPath);
                 Log.Info(Strings.T(c.Language, "proxy_port_moved", busyPort, freePort));
             }
-            if (c.MixedPort == c.ClashApiPort || (keepEngine is null && (Preflight.TcpPortTaken(c.MixedPort) == true
-                || Preflight.TcpPortTaken(c.ClashApiPort) == true)))
+            if (keepEngine is null && Preflight.TryMoveClashApiPortIfBusy(c, out var busyApiPort, out var freeApiPort))
+            {
+                if (!keepAdmitted) c.Save(Ceho.ConfigPath);
+                Log.Info(Strings.T(c.Language, "api_port_moved", busyApiPort, freeApiPort));
+            }
+            if (c.MixedPort == c.ClashApiPort)
                 throw new InvalidOperationException(c.Language == "ru"
-                    ? "Порт прокси или API занят. Проверьте настройки сети; другие процессы не остановлены."
-                    : "The proxy or API port is occupied. Check network settings; other processes were not stopped.");
+                    ? $"Порт прокси и API совпадают ({c.MixedPort})."
+                    : $"The proxy and API ports are the same ({c.MixedPort}).");
+            if (keepEngine is null && Preflight.TcpPortTaken(c.MixedPort) == true)
+                throw new InvalidOperationException(c.Language == "ru"
+                    ? $"Порт прокси {c.MixedPort} занят; сменить его не удалось. Другие процессы не остановлены."
+                    : $"Proxy port {c.MixedPort} is occupied; it could not be moved. Other processes were not stopped.");
+            if (keepEngine is null && Preflight.TcpPortTaken(c.ClashApiPort) == true)
+                throw new InvalidOperationException(c.Language == "ru"
+                    ? $"Порт API {c.ClashApiPort} занят; сменить его не удалось. Другие процессы не остановлены."
+                    : $"API port {c.ClashApiPort} is occupied; it could not be moved. Other processes were not stopped.");
             // Only this admitted start may change network protection. Observers use its snapshot.
             admittedConfiguration.Admit(c);
             LeakGuard.Apply(c, Ceho.Root);

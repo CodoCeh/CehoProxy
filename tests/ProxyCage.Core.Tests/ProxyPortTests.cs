@@ -62,4 +62,55 @@ public class ProxyPortTests
         Assert.NotEqual(busy, to);
         Assert.NotEqual(panel, to);
     }
+
+    [Fact]
+    public void Busy_proxy_port_does_not_move_onto_the_api_port()
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            using var squatter = new TcpListener(IPAddress.Loopback, 0);
+            squatter.Start();
+            var busy = ((IPEndPoint)squatter.LocalEndpoint).Port;
+            var api = busy + 1;
+            if (Preflight.TcpPortTaken(api) == true) continue;
+            var cfg = new CehoConfig { MixedPort = busy, WebPort = 8899, ClashApiPort = api };
+
+            Assert.True(Preflight.TryMoveProxyPortIfBusy(cfg, out _, out var to));
+            Assert.NotEqual(api, to);
+            Assert.NotEqual(cfg.WebPort, to);
+            return;
+        }
+
+        Assert.Fail("Could not find a free port immediately after a temporary listener.");
+    }
+
+    [Fact]
+    public void Busy_clash_api_port_moves_without_touching_proxy_or_panel_ports()
+    {
+        using var squatter = new TcpListener(IPAddress.Loopback, 0);
+        squatter.Start();
+        var busy = ((IPEndPoint)squatter.LocalEndpoint).Port;
+        var cfg = new CehoConfig { MixedPort = 2080, WebPort = 8899, ClashApiPort = busy };
+
+        Assert.True(Preflight.TryMoveClashApiPortIfBusy(cfg, out var from, out var to));
+
+        Assert.Equal(busy, from);
+        Assert.Equal(to, cfg.ClashApiPort);
+        Assert.NotEqual(cfg.MixedPort, to);
+        Assert.NotEqual(cfg.WebPort, to);
+        Assert.NotEqual(true, Preflight.TcpPortTaken(to));
+    }
+
+    [Fact]
+    public void Free_clash_api_port_stays()
+    {
+        using var squatter = new TcpListener(IPAddress.Loopback, 0);
+        squatter.Start();
+        var port = ((IPEndPoint)squatter.LocalEndpoint).Port;
+        squatter.Stop();
+
+        var cfg = new CehoConfig { ClashApiPort = port };
+        Assert.False(Preflight.TryMoveClashApiPortIfBusy(cfg, out _, out _));
+        Assert.Equal(port, cfg.ClashApiPort);
+    }
 }
