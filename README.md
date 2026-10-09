@@ -1,5 +1,9 @@
 # CehoProxy
 
+<p align="center">
+  <img src="assets/cehoproxy.png" alt="Логотип CehoProxy" width="120">
+</p>
+
 **Через туннель ходят только те программы, которые вы выбрали. Всё остальное — напрямую.**
 
 Windows, Linux, macOS. Управление из терминала и из локальной веб-панели.
