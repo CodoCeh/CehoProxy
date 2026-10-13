@@ -2835,13 +2835,13 @@ public sealed partial class WebServer
                                .ThenBy(n => n.Server, StringComparer.OrdinalIgnoreCase))
             {
                 var on = selected.Contains(n.Key);
-                sb.Append("<tr").Append(on ? "" : " class=off").Append("><td><label class=check>")
+                sb.Append("<tr").Append(on ? "" : " class=off").Append("><td data-label=\"").Append(E(S("col_use", []))).Append("\"><label class=check>")
                   .Append("<input type=checkbox name=\"n_").Append(E(n.Key)).Append('"')
                   .Append(on ? " checked" : "").Append("></label></td>");
-                sb.Append("<td>").Append(E(n.Remark.Length > 0 ? n.Remark : n.Tag)).Append("</td>");
-                sb.Append("<td class=tag>").Append(E($"{n.Server}:{n.Port}")).Append("</td>");
-                sb.Append("<td class=tag>").Append(E(n.Protocol.ToString())).Append("</td>");
-                sb.Append("<td class=tag>").Append(E(n.Source ?? "—")).Append("</td></tr>");
+                sb.Append("<td data-label=\"").Append(E(S("col_node", []))).Append("\">").Append(E(n.Remark.Length > 0 ? n.Remark : n.Tag)).Append("</td>");
+                sb.Append("<td class=tag data-label=\"").Append(E(S("col_address", []))).Append("\">").Append(E($"{n.Server}:{n.Port}")).Append("</td>");
+                sb.Append("<td class=tag data-label=\"").Append(E(S("col_protocols", []))).Append("\">").Append(E(n.Protocol.ToString())).Append("</td>");
+                sb.Append("<td class=tag data-label=\"").Append(E(S("col_source", []))).Append("\">").Append(E(n.Source ?? "—")).Append("</td></tr>");
             }
             sb.Append("</table></div></details>");
         }
@@ -3128,18 +3128,18 @@ public sealed partial class WebServer
                 var row = measured is not null && measured.TryGetValue(g.Key, out var m) ? m : null;
                 var protocols = string.Join(", ", g.Select(n => n.Protocol.ToString()).Distinct());
 
-                sb.Append("<tr><td><label class=check><input type=checkbox name=\"c_").Append(E(g.Key))
+                sb.Append("<tr><td data-label=\"").Append(E(S("col_use", []))).Append("\"><label class=check><input type=checkbox name=\"c_").Append(E(g.Key))
                   .Append('"').Append(on ? " checked" : "").Append("></label></td>");
                 var countryName = g.Key == CountryResolver.Unknown
                     ? S("country_unknown", [])
                     : g.First().CountryName ?? g.Key;
-                sb.Append("<td><span class=flag>").Append(CountryResolver.Flag(g.Key)).Append("</span> ")
+                sb.Append("<td data-label=\"").Append(E(S("col_country", []))).Append("\"><span class=flag>").Append(CountryResolver.Flag(g.Key)).Append("</span> ")
                   .Append(E(countryName)).Append("</td>");
-                sb.Append("<td class=num>").Append(g.Count()).Append("</td>");
-                sb.Append("<td class=num>").Append(row is null ? "—" : row.Alive.ToString()).Append("</td>");
-                sb.Append("<td class=num>")
+                sb.Append("<td class=num data-label=\"").Append(E(S("col_nodes", []))).Append("\">").Append(g.Count()).Append("</td>");
+                sb.Append("<td class=num data-label=\"").Append(E(S("col_alive", []))).Append("\">").Append(row is null ? "—" : row.Alive.ToString()).Append("</td>");
+                sb.Append("<td class=num data-label=\"").Append(E(S("col_best", []))).Append("\">")
                   .Append(row?.BestMs is null ? E(S("not_measured", [])) : row.BestMs + " ms").Append("</td>");
-                sb.Append("<td class=tag>").Append(E(protocols)).Append("</td></tr>");
+                sb.Append("<td class=tag data-label=\"").Append(E(S("col_protocols", []))).Append("\">").Append(E(protocols)).Append("</td></tr>");
             }
             sb.Append("</table></div>");
 
@@ -3228,16 +3228,16 @@ public sealed partial class WebServer
                 var slow = SingBoxConfigGenerator.IsTooSlow(n, cfg);
                 var ms = NodeProbe.LatencyFor(n, cfg, liveByTag);
 
-                sb.Append("<tr").Append(on ? "" : " class=off").Append("><td><label class=check>")
+                sb.Append("<tr").Append(on ? "" : " class=off").Append("><td data-label=\"").Append(E(S("col_use", []))).Append("\"><label class=check>")
                   .Append("<input type=checkbox name=\"n_").Append(E(n.Key)).Append('"')
                   .Append(on ? " checked" : "").Append("></label></td>");
-                sb.Append("<td>").Append(E(n.Remark.Length > 0 ? n.Remark : n.Tag)).Append("</td>");
-                sb.Append("<td class=tag>").Append(E($"{n.Server}:{n.Port}")).Append("</td>");
-                sb.Append("<td class=tag>").Append(E(n.Protocol.ToString())).Append("</td>");
-                sb.Append("<td class=num>")
+                sb.Append("<td data-label=\"").Append(E(S("col_node", []))).Append("\">").Append(E(n.Remark.Length > 0 ? n.Remark : n.Tag)).Append("</td>");
+                sb.Append("<td class=tag data-label=\"").Append(E(S("col_address", []))).Append("\">").Append(E($"{n.Server}:{n.Port}")).Append("</td>");
+                sb.Append("<td class=tag data-label=\"").Append(E(S("col_protocols", []))).Append("\">").Append(E(n.Protocol.ToString())).Append("</td>");
+                sb.Append("<td class=num data-label=\"").Append(E(S("col_best", []))).Append("\">")
                   .Append(ms is null ? E(S("not_measured", [])) : ms + " ms")
                   .Append(slow ? " · " + E(S("node_slow", [])) : "").Append("</td>");
-                sb.Append("<td class=tag>").Append(E(n.Source ?? "—")).Append("</td></tr>");
+                sb.Append("<td class=tag data-label=\"").Append(E(S("col_source", []))).Append("\">").Append(E(n.Source ?? "—")).Append("</td></tr>");
             }
             sb.Append("</table></div></details>");
         }

@@ -130,6 +130,7 @@ public static class WebUi
     ol.wizard-steps li.done::before{content:"✓";color:var(--ok-ink);border-color:var(--ok-ink)}
     ol.wizard-steps li + li::after{content:none}
     .save-bar{position:sticky;bottom:0;padding:12px 0;background:var(--bg);border-top:1px solid var(--line);margin-top:18px}
+    @media (max-width:700px){.save-bar{position:static}}
     button.big{min-height:48px;padding:12px 28px;font-size:var(--fs-m);font-weight:600}
     ul.live-apps,ul.findings{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--radius);
       background:var(--surface)}
@@ -194,6 +195,13 @@ public static class WebUi
       table.t-apps td,table.t-own td{display:block;border:0;padding:2px 0;width:auto}
       table.t-apps td.actions,table.t-own td.actions{text-align:left;padding-top:8px}
       table.t-apps td.actions form:first-child,table.t-own td.actions form:first-child{margin-left:0}
+    }
+    @media (max-width:700px){
+      table.t-countries,table.t-nodes{min-width:0}
+      table.t-countries tr:has(th),table.t-nodes tr:has(th){display:none}
+      table.t-countries tr,table.t-nodes tr{display:block;padding:12px 0;border-bottom:1px solid var(--line)}
+      table.t-countries td,table.t-nodes td{display:block;border:0;padding:2px 0;width:auto}
+      table.t-countries td::before,table.t-nodes td::before{content:attr(data-label);display:block;font-size:var(--fs-xs);color:var(--muted);font-weight:600}
     }
     @media (max-width:900px){
       table.t-subs{min-width:0}
