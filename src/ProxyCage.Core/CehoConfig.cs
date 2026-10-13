@@ -163,6 +163,8 @@ public sealed class CehoConfig
 
     public bool TrayControls { get; set; }
 
+    public bool BlockYoutubeAds { get; set; }
+
     public bool EngineAutoUpdate { get; set; } = true;
 
     public string? AutoUpdatedVersion { get; set; }

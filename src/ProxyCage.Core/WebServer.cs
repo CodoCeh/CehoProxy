@@ -1214,6 +1214,16 @@ public sealed partial class WebServer
                     return (S(cfg.EngineAutoUpdate ? "engine_auto_state_on" : "engine_auto_state_off"), false, null);
                 }
 
+                case "/youtube-ads":
+                {
+                    cfg.BlockYoutubeAds = f.ContainsKey("enable");
+                    Save(cfg);
+                    var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+                        ? ApplyOrDefer(cfg, restartIfRunning: true)
+                        : null;
+                    return (S(cfg.BlockYoutubeAds ? "youtube_ads_on" : "youtube_ads_off", []), false, job);
+                }
+
                 case "/tray-controls":
                 {
                     cfg.TrayControls = f.ContainsKey("enable");
@@ -1955,6 +1965,12 @@ public sealed partial class WebServer
           .Append("</button></form></div>");
         if (cfg.TrayControls && !Auth.HasPassword(cfg))
             sb.Append("<div class=line><span>").Append(E(S("tray_controls_open", []))).Append("</span></div>");
+        sb.Append("<div class=\"line ").Append(cfg.BlockYoutubeAds ? "on" : "off").Append("\"><span><span class=dot></span> ")
+          .Append(E(cfg.BlockYoutubeAds ? S("youtube_ads_on", []) : S("youtube_ads_off", []))).Append("</span>")
+          .Append("<form method=post action=/youtube-ads><input type=hidden name=tab value=state>")
+          .Append(cfg.BlockYoutubeAds ? "" : "<input type=hidden name=enable value=1>")
+          .Append("<button class=ghost>").Append(E(cfg.BlockYoutubeAds ? S("youtube_ads_del", []) : S("youtube_ads_add", [])))
+          .Append("</button></form></div>");
         sb.Append("</div></section></details>");
 
         if (cfg.SimplePanel)
@@ -3629,7 +3645,7 @@ public sealed partial class WebServer
         sb.Append("<p class=hint>").Append(E(S("touch_not", []))).Append("</p></section>");
     }
 
-    private const string VpnBot = "CeBers_VPN_bot";
+    private const string PartnerVpnBot = "CebCehVPN_bot";
 
     private static void RenderSubscriptionHelp(StringBuilder sb, Func<string, object[], string> S)
     {
@@ -3637,9 +3653,9 @@ public sealed partial class WebServer
         sb.Append("<p class=lede>").Append(E(S("sub_where_what", []))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("sub_where_formats", []))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("sub_where_get", []))).Append("</p>");
-        sb.Append("<p class=hint>").Append(E(S("sub_where_ours", []))).Append(' ')
-          .Append("<a href=\"https://t.me/").Append(VpnBot).Append("\" target=_blank rel=noopener>@")
-          .Append(VpnBot).Append("</a></p>");
+        sb.Append("<p class=hint>").Append(E(S("sub_where_partner", []))).Append(' ')
+          .Append("<a href=\"https://t.me/").Append(PartnerVpnBot).Append("\" target=_blank rel=noopener>@")
+          .Append(PartnerVpnBot).Append("</a></p>");
         sb.Append("<p class=hint>").Append(E(S("sub_where_own", []))).Append("</p></section>");
     }
 

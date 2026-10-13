@@ -1788,8 +1788,8 @@ public static class Strings
             "или боте пункт «Подписка», «Импорт» или «Добавить в клиент».",
             "Any VPN service that allows third-party apps gives you such a link: look in its account page or bot " +
             "for \"Subscription\", \"Import\" or \"Add to client\"."),
-        ["sub_where_ours"] = new(
-            "Один из вариантов — наш телеграм-бот:", "One of the options is our Telegram bot:"),
+        ["sub_where_partner"] = new(
+            "Один из вариантов — партнёрский сервис в Telegram:", "One of the options is a partner service on Telegram:"),
         ["sub_where_own"] = new(
             "Если у вас есть собственный сервер, откройте «Подписки» и выберите «Свой сервер»: понадобятся " +
             "его адрес, логин и пароль.",
@@ -1883,6 +1883,10 @@ public static class Strings
             "Значок в трее только показывает состояние и открывает панель",
             "The tray icon only shows the state and opens the panel"),
         ["tray_controls_add"] = new("Разрешить кнопки в значке", "Allow buttons in the icon"),
+        ["youtube_ads_on"] = new("YouTube без рекламы: рекламные домены блокируются для всех подключений, независимо от подписки", "YouTube without ads: ad domains are blocked for all connections, regardless of subscription"),
+        ["youtube_ads_off"] = new("Реклама YouTube не блокируется", "YouTube ads are not blocked"),
+        ["youtube_ads_add"] = new("Блокировать рекламу YouTube", "Block YouTube ads"),
+        ["youtube_ads_del"] = new("Не блокировать", "Stop blocking"),
         ["tray_controls_del"] = new("Убрать кнопки из значка", "Remove buttons from the icon"),
         ["tray_controls_open"] = new(
             "Пароль не задан: включать и выключать защиту из значка сможет любой, кто вошёл на этот компьютер.",

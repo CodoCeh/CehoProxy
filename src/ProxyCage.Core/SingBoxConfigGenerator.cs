@@ -645,6 +645,13 @@ public static class SingBoxConfigGenerator
             });
         }
 
+        if (cfg.BlockYoutubeAds)
+        {
+            var adSuffixes = new JsonArray();
+            foreach (var suffix in YoutubeAds.DomainSuffixes) adSuffixes.Add(suffix);
+            routeRules.Insert(1, new JsonObject { ["domain_suffix"] = adSuffixes, ["action"] = "reject" });
+        }
+
         var inbounds = new JsonArray { BuildTun(cfg, tunInterfaceName), BuildMixedInbound(cfg.MixedPort, "mixed-in") };
 
         var config = new JsonObject

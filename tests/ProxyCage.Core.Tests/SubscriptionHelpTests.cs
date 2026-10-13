@@ -31,16 +31,27 @@ public class SubscriptionHelpTests : IDisposable
     }
 
     [Theory]
-    [InlineData(CehoConfig.PanelModeSimple)]
-    [InlineData(CehoConfig.PanelModePro)]
-    public async Task Help_says_where_a_subscription_comes_from(string mode)
+    [InlineData(CehoConfig.PanelModeSimple, "ru")]
+    [InlineData(CehoConfig.PanelModePro, "ru")]
+    [InlineData(CehoConfig.PanelModeSimple, "en")]
+    [InlineData(CehoConfig.PanelModePro, "en")]
+    public async Task Help_says_where_a_subscription_comes_from(string mode, string language)
     {
+        var cfg = CehoConfig.Load(ConfigPath);
+        cfg.Language = language;
+        cfg.Save(ConfigPath);
         await Switch(mode);
         var help = await _http.GetStringAsync("/?tab=help");
 
-        Assert.Contains(Strings.T("ru", "sub_where_title"), help);
-        Assert.Contains(Strings.T("ru", "sub_where_formats", mode == CehoConfig.PanelModeSimple), help);
-        Assert.Contains("https://t.me/CeBers_VPN_bot", help);
+        Assert.Contains(Strings.T(language, "sub_where_title"), help);
+        Assert.Contains(Strings.T(language, "sub_where_formats", mode == CehoConfig.PanelModeSimple), help);
+        Assert.Contains("href=\"https://t.me/CebCehVPN_bot\"", help);
+        Assert.Contains("@CebCehVPN_bot</a>", help);
+        Assert.Contains(Strings.T(language, "sub_where_partner"), help);
+        Assert.Contains(language == "ru" ? "партнёрский сервис" : "partner service", help);
+        Assert.DoesNotContain("CeBers_VPN_bot", help);
+        Assert.DoesNotContain("наш телеграм-бот", help);
+        Assert.DoesNotContain("our Telegram bot", help);
     }
 
     [Fact]
