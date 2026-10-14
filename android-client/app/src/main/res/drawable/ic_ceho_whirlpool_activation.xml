@@ -1,0 +1,3 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/ic_ceho_whirlpool_rotatable">
+    <target android:name="vortex" android:animation="@animator/ceho_whirlpool_turn" />
+</animated-vector>

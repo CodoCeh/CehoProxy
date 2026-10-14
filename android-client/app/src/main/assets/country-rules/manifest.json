@@ -1,0 +1,87 @@
+{
+  "downloadedAtUtc": "2026-10-09T19:27:52.846696+00:00",
+  "sourceCommits": {
+    "sing-geoip": "7fe82a879ad2666526730c195b55a6d8d9147908",
+    "sing-geosite": "9fa8691dd58baad5ba53575f192313c33ec81444"
+  },
+  "files": [
+    {
+      "name": "geoip-ru.srs",
+      "bytes": 50107,
+      "sha256": "6e23f5580dd443e2f9c4895adafee8d199c1a3487182ad5f0a2256cf59c7e53a",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-ru.srs"
+    },
+    {
+      "name": "geoip-cn.srs",
+      "bytes": 34185,
+      "sha256": "ebee603fdf402314b44b9f653cdcf6d9cc9c41e84e2b3515e3123c5c920a93bc",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-cn.srs"
+    },
+    {
+      "name": "geoip-ir.srs",
+      "bytes": 12863,
+      "sha256": "c88af3372f71234f6d015d0452ba472f26b0d9d62e82ae5167d066c1df24b8f5",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-ir.srs"
+    },
+    {
+      "name": "geoip-de.srs",
+      "bytes": 57276,
+      "sha256": "e77bc006c95f9a6841c7f7979b541e396150d10875f2d3a414800a3c2f4da26b",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-de.srs"
+    },
+    {
+      "name": "geoip-us.srs",
+      "bytes": 165388,
+      "sha256": "98cee80d1377e625d43150e80d0b0c2b3dcc362d57d78099dbb89e3813152bca",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-us.srs"
+    },
+    {
+      "name": "geoip-gb.srs",
+      "bytes": 49465,
+      "sha256": "8e3c359a6857382cfa64bff0005a3ccd1ce5c9958906c73456418df713b22edd",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-gb.srs"
+    },
+    {
+      "name": "geoip-kz.srs",
+      "bytes": 4419,
+      "sha256": "d9917a7657bc54c9d9072111041efe61d43f3439a2cbbdf7786a9a688d7bee2a",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-kz.srs"
+    },
+    {
+      "name": "geoip-by.srs",
+      "bytes": 1058,
+      "sha256": "f05740a23ea705979fb2226036ae9cfa8d9d98f4f09f6accf483ad8ffb6acd72",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-by.srs"
+    },
+    {
+      "name": "geoip-tr.srs",
+      "bytes": 13235,
+      "sha256": "17f297424a30af0192fe5e842d4c8c91495ec92c434f9fff4ee65683d35304f1",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-tr.srs"
+    },
+    {
+      "name": "geoip-ua.srs",
+      "bytes": 17615,
+      "sha256": "bfbbac5c2519d8ab005173d6073b62e74c226d8c7b334ba7b50a649d646ab3b7",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geoip/7fe82a879ad2666526730c195b55a6d8d9147908/geoip-ua.srs"
+    },
+    {
+      "name": "geosite-cn.srs",
+      "bytes": 56146,
+      "sha256": "1d57439fb057886a6ad1c97386d4235737aa6290cbe7610b628489d5edb8b25e",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geosite/9fa8691dd58baad5ba53575f192313c33ec81444/geosite-cn.srs"
+    },
+    {
+      "name": "geosite-category-ir.srs",
+      "bytes": 1652,
+      "sha256": "5e4ef5289e0b4f73018854730b2ab049860ec1e87e1a601fdbe976bcb6c669b6",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geosite/9fa8691dd58baad5ba53575f192313c33ec81444/geosite-category-ir.srs"
+    },
+    {
+      "name": "geosite-category-ru.srs",
+      "bytes": 8576,
+      "sha256": "91cac7d9735f43d54d26102015f17c8a90cb740086e1bde290e2c03a4eb003a9",
+      "source": "https://raw.githubusercontent.com/SagerNet/sing-geosite/9fa8691dd58baad5ba53575f192313c33ec81444/geosite-category-ru.srs"
+    }
+  ]
+}

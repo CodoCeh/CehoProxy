@@ -1,0 +1,6 @@
+This Android client is an independent CehoProxy platform application under GNU GPL v3 or later.
+
+It embeds the sing-box Android libbox library, distributed under GNU GPL v3 or later.
+The complete license text is available at https://www.gnu.org/licenses/gpl-3.0.txt.
+
+This license applies only to android-client/. The repository root remains Apache-2.0.
