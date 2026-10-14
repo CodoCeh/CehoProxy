@@ -59,6 +59,7 @@ public static class DirectSites
         "rzd.ru", "aeroflot.ru", "s7.ru", "pobeda.aero", "utair.ru", "tutu.ru", "ostrovok.ru", "sutochno.ru", "aviasales.ru",
         "mts.ru", "beeline.ru", "megafon.ru", "tele2.ru", "rostelecom.ru", "rt.ru", "yota.ru", "dom.ru",
         "hh.ru", "superjob.ru", "rabota.ru", "gb.ru", "skillbox.ru", "netology.ru", "stepik.org", "uchi.ru", "sdamgia.ru", "1c.ru", "sbis.ru", "kontur.ru", "diadoc.ru",
+        "x5.ru", "lenta.com", "auchan.ru", "metro-cc.ru", "kazanexpress.ru", "oldi.ru", "technodom.ru", "sportmaster.ru", "eapteka.ru", "apteka.ru", "zdravcity.ru", "holodilnik.ru", "dodopizza.ru", "cian.ru", "domclick.ru", "drom.ru", "auto.ru", "otpbank.ru", "uralsib.ru", "bspb.ru", "mtsbank.ru", "rencredit.ru", "homecredit.ru", "pochtabank.ru", "akbars.ru", "vtb24.ru", "minfin.gov.ru", "minzdrav.gov.ru", "mosreg.ru", "gov.spb.ru", "fssprus.ru", "sudrf.ru", "pravo.gov.ru", "arbitr.ru", "gibdd.ru", "trudvsem.ru", "edu.gov.ru", "fipi.ru", "ttk.ru", "citymobil.ru", "maxim.ru", "dellin.ru", "pecom.ru", "dpd.ru", "smotreshka.tv", "amediateka.ru", "forbes.ru", "foxford.ru", "dnevnik.ru", "zarplata.ru", "gaijin.net", "warthunder.com", "gitverse.ru", "selectel.ru", "timeweb.ru", "reg.ru", "beget.com", "cloud.ru",
     ];
 
     public static IReadOnlyList<string> Preset(bool throughTunnel) =>
