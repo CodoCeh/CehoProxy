@@ -115,7 +115,7 @@ public class StartupPipelineTests
         var program = ProgramSource();
         var automatic = Between(program, "    async Task QueueAutomaticRecovery(", "    async Task<string?> BringEngineUp(");
         Assert.Contains("!wanted || !recovery.IsCurrent(generation)", automatic);
-        Assert.Contains("ScheduleRecoveryLocked(reasonCode, reason)", automatic);
+        Assert.Contains("ScheduleRecoveryLocked(reasonCode, reason, immediate: reasonCode == \"network-changed\")", automatic);
         Assert.DoesNotContain("StartTunnelLocked", automatic);
         Assert.Contains("recovery.TryBegin(Environment.TickCount64, out var retry)", program);
         Assert.Contains("retry.Reason, automatic: true", program);
@@ -124,6 +124,36 @@ public class StartupPipelineTests
         Assert.DoesNotContain("RefreshIfDeadAsync", ReadSource("src/ProxyCage.Cli/Ceho.cs"));
         Assert.Contains("preferCache: reasonCode != \"exit-unavailable\"", program);
         Assert.Contains("failedExitChecks >= 2 && current.RotationEnabled", program);
+    }
+
+    [Fact]
+    public void Network_changes_reset_recovery_budget_and_restart_on_new_address()
+    {
+        var program = ProgramSource();
+        Assert.Contains("NetworkChange.NetworkAddressChanged += onAddressChanged", program);
+        Assert.Contains("NetworkChange.NetworkAvailabilityChanged += onAvailabilityChanged", program);
+        Assert.Contains("recovery.NetworkChanged();", program);
+        Assert.Contains("ScheduleRecoveryLocked(\"network-changed\"", program);
+        Assert.Contains("!= boundAddress", program);
+        Assert.Contains("смена сети: адрес", program);
+        Assert.Contains("переподключение отложено до его появления", program);
+        Assert.Contains("recovery.Pending is not null && Os.PhysicalBindAddress(cfg.TunAddress) is not null", program);
+    }
+
+    [Fact]
+    public void Physical_bind_never_falls_back_to_an_address_without_gateway()
+    {
+        var os = ReadSource("src/ProxyCage.Core/Os.cs");
+        Assert.Contains("var pool = candidatesWithGateway;", os);
+        Assert.DoesNotContain("candidatesWithGateway.Count > 0", os);
+    }
+
+    [Fact]
+    public void Every_automatic_restart_logs_its_reason_code()
+    {
+        var program = ProgramSource();
+        var automatic = Between(program, "    async Task QueueAutomaticRecovery(", "    async Task<string?> BringEngineUp(");
+        Assert.Contains("Log.Info($\"перезапуск туннеля, причина: {reasonCode}", automatic);
     }
 
     [Fact]

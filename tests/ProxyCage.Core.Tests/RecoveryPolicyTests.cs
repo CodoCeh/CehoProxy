@@ -26,6 +26,48 @@ public class RecoveryPolicyTests
     }
 
     [Fact]
+    public void Network_change_restores_exhausted_budget_while_user_wants_tunnel()
+    {
+        var policy = new RecoveryPolicy(new[] { TimeSpan.FromMilliseconds(1) });
+        policy.StartByUser();
+        policy.Schedule(policy.Generation, "failure", "one", 0);
+        policy.TryBegin(1, out _);
+        policy.Schedule(policy.Generation, "failure", "two", 1);
+        Assert.True(policy.Exhausted);
+
+        policy.NetworkChanged();
+
+        Assert.False(policy.Exhausted);
+        Assert.Equal(0, policy.Attempts);
+        Assert.True(policy.Schedule(policy.Generation, "network-changed", "new network", 2));
+    }
+
+    [Fact]
+    public void Immediate_schedule_is_due_now_without_backoff()
+    {
+        var policy = new RecoveryPolicy();
+        policy.StartByUser();
+
+        Assert.True(policy.Schedule(policy.Generation, "network-changed", "new network", 1000, immediate: true));
+
+        Assert.Equal(1000, policy.Pending!.DueAt);
+        Assert.True(policy.TryBegin(1000, out _));
+    }
+
+    [Fact]
+    public void Network_change_after_user_stop_keeps_tunnel_down()
+    {
+        var policy = new RecoveryPolicy();
+        policy.StartByUser();
+        policy.StopByUser();
+
+        policy.NetworkChanged();
+
+        Assert.False(policy.Wanted);
+        Assert.False(policy.Schedule(policy.Generation, "network-changed", "new network", 0));
+    }
+
+    [Fact]
     public void Explicit_retry_resets_exhausted_budget_and_invalidates_old_work()
     {
         var policy = new RecoveryPolicy(new[] { TimeSpan.FromMilliseconds(1) });
