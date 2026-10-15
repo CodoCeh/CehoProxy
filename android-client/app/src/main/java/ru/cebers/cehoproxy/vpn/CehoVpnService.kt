@@ -44,8 +44,6 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         private const val NOTIFICATION_ID = 41
         private const val PREFS = "vpn_status"
         private const val SELECT_TIMEOUT_MILLIS = 8_000L
-        private const val NETWORK_RETRY_LIMIT = 20
-        private const val NETWORK_RETRY_DELAY_SECONDS = 3L
         @Volatile private var liveInstance: CehoVpnService? = null
         fun requestNodeExitCountry(nodeRaw: String, callback: (String?, String?) -> Unit): Boolean =
             liveInstance?.requestExitCountry(nodeRaw, callback) ?: false
@@ -79,7 +77,6 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     @Volatile private var xrayProcess: Process? = null
     @Volatile private var destroyed = false
     private var acceptTun = false
-    private var networkRetriesLeft = 0
     private var commandServer: CommandServer? = null
     private var tunnel: ParcelFileDescriptor? = null
     @Volatile private var physicalNetwork: Network? = null
@@ -165,7 +162,6 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             server.start()
             server.startOrReloadService(config, OverrideOptions())
             readyGeneration = generation
-            networkRetriesLeft = 0
             val checkNode = candidates.isNotEmpty() && profile.importedConfig == null
             val published = startGeneration.runIfCurrent(generation) {
                 if (!checkNode) {
@@ -188,23 +184,12 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             }
         } catch (error: Throwable) {
             closeNativeResources()
-            if (retryAfterNetworkFailure(generation)) return
             startGeneration.runIfCurrent(generation) {
                 publishStatus("error", error.message ?: error.javaClass.simpleName)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelfResult(startId)
             }
         }
-    }
-
-    /** Новая сеть часто ещё без интернета: пробуем снова, а не гасим службу. */
-    private fun retryAfterNetworkFailure(generation: Long): Boolean {
-        if (destroyed || networkRetriesLeft <= 0 || hasInternet() || !startGeneration.isCurrent(generation)) return false
-        networkRetriesLeft--
-        EventLog.append(this, "сеть ещё не готова, повторяем подключение")
-        publishStatus("starting", null)
-        runCatching { failoverExecutor.schedule({ requestStart(latestStartId) }, NETWORK_RETRY_DELAY_SECONDS, TimeUnit.SECONDS) }
-        return true
     }
 
     private fun stopTunnel(startId: Int = latestStartId) {
@@ -269,7 +254,6 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         val status = getSharedPreferences(PREFS, MODE_PRIVATE).getString("status", "stopped")
         if (destroyed || status == "stopped") return
         EventLog.append(this, "сеть сменилась, переподключаемся")
-        networkRetriesLeft = NETWORK_RETRY_LIMIT
         requestStart(latestStartId)
     }
 
