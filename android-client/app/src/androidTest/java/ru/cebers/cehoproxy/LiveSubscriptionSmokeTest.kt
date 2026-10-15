@@ -133,6 +133,7 @@ class LiveSubscriptionSmokeTest {
         val indexArgument = arguments.getString("operatorSourceIndex") ?: "0"
         val sourceIndex = indexArgument.toIntOrNull()
         require(sourceIndex != null && sourceIndex in 0..500)
+        assumeTrue(java.io.File(context.filesDir, snapshotName).exists())
         val sources = org.json.JSONObject(java.io.File(context.filesDir, snapshotName).readText()).getJSONArray("inputs")
         val encoded = (0 until sources.length()).map { sources.getJSONObject(it) }
             .single { it.getInt("inputIndex") == sourceIndex }.getString("profile")

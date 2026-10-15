@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.vector.toPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -110,7 +111,7 @@ private const val SUPPORT_BOT_URL = "https://t.me/CebCehVPN_bot"
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: ProfileStore
-    private var profile by mutableStateOf(ClientProfile())
+    private var profile by mutableStateOf(newInstallProfile())
     private var onboardingCompleted by mutableStateOf(false)
     private var pendingExportScope = ProfileExportScope.ALL
     private var importRevision by mutableIntStateOf(0)
@@ -629,7 +630,7 @@ private fun shareEventLog(context: Context) {
 internal data class AppChoice(val packageName: String, val label: String, val icon: Drawable)
 
 private fun nodeAllowed(profile: ClientProfile, node: ProxyNode): Boolean =
-    NodePresentation.subscriptionKey(node) !in profile.disabledSubscriptions && (NodeCountry.resolve(node.name)?.let { it !in profile.excludedCountries } ?: true)
+    NodePresentation.subscriptionKey(node) !in profile.disabledSubscriptions && !RoutingConfig.countryExcluded(node, profile.excludedCountrySets)
 
 private fun moveNodeInList(profile: ClientProfile, raw: String, steps: Int): ClientProfile {
     val from = profile.nodes.indexOfFirst { it.raw == raw }
@@ -765,8 +766,6 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     val scope = rememberCoroutineScope()
     var connectionRun by remember { mutableIntStateOf(0) }
     var lastAnimatedRun by remember { mutableIntStateOf(0) }
-    var onboardingStep by remember { mutableIntStateOf(0) }
-    LaunchedEffect(onboardingCompleted) { if (!onboardingCompleted) onboardingStep = 0 }
     LaunchedEffect(connected) { if (connected) connectionRun++ }
     BackHandler(enabled = page != "Главная" && !showAppPicker && !showAppRoutePicker && !showAddSheet && shareCandidate == null) { backPage() }
     val pageTitle = if (page == "Серверы") "Проверка задержки" else page
@@ -792,16 +791,14 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
             }
             if (!onboardingCompleted) {
                 FirstRunOnboarding(
-                    step = onboardingStep,
-                    onStep = { onboardingStep = it },
                     profile = profile,
-                    onChooseApps = { selectedApps = profile.apps.toSet(); pickerNotice = null; showAppPicker = true },
+                    onPickCountry = { code -> onSaveRouteSettings(countryOnboardingChoice(profile, code)) },
+                    onYoutubeAds = { onSaveRouteSettings(profile.copy(blockYoutubeAds = it)) },
                     onImportFile = onImportFile,
                     onImportClipboard = onImportClipboard,
                     onScanQr = onScanQr,
                     onHelp = onHelp,
                     onFinish = onCompleteOnboarding,
-                    onLater = onCompleteOnboarding,
                     notice = notice,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
@@ -895,6 +892,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                         onRefresh = { onRefreshSubscription(url) },
                                         onCopy = { copySubscriptionLink(clipboardContext, url); onNotice("Ссылка подписки скопирована") },
                                         onDetails = { detailsUrl = if (detailsUrl == url) null else url },
+                                        onShare = { shareCandidate = url },
+                                        onRemove = { removeCandidate = url },
                                         onOpenLink = onOpenSubscriptionLink,
                                         modifier = Modifier.padding(top = 12.dp),
                                     )
@@ -1050,25 +1049,6 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 }
                                 else -> {
                                     CountryRouteSelector(profile, onDirectCountry, Modifier.padding(top = 8.dp))
-                                    val countryCounts = profile.nodes.mapNotNull { NodeCountry.resolve(it.name) }.groupingBy { it }.eachCount().toList().sortedByDescending { it.second }
-                                    if (countryCounts.isNotEmpty()) {
-                                        SectionLabel("ИСКЛЮЧИТЬ СТРАНУ ИЗ АВТОВЫБОРА")
-                                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            countryCounts.forEach { (code, count) ->
-                                                val excluded = code in profile.excludedCountries
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        val nextExcluded = if (excluded) profile.excludedCountries - code else profile.excludedCountries + code
-                                                        val next = profile.copy(excludedCountries = nextExcluded)
-                                                        val keep = profile.selectedNode?.let { nodeAllowed(next, it) } ?: true
-                                                        onSaveRouteSettings(if (keep) next else next.copy(selected = profile.nodes.indexOfFirst { nodeAllowed(next, it) }.takeIf { it >= 0 } ?: profile.selected))
-                                                    },
-                                                    modifier = Modifier.heightIn(min = 40.dp).testTag("country-exclude:$code"),
-                                                    colors = if (excluded) ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonColors(),
-                                                ) { Text((if (excluded) "Вернуть " else "Исключить ") + "${NodePresentation.flag(code) ?: ""} $code · $count") }
-                                            }
-                                        }
-                                    }
                                     if (showAdvancedRoutes && profile.nodes.size > 1) {
                                         Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f).padding(end = 8.dp)) {
@@ -1080,7 +1060,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                         if (autoRotationEnabled) {
                                             Text("Проверка доступности примерно каждые 30 секунд. При сбое проверяется следующий узел по порядку. Отдельные выходы приложений и сайтов сохраняются.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                                             val measuredCount = profile.nodes.count { measurements.nodes[it.routeId]?.latencyMs != null }
-                                            Text("Исключено из автовыбора: ${profile.nodes.count { n -> n.routeId in profile.autoExcludedRouteIds || NodeCountry.resolve(n.name)?.let { it in profile.excludedCountries } == true }} из ${profile.nodes.size}", color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp))
+                                            Text("Исключено из автовыбора: ${profile.nodes.count { n -> n.routeId in profile.autoExcludedRouteIds || RoutingConfig.countryExcluded(n, profile.excludedCountrySets) }} из ${profile.nodes.size}", color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp))
                                             Text(if (measuredCount == 0) "Замер идёт через VPN: подождите минуту после подключения." else "Исключаются узлы медленнее порога и узлы, которые не ответили при замере.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                                             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 listOf(300, 500, 1000).forEach { limit ->
@@ -1088,7 +1068,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                                     OutlinedButton(onClick = { onSaveRouteSettings(profile.copy(autoExcludedRouteIds = excluded)) }, enabled = measuredCount > 0 && excluded.size in 1 until profile.nodes.size, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("auto-exclude-$limit")) { Text("Медленнее $limit мс") }
                                                 }
                                             }
-                                            OutlinedButton(onClick = { onSaveRouteSettings(profile.copy(autoExcludedRouteIds = emptyList(), excludedCountries = emptyList())) }, enabled = profile.autoExcludedRouteIds.isNotEmpty() || profile.excludedCountries.isNotEmpty(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp).testTag("auto-exclude-reset")) { Text("Вернуть все узлы в автовыбор") }
+                                            OutlinedButton(onClick = { onSaveRouteSettings(profile.copy(autoExcludedRouteIds = emptyList(), excludedCountriesBySubscription = emptyMap())) }, enabled = profile.autoExcludedRouteIds.isNotEmpty() || profile.excludedCountriesBySubscription.isNotEmpty(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp).testTag("auto-exclude-reset")) { Text("Вернуть все узлы в автовыбор") }
                                         }
                                     }
                                 }
@@ -1139,6 +1119,30 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                         modifier = Modifier.padding(18.dp),
                                     )
                                 }
+                                profile.nodes.filter { SubscriptionMembership.belongs(it, url, profile.subscriptionUrls) }.firstOrNull()?.let { member ->
+                                    val key = NodePresentation.subscriptionKey(member)
+                                    val countries = profile.nodes.filter { NodePresentation.subscriptionKey(it) == key }
+                                        .mapNotNull { NodeCountry.resolve(it.name) }.groupingBy { it }.eachCount().toList().sortedByDescending { it.second }
+                                    val excludedHere = profile.excludedCountriesBySubscription[key].orEmpty()
+                                    SectionLabel("СТРАНЫ ЭТОЙ ПОДПИСКИ")
+                                    Text("Выключенные страны не используются в этой подписке. Остальные серверы работают как обычно.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                                    if (countries.isEmpty()) Text("В подписке не определены страны.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    else Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        countries.forEach { (code, count) ->
+                                            val excluded = code in excludedHere
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val nextHere = if (excluded) excludedHere - code else excludedHere + code
+                                                    val next = profile.copy(excludedCountriesBySubscription = (profile.excludedCountriesBySubscription + (key to nextHere)).filterValues { it.isNotEmpty() })
+                                                    val keep = profile.selectedNode?.let { nodeAllowed(next, it) } ?: true
+                                                    onSaveRouteSettings(if (keep) next else next.copy(selected = next.nodes.indexOfFirst { nodeAllowed(next, it) }.takeIf { it >= 0 } ?: profile.selected))
+                                                },
+                                                modifier = Modifier.heightIn(min = 40.dp).testTag("sub-country:$code"),
+                                                colors = if (excluded) ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonColors(),
+                                            ) { Text((if (excluded) "Вернуть " else "Выключить ") + "${NodePresentation.flag(code) ?: ""} ${NodeCountry.displayName(code)} · $count") }
+                                        }
+                                    }
+                                }
                                 SectionLabel("ОБНОВЛЕНИЕ")
                                 SettingsGroup {
                                     SettingsRow(
@@ -1158,11 +1162,6 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                         val key = NodePresentation.subscriptionKey(n)
                                         SettingsRow(title = "Использовать подписку", switchChecked = key !in profile.disabledSubscriptions, onSwitch = { enabled -> onSaveRouteSettings(subscriptionToggled(profile, key, enabled)) })
                                     }
-                                    SettingsRow(
-                                        title = "Страны (для всех подписок)",
-                                        value = if (profile.excludedCountries.isEmpty()) "Все" else profile.excludedCountries.sorted().joinToString(", "),
-                                        onClick = { routeTab = 2; openPage("Маршрутизация") },
-                                    )
                                     SettingsRow(title = "Проверка задержки", onClick = { openPage("Серверы") })
                                 }
                                 SectionLabel("ДОСТУП")
@@ -1221,7 +1220,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                             autoSwitchTag = "node-auto-switch:$index",
                                             excludedLabel = when {
                                                 NodePresentation.subscriptionKey(node) in profile.disabledSubscriptions -> "Подписка отключена"
-                                                NodeCountry.resolve(node.name)?.let { it in profile.excludedCountries } == true -> "Страна исключена"
+                                                RoutingConfig.countryExcluded(node, profile.excludedCountrySets) -> "Страна исключена"
                                                 else -> null
                                             })
                                     }
@@ -1453,62 +1452,87 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 
 @Composable
 private fun FirstRunOnboarding(
-    step: Int,
-    onStep: (Int) -> Unit,
     profile: ClientProfile,
-    onChooseApps: () -> Unit,
+    onPickCountry: (String) -> Unit,
+    onYoutubeAds: (Boolean) -> Unit,
     onImportFile: () -> Unit,
     onImportClipboard: () -> Unit,
     onScanQr: () -> Unit,
     onHelp: () -> Unit,
     onFinish: () -> Unit,
-    onLater: () -> Unit,
     notice: String?,
     modifier: Modifier = Modifier,
 ) {
+    var step by rememberSaveable { mutableIntStateOf(0) }
+    var showOther by remember { mutableStateOf(false) }
+    LaunchedEffect(step, profile.nodes.isNotEmpty()) { if (step == 1 && profile.nodes.isNotEmpty()) onFinish() }
     Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp).widthIn(max = 760.dp)) {
-        Text("ШАГ ${step + 1} ИЗ 2", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            repeat(2) { index -> Box(Modifier.weight(1f).height(4.dp).background(if (index <= step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))) }
-        }
-        when (step) {
-            0 -> {
-                Text("Добавьте ссылку", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 24.dp))
-                Text("Ссылку даёт ваш провайдер. Скопируйте её и нажмите кнопку ниже.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 18.dp))
-                Button(onClick = onImportClipboard, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("onboarding-paste")) { Text("Вставить ссылку из буфера") }
-                OutlinedButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp)) { Text("Сканировать QR-код") }
-                OutlinedButton(onClick = onImportFile, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp)) { Text("Открыть файл") }
-                Text(
-                    if (profile.nodes.isEmpty()) "Серверов пока нет." else "Добавлено серверов: ${profile.nodes.size}",
-                    color = if (profile.nodes.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 14.dp),
+        if (step == 0) {
+            Text("Какая у вас страна?", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 24.dp))
+            Text("Сайты этой страны открываются без VPN. Если страны нет в списке, выберите «Другая страна».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 10.dp))
+            CountryRouting.countries.forEach { option ->
+                OnboardingCountryRow(
+                    title = "${NodePresentation.flag(option.code.uppercase()) ?: ""} ${option.name}",
+                    subtitle = null,
+                    selected = profile.directCountryCode == option.code,
+                    tag = "onboarding-country:${option.code}",
+                    onClick = { onPickCountry(option.code) },
                 )
             }
-            else -> {
-                Text("Выберите приложения", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 24.dp))
-                Text("Выбранные приложения пойдут через VPN. Остальные работают как обычно. Изменить можно в любой момент.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 18.dp))
-                Surface(onClick = onChooseApps, modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).testTag("onboarding-app-picker"), color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(14.dp)) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            OnboardingCountryRow(title = "Другая страна", subtitle = null, selected = profile.directCountryCode.isEmpty(), tag = "onboarding-country:none", onClick = { onPickCountry("") })
+            if (profile.directCountryCode == "ru") {
+                Surface(modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("onboarding-youtube"), color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(16.dp)) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Приложения", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-                            Text(if (profile.apps.isEmpty()) "Ничего не выбрано" else "Выбрано: ${profile.apps.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                            Text("Реклама YouTube", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Блокирует рекламные сайты. Реклама внутри видео может остаться.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text("Выбрать  ›", color = MaterialTheme.colorScheme.primary)
+                        Switch(checked = profile.blockYoutubeAds, onCheckedChange = onYoutubeAds, modifier = Modifier.testTag("onboarding-youtube-switch"))
                     }
                 }
-                if (profile.apps.isEmpty()) Text("Пока ничего не выбрано. VPN включится, когда выберете приложения.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
             }
+            Button(onClick = { step = 1 }, modifier = Modifier.fillMaxWidth().padding(top = 18.dp).heightIn(min = 52.dp).testTag("onboarding-next")) { Text("Далее") }
+        } else {
+            Text("Добавьте подписку", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 24.dp))
+            Text("Вставьте ссылку от провайдера. Остальное настроится само.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 18.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = onImportClipboard, modifier = Modifier.weight(3f).heightIn(min = 56.dp).testTag("onboarding-paste")) { Text("Вставить из буфера") }
+                Spacer(Modifier.width(8.dp))
+                Box(Modifier.weight(2f)) {
+                    OutlinedButton(onClick = { showOther = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("onboarding-other")) { Text("Другое") }
+                    DropdownMenu(expanded = showOther, onDismissRequest = { showOther = false }) {
+                        DropdownMenuItem(text = { Text("Сканировать QR-код") }, onClick = { showOther = false; onScanQr() })
+                        DropdownMenuItem(text = { Text("Открыть файл") }, onClick = { showOther = false; onImportFile() })
+                        DropdownMenuItem(text = { Text("Помощь в Telegram") }, onClick = { showOther = false; onHelp() })
+                    }
+                }
+            }
+            notice?.let { Text(it, color = if (it.contains("ошиб", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp)) }
+            TextButton(onClick = onFinish, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 12.dp).heightIn(min = 48.dp).testTag("onboarding-later")) { Text("Добавить позже") }
         }
-        notice?.let { Text(it, color = if (it.contains("ошиб", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp)) }
-        Row(Modifier.fillMaxWidth().padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (step > 0) OutlinedButton(onClick = { onStep(step - 1) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Назад") }
-            if (step == 0) Button(onClick = { onStep(1) }, enabled = profile.nodes.isNotEmpty(), modifier = Modifier.weight(1f).heightIn(min = 52.dp).testTag("onboarding-next")) { Text("Дальше") }
-            else Button(onClick = onFinish, modifier = Modifier.weight(1f).heightIn(min = 52.dp).testTag("onboarding-finish")) { Text("Готово") }
-        }
-        TextButton(onClick = onLater, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) { Text("Настроить позже") }
-        if (step == 0) TextButton(onClick = onHelp, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) { Text("Нет ссылки? Помощь в Telegram") }
     }
 }
+
+@Composable
+private fun OnboardingCountryRow(title: String, subtitle: String?, selected: Boolean, tag: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 64.dp).testTag(tag),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            RadioButton(selected = selected, onClick = null)
+        }
+    }
+}
+
+private fun countryOnboardingChoice(profile: ClientProfile, code: String): ClientProfile =
+    profile.copy(directCountryCode = code, blockYoutubeAds = if (code == "ru") true else profile.blockYoutubeAds)
 
 @Composable
 private fun CountryRouteSelector(profile: ClientProfile, onCountry: (String) -> Unit, modifier: Modifier = Modifier) {
@@ -1802,7 +1826,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
     }
 }
 
-@Composable private fun SubscriptionListItem(index: Int, metadata: SubscriptionMetadata, serverCount: Int, fetchedAt: Long?, expiresAt: Long?, refreshing: Boolean, detailsShown: Boolean, onRefresh: () -> Unit, onCopy: () -> Unit, onDetails: () -> Unit, onOpenLink: (String) -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun SubscriptionListItem(index: Int, metadata: SubscriptionMetadata, serverCount: Int, fetchedAt: Long?, expiresAt: Long?, refreshing: Boolean, detailsShown: Boolean, onRefresh: () -> Unit, onCopy: () -> Unit, onDetails: () -> Unit, onShare: () -> Unit, onRemove: () -> Unit, onOpenLink: (String) -> Unit, modifier: Modifier = Modifier) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = modifier.fillMaxWidth().testTag("subscription-item:$index")) {
         Column(Modifier.padding(18.dp)) {
             SubscriptionCard(metadata = metadata, expiresAt = expiresAt, fetchedAt = fetchedAt, serverCount = serverCount, onOpenLink = onOpenLink, onShare = null, onSettings = null)
@@ -1810,6 +1834,10 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
                 PillButton("Обновить", onRefresh, Modifier.weight(1f).testTag("subscription-refresh:$index"), enabled = !refreshing)
                 PillButton("Копировать", onCopy, Modifier.weight(1f).testTag("subscription-copy:$index"))
                 PillButton(if (detailsShown) "Скрыть" else "Сведения", onDetails, Modifier.weight(1f).testTag("subscription-details-toggle:$index"))
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton("Поделиться", onShare, Modifier.weight(1f).testTag("subscription-share:$index"))
+                PillButton("Удалить", onRemove, Modifier.weight(1f).testTag("subscription-remove:$index"), textColor = MaterialTheme.colorScheme.error)
             }
             if (detailsShown) SubscriptionDetails(metadata, onOpenLink)
         }
@@ -1840,7 +1868,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
     }
 }
 
-@Composable private fun PillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+@Composable private fun PillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, textColor: Color = MaterialTheme.colorScheme.onSurface) {
     Surface(
         onClick = onClick,
         enabled = enabled,
@@ -1849,7 +1877,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
         modifier = modifier.heightIn(min = 40.dp),
     ) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-            Text(text, style = MaterialTheme.typography.labelLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text, style = MaterialTheme.typography.labelLarge, color = if (enabled) textColor else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

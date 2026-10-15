@@ -20,7 +20,7 @@ data class ClientProfile(
     val autoRotationEnabled: Boolean = false,
     val autoRotationIntervalSeconds: Int = 900,
     val autoExcludedRouteIds: List<String> = emptyList(),
-    val excludedCountries: List<String> = emptyList(),
+    val excludedCountriesBySubscription: Map<String, List<String>> = emptyMap(),
     val subscriptionUrls: List<String> = emptyList(),
     val subscriptionFetchedAt: Long = 0L,
     val subscriptionFetchedAtByUrl: Map<String, Long> = emptyMap(),
@@ -31,6 +31,12 @@ data class ClientProfile(
     val selectedNode: ProxyNode? get() = nodes.getOrNull(selected)
     val subscriptionUrl: String? get() = subscriptionUrls.firstOrNull()
 }
+
+// First run: everything goes through VPN and the best server is chosen automatically, so the user has nothing to configure.
+fun newInstallProfile(): ClientProfile = ClientProfile(excludeSelectedApps = true, autoRotationEnabled = true)
+
+val ClientProfile.excludedCountrySets: Map<String, Set<String>>
+    get() = excludedCountriesBySubscription.mapValues { (_, countries) -> countries.map { it.uppercase() }.toSet() }
 
 object ProfileCodec {
     fun encode(profile: ClientProfile): String {
@@ -54,7 +60,7 @@ object ProfileCodec {
             .put("appNodeRoutes", JSONObject(profile.appNodeRoutes)).put("siteNodeRoutes", JSONObject(profile.siteNodeRoutes))
             .put("autoRotationEnabled", profile.autoRotationEnabled).put("autoRotationIntervalSeconds", profile.autoRotationIntervalSeconds.coerceIn(60, 3600))
             .put("autoExcludedRouteIds", JSONArray(profile.autoExcludedRouteIds.distinct()))
-            .put("excludedCountries", JSONArray(profile.excludedCountries.map { it.uppercase() }.distinct()))
+            .put("excludedCountriesBySubscription", JSONObject().apply { profile.excludedCountriesBySubscription.forEach { (key, countries) -> put(key, JSONArray(countries.map { it.uppercase() }.distinct())) } })
             .put("subscriptionUrls", JSONArray(profile.subscriptionUrls)).put("subscriptionFetchedAt", profile.subscriptionFetchedAt)
             .put("subscriptionFetchedAtByUrl", JSONObject().apply { profile.subscriptionFetchedAtByUrl.forEach { (url, at) -> put(url, at) } })
             .put("subscriptionRefreshHours", profile.subscriptionRefreshHours).put("blockYoutubeAds", profile.blockYoutubeAds).put("disabledSubscriptions", JSONArray(profile.disabledSubscriptions.distinct())).toString()
@@ -98,7 +104,7 @@ object ProfileCodec {
             autoRotationEnabled = json.optBoolean("autoRotationEnabled"),
             autoRotationIntervalSeconds = json.optInt("autoRotationIntervalSeconds", 900).coerceIn(60, 3600),
             autoExcludedRouteIds = json.array("autoExcludedRouteIds"),
-            excludedCountries = json.array("excludedCountries").map { it.uppercase() },
+            excludedCountriesBySubscription = json.countriesBySubscription(nodes),
             subscriptionUrls = json.array("subscriptionUrls").ifEmpty { json.optString("subscriptionUrl").takeIf(String::isNotBlank)?.let { listOf(it) }.orEmpty() },
             subscriptionFetchedAt = json.optLong("subscriptionFetchedAt"),
             subscriptionFetchedAtByUrl = json.optJSONObject("subscriptionFetchedAtByUrl")?.let { obj -> obj.keys().asSequence().associateWith { obj.optLong(it) } }.orEmpty(),
@@ -108,6 +114,17 @@ object ProfileCodec {
             disabledSubscriptions = json.array("disabledSubscriptions"),
         )
     }.getOrDefault(ClientProfile())
+
+    // Profiles saved before per-subscription exclusions kept one country list for all subscriptions; it is applied to each of them.
+    private fun JSONObject.countriesBySubscription(nodes: List<ProxyNode>): Map<String, List<String>> {
+        optJSONObject("excludedCountriesBySubscription")?.let { obj ->
+            return obj.keys().asSequence().associateWith { key -> obj.optJSONArray(key)?.let { array -> (0 until array.length()).map { array.getString(it).uppercase() } }.orEmpty() }
+                .filterValues { it.isNotEmpty() }
+        }
+        val legacy = array("excludedCountries").map { it.uppercase() }
+        if (legacy.isEmpty()) return emptyMap()
+        return nodes.map { NodePresentation.subscriptionKey(it) }.distinct().associateWith { legacy }
+    }
 
     private fun JSONObject.array(name: String): List<String> = optJSONArray(name)?.let { array -> (0 until array.length()).map(array::getString) }.orEmpty()
     private fun JSONObject.objectMap(name: String): Map<String, String> = optJSONObject(name)?.let { obj ->
@@ -153,6 +170,6 @@ class ProfileStore(context: Context) {
         updated
     }
 
-    private fun readLocked(): ClientProfile = ProfileCodec.decode(prefs.getString("data", "{}") ?: "{}")
+    private fun readLocked(): ClientProfile = prefs.getString("data", null)?.let(ProfileCodec::decode) ?: newInstallProfile()
     private fun saveLocked(profile: ClientProfile) { prefs.edit().putString("data", ProfileCodec.encode(profile)).apply() }
 }

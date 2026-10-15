@@ -107,7 +107,7 @@ class RoutingConfigTest {
         val ru = named("🇷🇺 Россия-1", "33333333-3333-3333-3333-333333333333")
         val de = named("🇩🇪 Германия-4", "44444444-4444-4444-4444-444444444444")
         val unknown = named("↔️ Автовыбор", "55555555-5555-5555-5555-555555555555")
-        val config = JSONObject(RoutingConfig.build(listOf(ru, de, unknown), 0, RoutePolicy(autoRotationEnabled = true, excludedCountries = setOf("RU"))))
+        val config = JSONObject(RoutingConfig.build(listOf(ru, de, unknown), 0, RoutePolicy(autoRotationEnabled = true, excludedCountriesBySubscription = mapOf(NodePresentation.subscriptionKey(ru) to setOf("RU")))))
         val outbounds = config.getJSONArray("outbounds")
         val group = (0 until outbounds.length()).map { outbounds.getJSONObject(it) }.single { it.optString("tag") == OrderedFailoverConfig.GLOBAL_TAG }
         val tags = group.getJSONArray("outbounds")

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -108,14 +109,32 @@ class SubscriptionImportUiTest {
         rule.onNodeWithTag("settings-update-check").performScrollTo().assertIsDisplayed()
     }
 
-    @Test fun countryChosenInSettingsAfterTwoStepOnboardingPersistsWithoutChangingAppsOrSites() {
+    @Test fun onboardingAsksCountryOffersYoutubeForRussiaThenAddsSubscription() {
+        rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit().putString("data", ProfileCodec.encode(ClientProfile())).commit()
+        rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).edit().putBoolean("completed", false).commit()
+        rule.activityRule.scenario.recreate()
+        rule.onNodeWithText("Какая у вас страна?").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-youtube-switch").assertDoesNotExist()
+        rule.onNodeWithTag("onboarding-country:ru").performScrollTo().performClick()
+        rule.onNodeWithTag("onboarding-youtube-switch").performScrollTo().assertIsOn()
+        rule.onNodeWithTag("onboarding-next").performScrollTo().performClick()
+        rule.onNodeWithText("Добавьте подписку").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-paste").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-other").assertIsDisplayed()
+        val saved = ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}")!!)
+        assertEquals("ru", saved.directCountryCode)
+        assertEquals(true, saved.blockYoutubeAds)
+        rule.onNodeWithTag("onboarding-later").performScrollTo().performClick()
+        assertEquals(true, rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).getBoolean("completed", false))
+    }
+
+    @Test fun countryChosenInSettingsAfterOnboardingPersistsWithoutChangingAppsOrSites() {
         val node = NodeShareParser.parse("vless://11111111-1111-1111-1111-111111111111@edge.example:443#Onboarding").single()
         val profile = ClientProfile(nodes = listOf(node), apps = listOf("com.android.chrome"), sites = listOf("manual.example"))
         rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit().putString("data", ProfileCodec.encode(profile)).commit()
         rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).edit().putBoolean("completed", false).commit()
         rule.activityRule.scenario.recreate()
         rule.onNodeWithTag("onboarding-next").performScrollTo().performClick()
-        rule.onNodeWithTag("onboarding-finish").performScrollTo().performClick()
         openRouting()
         rule.onNodeWithTag("route-tab:2").performClick()
         rule.onNodeWithTag("country-selector").performScrollTo().performClick()
@@ -179,13 +198,15 @@ class SubscriptionImportUiTest {
         rule.onNodeWithTag("import-input").assertIsDisplayed()
     }
 
-    @Test fun firstRunGuidesUserThroughSetupAndCanBeCompletedWithoutSubscription() {
+    @Test fun firstRunStartsWithSubscriptionAndCanBeSkipped() {
         rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).edit().putBoolean("completed", false).commit()
         rule.activityRule.scenario.recreate()
 
-        rule.onNodeWithText("Добавьте ссылку").assertIsDisplayed()
-        rule.onNodeWithTag("onboarding-next").assertIsNotEnabled()
-        rule.onNodeWithText("Настроить позже").performScrollTo().performClick()
+        rule.onNodeWithText("Какая у вас страна?").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-next").performScrollTo().performClick()
+        rule.onNodeWithText("Добавьте подписку").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-paste").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-later").performScrollTo().performClick()
 
         assertEquals(true, rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).getBoolean("completed", false))
         rule.activityRule.scenario.recreate()
@@ -199,7 +220,7 @@ class SubscriptionImportUiTest {
             clipboard.setPrimaryClip(ClipData.newPlainText("CehoProxy test", "socks5://user:pass@clipboard.example:1080#clipboard-smoke"))
         }
         rule.waitForIdle()
-        if (rule.onAllNodesWithText("Позже").fetchSemanticsNodes().isNotEmpty()) rule.onNodeWithText("Позже").performClick()
+        if (rule.onAllNodesWithTag("onboarding-later").fetchSemanticsNodes().isNotEmpty()) rule.onNodeWithTag("onboarding-later").performClick()
         openImportDialog()
         rule.onNodeWithText("Из буфера").performScrollTo().performClick()
         rule.waitUntil(20_000) {
@@ -317,8 +338,8 @@ class SubscriptionImportUiTest {
         openRouting()
         rule.onNodeWithTag("route-tab:1").performClick()
         rule.onNodeWithText("Сайты напрямую").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithTag("sites-mode").performScrollTo().performClick()
-        rule.onNodeWithText("Сайты через VPN").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription("Через VPN только указанные сайты").performScrollTo().performClick()
+        rule.onNodeWithText("Сайты через VPN").assertExists()
         val saved = ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}") ?: "{}")
         assertEquals(true, saved.onlySites)
     }
@@ -399,6 +420,29 @@ class SubscriptionImportUiTest {
         rule.onNodeWithText("Продлить подписку").performScrollTo().assertIsDisplayed()
     }
 
+    @Test fun subscriptionsMenuSharesAndRemovesSubscription() {
+        val url = "https://sub.example/list"
+        val metadata = SubscriptionMetadata(sourceHost = "sub.example", sourceUrl = url)
+        val raw = """{"type":"vless","tag":"Тестовый узел","server":"node.example","server_port":443,"uuid":"synthetic-id"}"""
+        val node = ProxyNode("Тестовый узел", "vless", "node.example", 443, raw, null, metadata)
+        val profile = ClientProfile(nodes = listOf(node), subscriptionUrls = listOf(url))
+        rule.activity.runOnUiThread {
+            rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit().putString("data", ProfileCodec.encode(profile)).commit()
+        }
+        rule.activityRule.scenario.recreate()
+        rule.waitForIdle()
+        openSubscriptions()
+        rule.onNodeWithTag("subscription-share:0").performScrollTo().performClick()
+        rule.onNodeWithTag("subscription-share-link").assertIsDisplayed()
+        rule.onNodeWithTag("subscription-share-link").performClick()
+        rule.onNodeWithTag("subscription-remove:0").performScrollTo().performClick()
+        rule.onNodeWithTag("subscription-remove-confirm").performClick()
+        rule.waitForIdle()
+        val saved = ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}")!!)
+        assertEquals(emptyList<String>(), saved.subscriptionUrls)
+        assertEquals(emptyList<ProxyNode>(), saved.nodes)
+    }
+
     @Test fun perAppAndPerSiteRoutesAreSelectableAndAcceptedBySingBox() {
         val first = NodeShareParser.parse("vless://11111111-1111-1111-1111-111111111111@edge.example:443#Node-A").single()
         val second = NodeShareParser.parse("vless://22222222-2222-2222-2222-222222222222@backup.example:443#Node-B").single()
@@ -407,7 +451,7 @@ class SubscriptionImportUiTest {
         rule.activityRule.scenario.recreate()
         openRouting()
         rule.onNodeWithText("Дополнительно").performClick()
-        rule.onNodeWithText("ВЫХОД ДЛЯ ПРИЛОЖЕНИЙ").assertIsDisplayed()
+        rule.onNodeWithText("ВЫХОД ДЛЯ ПРИЛОЖЕНИЙ").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("route-tab:1").performClick()
         rule.onNodeWithText("ВЫХОД ДЛЯ САЙТОВ").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("route-select:chat.example").performScrollTo().performClick()

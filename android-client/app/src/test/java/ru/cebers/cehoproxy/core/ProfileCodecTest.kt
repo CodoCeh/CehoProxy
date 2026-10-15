@@ -41,7 +41,16 @@ class ProfileCodecTest {
         val node = NodeShareParser.parse("vless://synthetic-id@edge.example:443").single()
         val profile = ClientProfile(nodes = listOf(node), autoExcludedRouteIds = listOf(node.routeId))
         assertEquals(listOf(node.routeId), ProfileCodec.decode(ProfileCodec.encode(profile)).autoExcludedRouteIds)
-        assertEquals(listOf("RU"), ProfileCodec.decode(ProfileCodec.encode(profile.copy(excludedCountries = listOf("ru")))).excludedCountries)
+        val byKey = mapOf(NodePresentation.subscriptionKey(node) to listOf("ru"))
+        assertEquals(mapOf(NodePresentation.subscriptionKey(node) to listOf("RU")), ProfileCodec.decode(ProfileCodec.encode(profile.copy(excludedCountriesBySubscription = byKey))).excludedCountriesBySubscription)
+    }
+
+    @Test fun legacyGlobalCountryListAppliesToEverySubscriptionOnLoad() {
+        val node = NodeShareParser.parse("vless://synthetic-id@edge.example:443#a").single()
+        val json = org.json.JSONObject(ProfileCodec.encode(ClientProfile(nodes = listOf(node))))
+        json.remove("excludedCountriesBySubscription")
+        json.put("excludedCountries", org.json.JSONArray(listOf("de")))
+        assertEquals(mapOf(NodePresentation.subscriptionKey(node) to listOf("DE")), ProfileCodec.decode(json.toString()).excludedCountriesBySubscription)
     }
 
     @Test fun persistsSubscriptionMetadataAndReminderPreference() {

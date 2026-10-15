@@ -14,7 +14,7 @@ data class RoutePolicy(
     val autoRotationEnabled: Boolean = false,
     val autoRotationIntervalSeconds: Int = 900,
     val autoExcludedRouteIds: Set<String> = emptySet(),
-    val excludedCountries: Set<String> = emptySet(),
+    val excludedCountriesBySubscription: Map<String, Set<String>> = emptyMap(),
     val countryRuleSets: List<CountryRuleSet> = emptyList(),
     val localDpiApps: List<String> = emptyList(),
     val blockYoutubeAds: Boolean = false,
@@ -25,20 +25,25 @@ data class RoutePolicy(
 object RoutingConfig {
     fun build(node: ProxyNode, policy: RoutePolicy): String = build(listOf(node), 0, policy)
 
-    fun allowedNodesFor(nodes: List<ProxyNode>, excludedCountries: Set<String>, disabledSubscriptions: Set<String> = emptySet()): List<ProxyNode> {
-        val enabled = nodes.filter { NodePresentation.subscriptionKey(it) !in disabledSubscriptions }
-        return enabled.filter { node -> NodeCountry.resolve(node.name)?.let { it !in excludedCountries } ?: true }.ifEmpty { enabled }
+    fun countryExcluded(node: ProxyNode, excludedCountriesBySubscription: Map<String, Set<String>>): Boolean {
+        val country = NodeCountry.resolve(node.name) ?: return false
+        return country in excludedCountriesBySubscription[NodePresentation.subscriptionKey(node)].orEmpty()
     }
 
-    fun tagsByRaw(nodes: List<ProxyNode>, excludedCountries: Set<String>, disabledSubscriptions: Set<String> = emptySet()): Map<String, String> {
-        val unique = allowedNodesFor(nodes, excludedCountries, disabledSubscriptions).distinctBy { it.raw }
+    fun allowedNodesFor(nodes: List<ProxyNode>, excludedCountriesBySubscription: Map<String, Set<String>>, disabledSubscriptions: Set<String> = emptySet()): List<ProxyNode> {
+        val enabled = nodes.filter { NodePresentation.subscriptionKey(it) !in disabledSubscriptions }
+        return enabled.filterNot { countryExcluded(it, excludedCountriesBySubscription) }.ifEmpty { enabled }
+    }
+
+    fun tagsByRaw(nodes: List<ProxyNode>, excludedCountriesBySubscription: Map<String, Set<String>>, disabledSubscriptions: Set<String> = emptySet()): Map<String, String> {
+        val unique = allowedNodesFor(nodes, excludedCountriesBySubscription, disabledSubscriptions).distinctBy { it.raw }
         return unique.mapIndexed { index, node -> node.raw to if (unique.size == 1) "proxy" else "proxy-$index" }.toMap()
     }
 
     fun build(nodes: List<ProxyNode>, defaultNodeIndex: Int, policy: RoutePolicy): String {
         val dpiApps = directDpiApps(policy)
         require(nodes.isNotEmpty() || dpiApps.isNotEmpty()) { "Нет узлов для маршрутизации" }
-        val allowedNodes = allowedNodesFor(nodes, policy.excludedCountries, policy.disabledSubscriptions).let { candidates ->
+        val allowedNodes = allowedNodesFor(nodes, policy.excludedCountriesBySubscription, policy.disabledSubscriptions).let { candidates ->
             candidates.filter { node -> runCatching { outbound(node) }.isSuccess }.ifEmpty { candidates }
         }
         val selectedRouteId = nodes.getOrNull(defaultNodeIndex.coerceIn(0, nodes.lastIndex.coerceAtLeast(0)))?.routeId
@@ -52,7 +57,7 @@ object RoutingConfig {
         if (policy.autoRotationEnabled && uniqueNodes.isNotEmpty()) {
             val autoTags = uniqueNodes.indices.filter { index ->
                 val node = uniqueNodes[index]
-                node.routeId !in policy.autoExcludedRouteIds && (NodeCountry.resolve(node.name)?.let { it !in policy.excludedCountries } ?: true)
+                node.routeId !in policy.autoExcludedRouteIds && !countryExcluded(node, policy.excludedCountriesBySubscription)
             }.map { nodeTags[it] }.ifEmpty { nodeTags }
             outbounds.put(OrderedFailoverConfig.selector(OrderedFailoverConfig.GLOBAL_TAG, autoTags))
         }

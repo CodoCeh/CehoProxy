@@ -18,7 +18,7 @@ class DisabledSubscriptionTest {
     }
 
     @Test fun disabledSubscriptionIsNotReplacedByFallback() {
-        assertTrue(RoutingConfig.allowedNodesFor(listOf(root), emptySet(), setOf("sub.cebceh.com")).isEmpty())
+        assertTrue(RoutingConfig.allowedNodesFor(listOf(root), emptyMap(), setOf("sub.cebceh.com")).isEmpty())
     }
 
     @Test fun subscriptionKeyUsesHostAndProfileRoundTrips() {

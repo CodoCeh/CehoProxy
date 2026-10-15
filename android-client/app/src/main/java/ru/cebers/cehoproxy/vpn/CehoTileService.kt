@@ -1,5 +1,6 @@
 package ru.cebers.cehoproxy.vpn
 
+import android.annotation.SuppressLint
 import android.animation.ValueAnimator
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -71,6 +72,7 @@ class CehoTileService : TileService() {
         animationScheduled = false
     }
 
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         super.onClick()
         unlockAndRun {

@@ -1,5 +1,6 @@
 package ru.cebers.cehoproxy.vpn
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -43,6 +44,8 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         private const val NOTIFICATION_ID = 41
         private const val PREFS = "vpn_status"
         private const val SELECT_TIMEOUT_MILLIS = 8_000L
+        private const val NETWORK_RETRY_LIMIT = 20
+        private const val NETWORK_RETRY_DELAY_SECONDS = 3L
         @Volatile private var liveInstance: CehoVpnService? = null
         fun requestNodeExitCountry(nodeRaw: String, callback: (String?, String?) -> Unit): Boolean =
             liveInstance?.requestExitCountry(nodeRaw, callback) ?: false
@@ -76,6 +79,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     @Volatile private var xrayProcess: Process? = null
     @Volatile private var destroyed = false
     private var acceptTun = false
+    private var networkRetriesLeft = 0
     private var commandServer: CommandServer? = null
     private var tunnel: ParcelFileDescriptor? = null
     @Volatile private var physicalNetwork: Network? = null
@@ -127,7 +131,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             AppScopePolicy.validate(profile.apps, profile.apps, profile.excludeSelectedApps)?.let { error(it) }
             val selected = profile.selectedNode
             val xrayPorts = if (profile.importedConfig == null) {
-                startXray(RoutingConfig.allowedNodesFor(profile.nodes, profile.excludedCountries.map { it.uppercase() }.toSet(), profile.disabledSubscriptions.toSet()).filter(XrayBridge::needsXray))
+                startXray(RoutingConfig.allowedNodesFor(profile.nodes, profile.excludedCountrySets, profile.disabledSubscriptions.toSet()).filter(XrayBridge::needsXray))
             } else emptyMap()
             val policy = RoutePolicy(
                 apps = profile.apps,
@@ -141,12 +145,12 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 autoRotationEnabled = profile.autoRotationEnabled,
                 autoRotationIntervalSeconds = profile.autoRotationIntervalSeconds,
                 autoExcludedRouteIds = profile.autoExcludedRouteIds.toSet(),
-                excludedCountries = profile.excludedCountries.map { it.uppercase() }.toSet(),
+                excludedCountriesBySubscription = profile.excludedCountrySets,
                 blockYoutubeAds = profile.blockYoutubeAds,
                 disabledSubscriptions = profile.disabledSubscriptions.toSet(),
                 xrayPorts = xrayPorts,
             )
-            if (profile.importedConfig == null && profile.nodes.isNotEmpty() && RoutingConfig.allowedNodesFor(profile.nodes, policy.excludedCountries, policy.disabledSubscriptions).isEmpty()) error("Все подписки отключены. Включите хотя бы одну в «Серверы»")
+            if (profile.importedConfig == null && profile.nodes.isNotEmpty() && RoutingConfig.allowedNodesFor(profile.nodes, policy.excludedCountriesBySubscription, policy.disabledSubscriptions).isEmpty()) error("Все подписки отключены. Включите хотя бы одну в «Серверы»")
             val routingConfig = profile.importedConfig?.let { RoutingConfig.applyToImported(it, policy) }
                 ?: if (profile.nodes.isNotEmpty() || policy.localDpiApps.isNotEmpty()) RoutingConfig.build(profile.nodes, profile.selected, policy) else selected?.let { RoutingConfig.build(it, policy) }
                 ?: error("Профиль пуст")
@@ -161,6 +165,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             server.start()
             server.startOrReloadService(config, OverrideOptions())
             readyGeneration = generation
+            networkRetriesLeft = 0
             val checkNode = candidates.isNotEmpty() && profile.importedConfig == null
             val published = startGeneration.runIfCurrent(generation) {
                 if (!checkNode) {
@@ -183,12 +188,23 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             }
         } catch (error: Throwable) {
             closeNativeResources()
+            if (retryAfterNetworkFailure(generation)) return
             startGeneration.runIfCurrent(generation) {
                 publishStatus("error", error.message ?: error.javaClass.simpleName)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelfResult(startId)
             }
         }
+    }
+
+    /** Новая сеть часто ещё без интернета: пробуем снова, а не гасим службу. */
+    private fun retryAfterNetworkFailure(generation: Long): Boolean {
+        if (destroyed || networkRetriesLeft <= 0 || hasInternet() || !startGeneration.isCurrent(generation)) return false
+        networkRetriesLeft--
+        EventLog.append(this, "сеть ещё не готова, повторяем подключение")
+        publishStatus("starting", null)
+        runCatching { failoverExecutor.schedule({ requestStart(latestStartId) }, NETWORK_RETRY_DELAY_SECONDS, TimeUnit.SECONDS) }
+        return true
     }
 
     private fun stopTunnel(startId: Int = latestStartId) {
@@ -219,7 +235,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     }
 
     private fun tagsByRaw(profile: ClientProfile): Map<String, String> =
-        RoutingConfig.tagsByRaw(profile.nodes, profile.excludedCountries.map { it.uppercase() }.toSet(), profile.disabledSubscriptions.toSet())
+        RoutingConfig.tagsByRaw(profile.nodes, profile.excludedCountrySets, profile.disabledSubscriptions.toSet())
 
     private fun startOrder(candidates: List<String>, profile: ClientProfile): List<String> {
         val index = candidates.indexOf(tagsByRaw(profile)[profile.selectedNode?.raw])
@@ -251,8 +267,9 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
 
     private fun reconnectAfterNetworkChange() {
         val status = getSharedPreferences(PREFS, MODE_PRIVATE).getString("status", "stopped")
-        if (destroyed || !acceptTun || status == "stopped") return
+        if (destroyed || status == "stopped") return
         EventLog.append(this, "сеть сменилась, переподключаемся")
+        networkRetriesLeft = NETWORK_RETRY_LIMIT
         requestStart(latestStartId)
     }
 
@@ -502,6 +519,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         owner.setAndroidPackageNames(StringList(packageManager.getPackagesForUid(uid)?.toList().orEmpty()))
         return owner
     }
+    @SuppressLint("NewApi")
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
         closeDefaultInterfaceMonitor(listener)
         val connectivity = getSystemService(ConnectivityManager::class.java)
@@ -629,6 +647,7 @@ private fun CehoVpnService.updateDefaultInterface(listener: InterfaceUpdateListe
     if (name != null && index != null) listener.updateDefaultInterface(name, index, false, false)
 }
 
+@SuppressLint("NewApi")
 private fun io.nekohasekai.libbox.RoutePrefix.toIpPrefix(): IpPrefix = IpPrefix(InetAddress.getByName(address()), prefix())
 private fun java.net.NetworkInterface.toBoxInterface() = io.nekohasekai.libbox.NetworkInterface().apply {
     name = this@toBoxInterface.name

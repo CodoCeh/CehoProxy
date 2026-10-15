@@ -81,9 +81,9 @@ data class SubscriptionMetadata(
                 val pair = part.split('=', limit = 2)
                 if (pair.size == 2) pair[0].trim().lowercase() to pair[1].trim().toLongOrNull()?.takeIf { it >= 0 } else null
             }.toMap()
-            fun text(key: String, maxLength: Int = 512): String? = normalized[key]?.trim()?.takeIf { it.isNotEmpty() && it != "0" }?.take(maxLength)
+            fun text(key: String, maxLength: Int = 512): String? = normalized[key]?.trim()?.let(::decodeBase64Text)?.takeIf { it.isNotEmpty() && it != "0" }?.take(maxLength)
             fun title(): String? {
-                val value = text("profile-title", 4096) ?: return null
+                val value = normalized["profile-title"]?.trim()?.takeIf { it.isNotEmpty() && it != "0" }?.take(4096) ?: return null
                 val decoded = if (value.startsWith("base64:", true)) runCatching {
                     val encoded = value.substringAfter(':').filterNot(Char::isWhitespace)
                     String(java.util.Base64.getDecoder().decode(encoded), Charsets.UTF_8).trim()
@@ -116,4 +116,11 @@ data class SubscriptionMetadata(
 
         private fun safeSum(a: Long, b: Long): Long = if (Long.MAX_VALUE - a < b) Long.MAX_VALUE else a + b
     }
+}
+
+// Providers send some header text as "base64:<payload>": show the decoded text, hide the value if it does not decode.
+internal fun decodeBase64Text(value: String): String? {
+    if (!value.startsWith("base64:")) return value
+    return runCatching { String(Base64Compat.decode(value.removePrefix("base64:")), Charsets.UTF_8) }.getOrNull()
+        ?.takeIf { decoded -> decoded.none { it.isISOControl() && !it.isWhitespace() } }
 }
