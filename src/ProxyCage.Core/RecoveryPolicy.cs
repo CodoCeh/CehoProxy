@@ -47,6 +47,17 @@ public sealed class RecoveryPolicy
         _healthySince = null;
     }
 
+    /// <summary>
+    /// Смена сети — не сбой движка. Бюджет попыток начинается заново, иначе туннель,
+    /// упавший во время долгого обрыва, больше не поднимается сам.
+    /// </summary>
+    public void NetworkChanged()
+    {
+        if (!Wanted) return;
+        Attempts = 0;
+        Exhausted = false;
+    }
+
     public bool IsCurrent(long generation) => Wanted && Generation == generation;
 
     public void Started(long now, bool healthy = true)
@@ -65,7 +76,7 @@ public sealed class RecoveryPolicy
     public void ObserveUnhealthy() => _healthySince = null;
 
     /// <returns>True only when a new attempt was scheduled.</returns>
-    public bool Schedule(long generation, string reasonCode, string reason, long now)
+    public bool Schedule(long generation, string reasonCode, string reason, long now, bool immediate = false)
     {
         if (!IsCurrent(generation) || Exhausted || Pending is not null) return false;
         if (_healthySince is { } healthy && now - healthy >= _stableMilliseconds) Attempts = 0;
@@ -75,7 +86,7 @@ public sealed class RecoveryPolicy
             Exhausted = true;
             return false;
         }
-        Pending = new Request(generation, reasonCode, reason, checked(now + _delays[Attempts]));
+        Pending = new Request(generation, reasonCode, reason, immediate ? now : checked(now + _delays[Attempts]));
         return true;
     }
 

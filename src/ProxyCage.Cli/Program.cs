@@ -2349,10 +2349,10 @@ if (cmd is "daemon" or "web")
         }
     }
 
-    void ScheduleRecoveryLocked(string reasonCode, string reason)
+    void ScheduleRecoveryLocked(string reasonCode, string reason, bool immediate = false)
     {
         if (shuttingDown || !wanted) return;
-        recovery.Schedule(recovery.Generation, reasonCode, reason, Environment.TickCount64);
+        recovery.Schedule(recovery.Generation, reasonCode, reason, Environment.TickCount64, immediate);
         if (recovery.Exhausted)
         {
             lastError = RecoveryPolicy.TerminalMessage(cfg.Language, recovery.MaxAttempts, reason);
@@ -2374,8 +2374,9 @@ if (cmd is "daemon" or "web")
         // A slow pre-sleep/network probe must not restart a newer session or
         // undo a stop that was accepted while it was awaiting the network.
         if (shuttingDown || !wanted || !recovery.IsCurrent(generation)) return;
+        Log.Info($"перезапуск туннеля, причина: {reasonCode} ({reason})");
         StopTunnelLocked();
-        ScheduleRecoveryLocked(reasonCode, reason);
+        ScheduleRecoveryLocked(reasonCode, reason, immediate: reasonCode == "network-changed");
         await StartGuard();
     }
 
@@ -3116,6 +3117,70 @@ if (cmd is "daemon" or "web")
     Auth.RestrictConfigAccess(Ceho.ConfigPath);
 
     using var cts = new CancellationTokenSource();
+
+    // Смена сети приходит событием: опрос выхода раз в 30 с слишком медленный.
+    var networkChanged = new SemaphoreSlim(0, 1);
+    void SignalNetworkChanged(string source)
+    {
+        Log.Info($"событие сети: {source}");
+        try { if (networkChanged.CurrentCount == 0) networkChanged.Release(); }
+        catch (SemaphoreFullException) { }
+    }
+    System.Net.NetworkInformation.NetworkAddressChangedEventHandler onAddressChanged = (_, _) => SignalNetworkChanged("адрес");
+    System.Net.NetworkInformation.NetworkAvailabilityChangedEventHandler onAvailabilityChanged =
+        (_, e) => SignalNetworkChanged(e.IsAvailable ? "сеть появилась" : "сеть пропала");
+    System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += onAddressChanged;
+    System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += onAvailabilityChanged;
+    cts.Token.Register(() =>
+    {
+        System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= onAddressChanged;
+        System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged -= onAvailabilityChanged;
+    });
+    _ = Task.Run(async () =>
+    {
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                await networkChanged.WaitAsync(cts.Token);
+                // Адрес меняется в несколько шагов (DHCP, шлюз): даём сети устояться.
+                await Task.Delay(TimeSpan.FromSeconds(2), cts.Token);
+                while (networkChanged.Wait(0)) { }
+                var generation = recovery.Generation;
+                var restart = false;
+                using (EngineMutex.Acquire(Ceho.Root))
+                {
+                    if (shuttingDown || !wanted)
+                    {
+                        Log.Info("смена сети: туннель не нужен, пропускаю");
+                        continue;
+                    }
+                    recovery.NetworkChanged();
+                    if (proc is null)
+                    {
+                        if (Os.PhysicalBindAddress(cfg.TunAddress) is null)
+                            Log.Info("смена сети: адреса нет, переподключение отложено до его появления");
+                        else
+                        {
+                            Log.Info("смена сети: движка нет, ставлю переподключение в очередь");
+                            ScheduleRecoveryLocked("network-changed", Strings.T(cfg.Language, "reconnect_network_changed"), immediate: true);
+                        }
+                    }
+                    else
+                    {
+                        var currentBind = Os.PhysicalBindAddress(cfg.TunAddress)?.ToString();
+                        restart = currentBind is not null && currentBind != boundAddress;
+                        Log.Info($"смена сети: адрес {currentBind ?? "нет"}, был {boundAddress ?? "нет"}, перезапуск: {(restart ? "да" : "нет")}");
+                    }
+                }
+                if (restart)
+                    await QueueAutomaticRecovery("network-changed", Strings.T(cfg.Language, "reconnect_network_changed"), generation);
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) { Log.Error("обработка смены сети не удалась", ex); }
+        }
+    });
+
     // Состояние процесса проверяем отдельно от сетевого probe: тот может ждать таймаут,
     // а упавший движок нужно поднимать сразу.
     if (Os.IsWindows)
@@ -3175,7 +3240,7 @@ if (cmd is "daemon" or "web")
                     }
                 }
 
-                if (proc is null && wanted && recovery.Pending is not null)
+                if (proc is null && wanted && recovery.Pending is not null && Os.PhysicalBindAddress(cfg.TunAddress) is not null)
                 {
                     using var gate = EngineMutex.Acquire(Ceho.Root);
                     if (proc is null && wanted && recovery.TryBegin(Environment.TickCount64, out var retry))
@@ -3206,7 +3271,7 @@ if (cmd is "daemon" or "web")
                 }
                 if (proc is not null
                     && Os.PhysicalBindAddress(cfg.TunAddress)?.ToString() is { } bind
-                    && boundAddress is not null && bind != boundAddress)
+                    && bind != boundAddress)
                 {
                     Log.Info($"адрес сети сменился: {boundAddress} -> {bind}, перезапускаю туннель");
                     await QueueAutomaticRecovery("network-changed", Strings.T(cfg.Language, "reconnect_network_changed"), observedGeneration);

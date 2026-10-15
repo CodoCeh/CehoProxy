@@ -176,7 +176,6 @@ public static class Os
             ? tunIp[..(tunIp.LastIndexOf('.') + 1)]
             : null;
 
-        var candidates = new List<IPAddress>();
         var candidatesWithGateway = new List<IPAddress>();
         foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
         {
@@ -207,12 +206,11 @@ public static class Os
                 if (s.StartsWith("192.168.56.", StringComparison.Ordinal)) continue;
                 if (tunPrefix != null && s.StartsWith(tunPrefix, StringComparison.Ordinal)) continue;
                 if (LooksLikeTunnelAddress(s)) continue;
-                candidates.Add(ua.Address);
                 if (hasGateway) candidatesWithGateway.Add(ua.Address);
             }
         }
 
-        var pool = candidatesWithGateway.Count > 0 ? candidatesWithGateway : candidates;
+        var pool = candidatesWithGateway;
         if (pool.Count == 0) return null;
         return pool.FirstOrDefault(a => a.ToString().StartsWith("192.168.0.", StringComparison.Ordinal))
                ?? pool[0];
