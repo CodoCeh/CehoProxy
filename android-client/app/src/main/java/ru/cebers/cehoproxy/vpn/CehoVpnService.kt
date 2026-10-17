@@ -22,6 +22,7 @@ import androidx.core.app.NotificationCompat
 import io.nekohasekai.libbox.*
 import ru.cebers.cehoproxy.core.*
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -60,6 +61,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     private val nativeCalls = BoundedCall("ceho-native")
     @Volatile private var failoverTask: ScheduledFuture<*>? = null
     @Volatile private var probeConnection: HttpURLConnection? = null
+    @Volatile private var probeFailure: String? = null
     @Volatile private var activeProbePort = 0
     @Volatile private var activeProfile: ClientProfile? = null
     @Volatile private var activeNodeName: String? = null
@@ -323,21 +325,25 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
 
     private fun startFailover(generation: Long, profile: ClientProfile, candidates: List<String>, port: Int) {
         var failedChecks = 0
+        val startedAt = System.currentTimeMillis()
         val task = failoverExecutor.scheduleWithFixedDelay({
             if (!startGeneration.isCurrent(generation)) return@scheduleWithFixedDelay
             try {
                 val client = Libbox.newStandaloneCommandClient()
                 // Separate selector: a failed test must not change assigned application/site routes.
-                val healthy = OrderedFailover.firstHealthy(startOrder(candidates, profile), { startGeneration.isCurrent(generation) }) { tag ->
+                fun round() = OrderedFailover.firstHealthy(startOrder(candidates, profile), { startGeneration.isCurrent(generation) }) { tag ->
                     nativeCalls.run(SELECT_TIMEOUT_MILLIS) {
                         client.selectOutbound(OrderedFailoverConfig.PROBE_TAG, tag)
                         probe(port, generation)
                     } == true
                 }
+                val healthy = round() ?: if (startGeneration.isCurrent(generation)) {
+                    Thread.sleep(FailoverHealthPolicy.RETRY_DELAY_MILLIS)
+                    round()
+                } else null
                 startGeneration.runIfCurrent(generation) {
-                    nativeCalls.run(SELECT_TIMEOUT_MILLIS) { client.selectOutbound(OrderedFailoverConfig.GLOBAL_TAG, healthy ?: "block") }
-
                     if (healthy != null) {
+                        nativeCalls.run(SELECT_TIMEOUT_MILLIS) { client.selectOutbound(OrderedFailoverConfig.GLOBAL_TAG, healthy) }
                         failedChecks = 0
                         val healthyRaw = tagsByRaw(profile).entries.firstOrNull { it.value == healthy }?.key
                         val activeNode = profile.nodes.firstOrNull { it.raw == healthyRaw }
@@ -351,16 +357,22 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                         publishStatus("connected", null)
                         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, connectedNotification())
                     } else {
-                        failedChecks++
-                        // Keep TUN alive and reject global traffic until the next bounded check.
-                        publishStatus("error", if (hasInternet()) "Серверы не отвечают. Проверка повторится автоматически" else "Нет интернета. Проверка повторится автоматически")
-                        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("Нет доступных узлов"))
+                        failedChecks = FailoverHealthPolicy.nextFailedRounds(failedChecks, false, System.currentTimeMillis() - startedAt)
+                        if (FailoverHealthPolicy.showsError(failedChecks)) {
+                            nativeCalls.run(SELECT_TIMEOUT_MILLIS) { client.selectOutbound(OrderedFailoverConfig.GLOBAL_TAG, "block") }
+                            publishStatus("error", if (hasInternet()) "Серверы не отвечают. Проверка повторится автоматически" else "Нет интернета. Проверка повторится автоматически")
+                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("Нет доступных узлов"))
+                        } else {
+                            EventLog.append(this, "проверка узлов не прошла, последняя причина: ${probeFailure ?: "нет ответа"}")
+                        }
                     }
                 }
                 restartIfStuck(generation, failedChecks)
             } catch (_: Exception) {
-                failedChecks++
-                startGeneration.runIfCurrent(generation) { publishStatus("error", "Не удалось проверить узлы. Проверка повторится автоматически") }
+                failedChecks = FailoverHealthPolicy.nextFailedRounds(failedChecks, false, System.currentTimeMillis() - startedAt)
+                startGeneration.runIfCurrent(generation) {
+                    if (FailoverHealthPolicy.showsError(failedChecks)) publishStatus("error", "Не удалось проверить узлы. Проверка повторится автоматически")
+                }
                 restartIfStuck(generation, failedChecks)
             }
         }, 0, 30, TimeUnit.SECONDS)
@@ -369,6 +381,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
 
     private fun probe(port: Int, generation: Long): Boolean {
         if (!startGeneration.isCurrent(generation)) return false
+        probeFailure = null
         val connection = URL("https://1.1.1.1/cdn-cgi/trace").openConnection(
             Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", port))) as HttpURLConnection
         connection.connectTimeout = 4000
@@ -377,8 +390,14 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         connection.useCaches = false
         connection.setRequestProperty("Connection", "close")
         probeConnection = connection
-        return try { connection.responseCode in 200..399 && startGeneration.isCurrent(generation) }
-        finally { connection.disconnect(); if (probeConnection === connection) probeConnection = null }
+        return try {
+            val code = connection.responseCode
+            if (code !in 200..399) probeFailure = "HTTP $code"
+            code in 200..399 && startGeneration.isCurrent(generation)
+        } catch (error: IOException) {
+            probeFailure = error.javaClass.simpleName + (error.message?.let { ": $it" }.orEmpty())
+            false
+        } finally { connection.disconnect(); if (probeConnection === connection) probeConnection = null }
     }
 
     private fun startXray(nodes: List<ProxyNode>): Map<String, Int> {
