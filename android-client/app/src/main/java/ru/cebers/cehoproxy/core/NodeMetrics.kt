@@ -26,12 +26,20 @@ internal object NodeMetricsPolicy {
         return nodes + (routeId to (nodes[routeId] ?: NodeMeasurement()).copy(verifiedCountry = country))
     }
 
+    /** Applies a periodic URL test result unless the node already has a newer measurement. */
+    fun applyUrlTest(current: NodeMeasurement, delay: Int, testedAt: Long): NodeMeasurement? = when {
+        testedAt < current.measuredAt -> null
+        delay > 0 -> current.copy(latencyMs = delay, measuredAt = testedAt, failed = false, failureReason = null, testing = false)
+        else -> NodeMeasurement(failed = true, failureReason = "Нет ответа", measuredAt = testedAt, verifiedCountry = current.verifiedCountry)
+    }
+
     fun beginCheck(previous: NodeMeasurement?): NodeMeasurement =
         (previous ?: NodeMeasurement()).copy(testing = true, failed = false, failureReason = null)
 
-    fun tags(nodes: List<ProxyNode>): Map<String, String> {
-        val unique = nodes.distinctBy { it.raw }
-        return unique.mapIndexed { index, node -> node.routeId to if (unique.size == 1) "proxy" else "proxy-$index" }.toMap()
+    /** Engine tags of the nodes that are actually running: disabled subscriptions and excluded countries are absent from the engine. */
+    fun tags(profile: ClientProfile): Map<String, String> {
+        val byRaw = RoutingConfig.tagsByRaw(profile.nodes, profile.excludedCountrySets, profile.disabledSubscriptions.toSet())
+        return profile.nodes.filter { it.raw in byRaw }.associate { it.routeId to byRaw.getValue(it.raw) }
     }
 
     fun rate(previous: Long, current: Long, elapsedNanos: Long): Long? =

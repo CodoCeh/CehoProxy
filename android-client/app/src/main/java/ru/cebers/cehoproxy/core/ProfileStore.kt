@@ -27,6 +27,7 @@ data class ClientProfile(
     val subscriptionRefreshHours: Int = SubscriptionRefreshPolicy.DEFAULT_INTERVAL_HOURS,
     val blockYoutubeAds: Boolean = false,
     val disabledSubscriptions: List<String> = emptyList(),
+    val autoDisabledSubscriptions: List<String> = emptyList(),
 ) {
     val selectedNode: ProxyNode? get() = nodes.getOrNull(selected)
     val subscriptionUrl: String? get() = subscriptionUrls.firstOrNull()
@@ -63,7 +64,7 @@ object ProfileCodec {
             .put("excludedCountriesBySubscription", JSONObject().apply { profile.excludedCountriesBySubscription.forEach { (key, countries) -> put(key, JSONArray(countries.map { it.uppercase() }.distinct())) } })
             .put("subscriptionUrls", JSONArray(profile.subscriptionUrls)).put("subscriptionFetchedAt", profile.subscriptionFetchedAt)
             .put("subscriptionFetchedAtByUrl", JSONObject().apply { profile.subscriptionFetchedAtByUrl.forEach { (url, at) -> put(url, at) } })
-            .put("subscriptionRefreshHours", profile.subscriptionRefreshHours).put("blockYoutubeAds", profile.blockYoutubeAds).put("disabledSubscriptions", JSONArray(profile.disabledSubscriptions.distinct())).toString()
+            .put("subscriptionRefreshHours", profile.subscriptionRefreshHours).put("blockYoutubeAds", profile.blockYoutubeAds).put("disabledSubscriptions", JSONArray(profile.disabledSubscriptions.distinct())).put("autoDisabledSubscriptions", JSONArray(profile.autoDisabledSubscriptions.distinct())).toString()
     }
 
     fun decode(encoded: String): ClientProfile = runCatching {
@@ -112,6 +113,7 @@ object ProfileCodec {
                 .takeIf { it in SubscriptionRefreshPolicy.INTERVAL_OPTIONS_HOURS } ?: SubscriptionRefreshPolicy.DEFAULT_INTERVAL_HOURS,
             blockYoutubeAds = json.optBoolean("blockYoutubeAds"),
             disabledSubscriptions = json.array("disabledSubscriptions"),
+            autoDisabledSubscriptions = json.array("autoDisabledSubscriptions"),
         )
     }.getOrDefault(ClientProfile())
 

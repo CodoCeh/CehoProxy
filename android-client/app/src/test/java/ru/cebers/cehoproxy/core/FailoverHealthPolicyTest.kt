@@ -35,4 +35,11 @@ class FailoverHealthPolicyTest {
         }
         assertTrue(FailoverHealthPolicy.showsError(failed))
     }
+
+    @Test fun firstConnectionReportsAfterOneFailedRoundWithoutGrace() {
+        val failed = FailoverHealthPolicy.nextFailedRounds(0, healthy = false, sinceStartMillis = 0L, graceMillis = 0L)
+        assertEquals(1, failed)
+        assertTrue(FailoverHealthPolicy.showsError(failed, firstConnection = true))
+        assertFalse(FailoverHealthPolicy.showsError(failed))
+    }
 }

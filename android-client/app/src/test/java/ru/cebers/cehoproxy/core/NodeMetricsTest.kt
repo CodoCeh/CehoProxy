@@ -13,9 +13,21 @@ class NodeMetricsTest {
         val config = JSONObject(RoutingConfig.build(nodes, 0, RoutePolicy()))
         val outbounds = config.getJSONArray("outbounds")
         val actual = (0 until outbounds.length()).map { outbounds.getJSONObject(it).getString("tag") }
-        assertEquals(mapOf(a.routeId to "proxy-0", b.routeId to "proxy-1"), NodeMetricsPolicy.tags(nodes))
-        NodeMetricsPolicy.tags(nodes).values.forEach { assertTrue(it in actual) }
-        assertEquals("proxy", NodeMetricsPolicy.tags(listOf(a, a))[a.routeId])
+        assertEquals(mapOf(a.routeId to "proxy-0", b.routeId to "proxy-1"), NodeMetricsPolicy.tags(ClientProfile(nodes = nodes)))
+        NodeMetricsPolicy.tags(ClientProfile(nodes = nodes)).values.forEach { assertTrue(it in actual) }
+        assertEquals("proxy", NodeMetricsPolicy.tags(ClientProfile(nodes = listOf(a, a)))[a.routeId])
+    }
+
+    @Test fun metricTagsSkipNodesOfDisabledSubscriptionsLikeTheEngineDoes() {
+        val first = a.copy(subscriptionMetadata = SubscriptionMetadata(sourceHost = "first.example"))
+        val second = b.copy(subscriptionMetadata = SubscriptionMetadata(sourceHost = "second.example"))
+        val profile = ClientProfile(nodes = listOf(first, second), disabledSubscriptions = listOf("first.example"))
+        val config = JSONObject(RoutingConfig.build(profile.nodes, 0, RoutePolicy(disabledSubscriptions = setOf("first.example"))))
+        val outbounds = config.getJSONArray("outbounds")
+        val actual = (0 until outbounds.length()).map { outbounds.getJSONObject(it).getString("tag") }
+        val tags = NodeMetricsPolicy.tags(profile)
+        assertEquals(setOf(second.routeId), tags.keys)
+        assertTrue(tags.getValue(second.routeId) in actual)
     }
 
     @Test fun ratesUseElapsedTimeAndRejectCounterReset() {

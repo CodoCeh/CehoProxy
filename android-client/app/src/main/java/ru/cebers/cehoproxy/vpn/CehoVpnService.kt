@@ -42,9 +42,13 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         const val ACTION_STOP = "ru.cebers.cehoproxy.STOP"
         const val ACTION_STATUS = "ru.cebers.cehoproxy.STATUS"
         private const val CHANNEL = "cehoproxy-vpn"
+        private const val ALERT_CHANNEL = "cehoproxy-alert"
         private const val NOTIFICATION_ID = 41
+        private const val ALERT_NOTIFICATION_ID = 42
+        private const val NETWORK_LOST_GRACE_SECONDS = 4L
         private const val PREFS = "vpn_status"
         private const val SELECT_TIMEOUT_MILLIS = 8_000L
+        private const val SLOW_NODE_MILLIS = 3_000L
         @Volatile private var liveInstance: CehoVpnService? = null
         fun requestNodeExitCountry(nodeRaw: String, callback: (String?, String?) -> Unit): Boolean =
             liveInstance?.requestExitCountry(nodeRaw, callback) ?: false
@@ -69,6 +73,9 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     @Volatile private var activeGeneration = 0L
     @Volatile private var readyGeneration = -1L
     @Volatile private var lastPhysicalNetwork: Network? = null
+    @Volatile private var networkLostAnnounced = false
+    @Volatile private var firstConnection = true
+    private val nodeHealth = NodeHealthMemory()
     private val startGeneration = StartGeneration()
     private val tunnelLock = Any()
     private val lifecycleExecutor = Executors.newSingleThreadExecutor { task ->
@@ -106,10 +113,12 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         return START_STICKY
     }
 
-    private fun requestStart(startId: Int) {
+    private fun requestStart(startId: Int, recovering: Boolean = false) {
         if (destroyed) return
         val generation = startGeneration.beginStart()
         cancelFailover()
+        firstConnection = !recovering
+        nodeHealth.clear()
         publishStatus("starting", null)
         runCatching { failoverExecutor.schedule({ onConnectTimeout(generation) }, 15, TimeUnit.SECONDS) }
         try {
@@ -147,6 +156,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 excludedCountriesBySubscription = profile.excludedCountrySets,
                 blockYoutubeAds = profile.blockYoutubeAds,
                 disabledSubscriptions = profile.disabledSubscriptions.toSet(),
+                autoDisabledSubscriptions = profile.autoDisabledSubscriptions.toSet(),
                 xrayPorts = xrayPorts,
             )
             if (profile.importedConfig == null && profile.nodes.isNotEmpty() && RoutingConfig.allowedNodesFor(profile.nodes, policy.excludedCountriesBySubscription, policy.disabledSubscriptions).isEmpty()) error("Все подписки отключены. Включите хотя бы одну в «Серверы»")
@@ -187,8 +197,10 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         } catch (error: Throwable) {
             closeNativeResources()
             startGeneration.runIfCurrent(generation) {
-                publishStatus("error", error.message ?: error.javaClass.simpleName)
+                val reason = error.message ?: error.javaClass.simpleName
+                publishStatus("error", reason)
                 stopForeground(STOP_FOREGROUND_REMOVE)
+                notifyProblem(reason)
                 stopSelfResult(startId)
             }
         }
@@ -237,6 +249,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         cancelFailover()
         publishStatus("error", "Не удалось подключиться за 15 секунд. Проверьте интернет и попробуйте снова")
         stopForeground(STOP_FOREGROUND_REMOVE)
+        notifyProblem("Не удалось подключиться за 15 секунд. Проверьте интернет и попробуйте снова")
         runCatching { lifecycleExecutor.execute { closeNativeResources() } }
         stopSelf()
     }
@@ -252,11 +265,21 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         runCatching { failoverExecutor.schedule({ reconnectAfterNetworkChange() }, 2, TimeUnit.SECONDS) }
     }
 
+    private fun announceNetworkLoss() {
+        val status = getSharedPreferences(PREFS, MODE_PRIVATE).getString("status", "stopped")
+        if (destroyed || status == "stopped" || physicalNetwork != null || networkLostAnnounced) return
+        networkLostAnnounced = true
+        val message = "Нет интернета. VPN восстановится сам, когда сеть появится"
+        publishStatus("error", message)
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("Нет интернета"))
+        notifyProblem(message)
+    }
+
     private fun reconnectAfterNetworkChange() {
         val status = getSharedPreferences(PREFS, MODE_PRIVATE).getString("status", "stopped")
         if (destroyed || status == "stopped") return
         EventLog.append(this, "сеть сменилась, переподключаемся")
-        requestStart(latestStartId)
+        requestStart(latestStartId, recovering = true)
     }
 
     private fun restartIfStuck(generation: Long, failedChecks: Int) {
@@ -264,7 +287,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         if (!StuckTunnelPolicy.shouldRestart(failedChecks, System.currentTimeMillis(), lastAutoRestartMillis) || !hasInternet()) return
         lastAutoRestartMillis = System.currentTimeMillis()
         EventLog.append(this, "серверы не отвечают, перезапускаем туннель автоматически")
-        requestStart(latestStartId)
+        requestStart(latestStartId, recovering = true)
     }
 
     private fun cancelFailover() {
@@ -291,6 +314,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 } else {
                     publishStatus("error", "Выбранный узел не отвечает. Смените узел или включите автовыбор")
                     getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("Узел не отвечает"))
+                    notifyProblem("Выбранный узел не отвечает. Смените узел или включите автоматическое переключение")
                 }
             }
             if (tag != null) startManualWatch(generation, tag, port, healthy)
@@ -316,6 +340,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                     up = false
                     publishStatus("error", "Выбранный узел перестал отвечать. Смените узел или включите автовыбор")
                     getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("Узел не отвечает"))
+                    notifyProblem("Выбранный узел перестал отвечать. Смените узел или включите автоматическое переключение")
                 }
             }
             restartIfStuck(generation, failures)
@@ -326,16 +351,20 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     private fun startFailover(generation: Long, profile: ClientProfile, candidates: List<String>, port: Int) {
         var failedChecks = 0
         val startedAt = System.currentTimeMillis()
+        val first = firstConnection
+        val grace = if (first) 0L else FailoverHealthPolicy.STARTUP_GRACE_MILLIS
         val task = failoverExecutor.scheduleWithFixedDelay({
             if (!startGeneration.isCurrent(generation)) return@scheduleWithFixedDelay
             try {
                 val client = Libbox.newStandaloneCommandClient()
                 // Separate selector: a failed test must not change assigned application/site routes.
-                fun round() = OrderedFailover.firstHealthy(startOrder(candidates, profile), { startGeneration.isCurrent(generation) }) { tag ->
-                    nativeCalls.run(SELECT_TIMEOUT_MILLIS) {
+                fun round() = OrderedFailover.firstWorking(startOrder(candidates, profile), { startGeneration.isCurrent(generation) }, nodeHealth, SLOW_NODE_MILLIS) { tag ->
+                    val startedProbe = System.currentTimeMillis()
+                    val answered = nativeCalls.run(SELECT_TIMEOUT_MILLIS) {
                         client.selectOutbound(OrderedFailoverConfig.PROBE_TAG, tag)
                         probe(port, generation)
                     } == true
+                    if (answered) System.currentTimeMillis() - startedProbe else null
                 }
                 val healthy = round() ?: if (startGeneration.isCurrent(generation)) {
                     Thread.sleep(FailoverHealthPolicy.RETRY_DELAY_MILLIS)
@@ -357,11 +386,12 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                         publishStatus("connected", null)
                         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, connectedNotification())
                     } else {
-                        failedChecks = FailoverHealthPolicy.nextFailedRounds(failedChecks, false, System.currentTimeMillis() - startedAt)
-                        if (FailoverHealthPolicy.showsError(failedChecks)) {
+                        failedChecks = FailoverHealthPolicy.nextFailedRounds(failedChecks, false, System.currentTimeMillis() - startedAt, grace)
+                        if (FailoverHealthPolicy.showsError(failedChecks, first)) {
                             nativeCalls.run(SELECT_TIMEOUT_MILLIS) { client.selectOutbound(OrderedFailoverConfig.GLOBAL_TAG, "block") }
                             publishStatus("error", if (hasInternet()) "Серверы не отвечают. Проверка повторится автоматически" else "Нет интернета. Проверка повторится автоматически")
                             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("Нет доступных узлов"))
+                            notifyProblem(if (hasInternet()) "Ни один сервер не отвечает. Проверка повторится автоматически" else "Нет интернета. VPN восстановится сам, когда сеть появится")
                         } else {
                             EventLog.append(this, "проверка узлов не прошла, последняя причина: ${probeFailure ?: "нет ответа"}")
                         }
@@ -369,9 +399,9 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 }
                 restartIfStuck(generation, failedChecks)
             } catch (_: Exception) {
-                failedChecks = FailoverHealthPolicy.nextFailedRounds(failedChecks, false, System.currentTimeMillis() - startedAt)
+                failedChecks = FailoverHealthPolicy.nextFailedRounds(failedChecks, false, System.currentTimeMillis() - startedAt, grace)
                 startGeneration.runIfCurrent(generation) {
-                    if (FailoverHealthPolicy.showsError(failedChecks)) publishStatus("error", "Не удалось проверить узлы. Проверка повторится автоматически")
+                    if (FailoverHealthPolicy.showsError(failedChecks, first)) publishStatus("error", "Не удалось проверить узлы. Проверка повторится автоматически")
                 }
                 restartIfStuck(generation, failedChecks)
             }
@@ -438,6 +468,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         cancelFailover()
         publishStatus("stopped", "Другое VPN отключило CehoProxy. Нажмите на водоворот, чтобы включить снова")
         stopForeground(STOP_FOREGROUND_REMOVE)
+        notifyProblem("Другое VPN отключило CehoProxy. Откройте приложение и включите снова")
         runCatching { lifecycleExecutor.execute { closeNativeResources() } }
         stopSelf()
     }
@@ -534,7 +565,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 lastPhysicalNetwork = network
                 physicalNetwork = network
                 updateDefaultInterface(listener, network)
-                if (previous != null && previous != network) scheduleReconnect()
+                if ((previous != null && previous != network) || networkLostAnnounced) scheduleReconnect()
             }
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
                 if (physicalNetwork == network) updateDefaultInterface(listener, network, linkProperties)
@@ -543,6 +574,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 if (physicalNetwork == network) {
                     physicalNetwork = null
                     listener.updateDefaultInterface("", -1, false, false)
+                    runCatching { failoverExecutor.schedule({ announceNetworkLoss() }, NETWORK_LOST_GRACE_SECONDS, TimeUnit.SECONDS) }
                 }
             }
         }
@@ -596,7 +628,11 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     override fun connectSSHAgent() = -1
 
     private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= 26) getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, "CehoProxy VPN", NotificationManager.IMPORTANCE_LOW))
+        if (Build.VERSION.SDK_INT >= 26) {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(NotificationChannel(CHANNEL, "CehoProxy VPN", NotificationManager.IMPORTANCE_LOW))
+            manager.createNotificationChannel(NotificationChannel(ALERT_CHANNEL, "Проблемы с VPN", NotificationManager.IMPORTANCE_HIGH))
+        }
     }
 
     @androidx.annotation.RequiresApi(31)
@@ -620,6 +656,21 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         activeSubscriptionText = node?.let(NodePresentation::subscriptionSource)
     }
 
+    private fun notifyProblem(text: String) {
+        createChannel()
+        val alert = NotificationCompat.Builder(this, ALERT_CHANNEL).setSmallIcon(ru.cebers.cehoproxy.R.drawable.ic_ceho_whirlpool)
+            .setContentTitle("VPN не работает").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setCategory(NotificationCompat.CATEGORY_ERROR).setPriority(NotificationCompat.PRIORITY_HIGH).setOnlyAlertOnce(true).setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(this, 3, Intent(this, ru.cebers.cehoproxy.MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            .build()
+        getSystemService(NotificationManager::class.java).notify(ALERT_NOTIFICATION_ID, alert)
+    }
+
+    private fun clearProblem() {
+        networkLostAnnounced = false
+        getSystemService(NotificationManager::class.java).cancel(ALERT_NOTIFICATION_ID)
+    }
+
     private fun connectedNotification(): Notification {
         val since = getSharedPreferences(PREFS, MODE_PRIVATE).getLong("connected_at", System.currentTimeMillis())
         return notification(activeNodeName?.let { "Через: $it" } ?: "Подключено", activeSubscriptionText, since)
@@ -632,12 +683,14 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         .build()
     private fun publishStatus(status: String, message: String?) {
         liveTunnelConnected = status == "connected"
+        if (status == "connected" || status == "stopped" || status == "starting") clearProblem()
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val unchanged = prefs.getString("status", null) == status && prefs.getString("message", null) == message
         val editor = prefs.edit().putString("status", status).putString("message", message)
         if (status == "connected" && prefs.getString("status", null) != "connected") editor.putLong("connected_at", System.currentTimeMillis())
         if (status != "connected") editor.remove("probe_port").remove("connected_at")
         editor.apply()
-        EventLog.append(this, "статус=$status" + (message?.let { ": $it" }.orEmpty()))
+        if (!unchanged) EventLog.append(this, "статус=$status" + (message?.let { ": $it" }.orEmpty()))
         CehoWidgetProvider.refreshAll(this)
         android.service.quicksettings.TileService.requestListeningState(this, android.content.ComponentName(this, CehoTileService::class.java))
         sendBroadcast(Intent(ACTION_STATUS).setPackage(packageName).putExtra("status", status).putExtra("message", message))

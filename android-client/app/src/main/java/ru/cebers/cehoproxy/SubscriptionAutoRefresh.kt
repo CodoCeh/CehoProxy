@@ -17,10 +17,8 @@ import ru.cebers.cehoproxy.core.ProfileStore
 import ru.cebers.cehoproxy.core.ProxyNode
 import ru.cebers.cehoproxy.core.RoutePolicy
 import ru.cebers.cehoproxy.core.RoutingConfig
-import ru.cebers.cehoproxy.core.SubscriptionFetcher
 import ru.cebers.cehoproxy.core.SubscriptionNames
 import ru.cebers.cehoproxy.core.SubscriptionRefreshPolicy
-import ru.cebers.cehoproxy.core.SubscriptionRequestOptions
 import java.util.concurrent.TimeUnit
 
 object SubscriptionAutoRefresh {
@@ -53,17 +51,17 @@ object SubscriptionAutoRefresh {
         val store = ProfileStore(context)
         val profile = store.read()
         if (profile.importedConfig != null) return false
-        val fetched = fetchAll(profile.subscriptionUrls)
+        val fetched = fetchAll(context, profile.subscriptionUrls)
         if (fetched.isEmpty()) return false
         store.update { current -> SubscriptionRefreshPolicy.applyFetchedSources(current, fetched, System.currentTimeMillis()) }
         return true
     }
 
-    fun fetchAll(urls: List<String>): Map<String, List<ProxyNode>> =
-        urls.mapNotNull { url -> fetchNodes(url)?.takeIf { it.isNotEmpty() }?.let { url to it } }.toMap()
+    fun fetchAll(context: Context, urls: List<String>): Map<String, List<ProxyNode>> =
+        urls.mapNotNull { url -> fetchNodes(context, url)?.takeIf { it.isNotEmpty() }?.let { url to it } }.toMap()
 
-    fun fetchNodes(url: String): List<ProxyNode>? = runCatching {
-        val fetched = SubscriptionFetcher.fetchWithMetadata(url, SubscriptionRequestOptions())
+    fun fetchNodes(context: Context, url: String): List<ProxyNode>? = runCatching {
+        val fetched = SubscriptionTunnelFetch.fetch(context, url)
         val (valid, _) = validateNodes(SubscriptionNames.resolve(url, NodeShareParser.parse(fetched.body)))
         fetched.metadata.attachTo(valid)
     }.getOrNull()

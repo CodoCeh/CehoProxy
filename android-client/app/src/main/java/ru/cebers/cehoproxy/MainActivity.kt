@@ -92,6 +92,7 @@ import io.nekohasekai.libbox.Libbox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import ru.cebers.cehoproxy.core.*
 import ru.cebers.cehoproxy.vpn.CehoVpnService
@@ -120,9 +121,29 @@ class MainActivity : ComponentActivity() {
     private var connectedSince by mutableStateOf(0L)
     private var serviceRunning by mutableStateOf(false)
     private var blocked by mutableStateOf(false)
+    private var notificationsBlocked by mutableStateOf(false)
     private var measurements by mutableStateOf(VpnMeasurements())
     private var resumed = false
     private val metrics by lazy { NodeMetricsController(this) { measurements = it } }
+    private var reachabilityJob: kotlinx.coroutines.Job? = null
+
+    private fun checkNodes(routeIds: List<String>) {
+        if (measurements.connected) { metrics.checkLatency(routeIds); return }
+        val nodes = profile.nodes.filter { it.routeId in routeIds }
+        reachabilityJob?.cancel()
+        measurements = measurements.copy(nodes = measurements.nodes + nodes.associate { it.routeId to NodeMetricsPolicy.beginCheck(measurements.nodes[it.routeId]) })
+        reachabilityJob = lifecycleScope.launch {
+            val gate = kotlinx.coroutines.sync.Semaphore(4)
+            kotlinx.coroutines.coroutineScope {
+                nodes.forEach { node ->
+                    launch {
+                        val result = gate.withPermit { withContext(Dispatchers.IO) { NodeReachability.check(node, System.currentTimeMillis()) } }
+                        measurements = measurements.copy(nodes = measurements.nodes + (node.routeId to result.copy(verifiedCountry = measurements.nodes[node.routeId]?.verifiedCountry)))
+                    }
+                }
+            }
+        }
+    }
     private var themePreference by mutableStateOf(ThemePreference.DARK)
     private var notice by mutableStateOf<String?>(null)
     private var pendingLinkImport by mutableStateOf<String?>(null)
@@ -162,6 +183,11 @@ class MainActivity : ComponentActivity() {
         val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) connect() else notice = "Разрешение Android VPN не выдано"
         }
+        val connectNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
+            refreshVpnStatus()
+            val intent = VpnService.prepare(this)
+            if (intent != null) vpnPermission.launch(intent) else connect()
+        }
         val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) update(profile.copy(expiryRemindersEnabled = true))
             else { update(profile.copy(expiryRemindersEnabled = false)); notice = "Android не разрешил уведомления. Напоминания можно включить в системных настройках приложения." }
@@ -169,7 +195,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             CehoTheme(themePreference) {
                 ClientScreen(
-                    profile = profile, connected = connected, connectedSince = connectedSince, serviceRunning = serviceRunning, blocked = blocked, measurements = measurements, onCheckNode = metrics::check, onCancelNodeCheck = metrics::cancelProbe, notice = notice, importing = importing, importRevision = importRevision,
+                    profile = profile, connected = connected, connectedSince = connectedSince, serviceRunning = serviceRunning, blocked = blocked, measurements = measurements, notificationsBlocked = notificationsBlocked, onOpenNotificationSettings = ::openNotificationSettings, onCheckNode = metrics::check, onCheckNodes = ::checkNodes, onCancelNodeCheck = metrics::cancelProbe, notice = notice, importing = importing, importRevision = importRevision,
                     themePreference = themePreference, onThemePreference = { selected ->
                         themePreference = selected
                         getSharedPreferences("appearance", MODE_PRIVATE).edit().putString("theme", selected.storageValue).apply()
@@ -216,8 +242,14 @@ class MainActivity : ComponentActivity() {
                         else if (profile.apps.isEmpty() && !profile.excludeSelectedApps) notice = "Выберите приложения для туннеля или включите режим «Все, кроме выбранных»."
                         else if (profile.importedConfig.isNullOrBlank() && profile.selectedNode == null && LocalDpiPolicy.activeApps(profile).isEmpty()) notice = "Сначала добавьте ссылку или конфигурацию"
                         else {
-                            val intent = VpnService.prepare(this)
-                            if (intent != null) vpnPermission.launch(intent) else connect()
+                            val notificationsAsked = getSharedPreferences("onboarding", MODE_PRIVATE)
+                            if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && !notificationsAsked.getBoolean("notifications_asked", false)) {
+                                notificationsAsked.edit().putBoolean("notifications_asked", true).apply()
+                                connectNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                val intent = VpnService.prepare(this)
+                                if (intent != null) vpnPermission.launch(intent) else connect()
+                            }
                         }
                     }, onStop = { startService(Intent(this, CehoVpnService::class.java).setAction(CehoVpnService.ACTION_STOP)); notice = "VPN отключается" },
                     onAlwaysOn = { openVpnSettings() },
@@ -234,7 +266,7 @@ class MainActivity : ComponentActivity() {
                             refreshingUrls = refreshingUrls + url
                             try {
                                 notice = "Обновляем подписку…"
-                                val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(listOf(url)) }
+                                val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, listOf(url)) }
                                 if (fetched.isEmpty()) notice = "Подписка не ответила, узлы сохранены"
                                 else {
                                     update(SubscriptionRefreshPolicy.applyFetchedSources(profile, fetched, System.currentTimeMillis()))
@@ -252,7 +284,7 @@ class MainActivity : ComponentActivity() {
                             refreshingUrls = refreshingUrls + urls
                             try {
                                 notice = "Обновляем подписки…"
-                                val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(urls) }
+                                val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, urls) }
                                 if (fetched.isEmpty()) notice = "Подписки не ответили, узлы сохранены"
                                 else {
                                     update(SubscriptionRefreshPolicy.applyFetchedSources(profile, fetched, System.currentTimeMillis()))
@@ -325,12 +357,17 @@ class MainActivity : ComponentActivity() {
     override fun onPause() { resumed = false; metrics.stop(); super.onPause() }
     override fun onDestroy() { metrics.destroy(); if (receiverRegistered) unregisterReceiver(statusReceiver); super.onDestroy() }
 
+    private fun openNotificationSettings() {
+        startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName))
+    }
+
     private fun refreshVpnStatus(status: String? = null, message: String? = null) {
         val prefs = getSharedPreferences("vpn_status", MODE_PRIVATE)
         val current = status ?: prefs.getString("status", "stopped")
         if (::store.isInitialized) profile = ActiveNodeSelection.sync(profile, store.read())
         serviceRunning = current != "stopped" && VpnHomeAction.shouldStop(VpnStatusPolicy.isConnected(current, CehoVpnService.hasLiveTunnel()), CehoVpnService.hasLiveServiceInstance())
         blocked = VpnHomeAction.isBlocked(current, CehoVpnService.hasLiveServiceInstance())
+        notificationsBlocked = !androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()
         metrics.restoreCountries(profile)
         connected = VpnStatusPolicy.isConnected(current, CehoVpnService.hasLiveTunnel())
         connectedSince = if (connected) prefs.getLong("connected_at", 0L) else 0L
@@ -364,7 +401,7 @@ class MainActivity : ComponentActivity() {
                     var metadata = SubscriptionMetadata()
                     val text =
                     if (kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION) {
-                        SubscriptionFetcher.fetchWithMetadata(input, requestOptions).also { metadata = it.metadata }.body
+                        SubscriptionTunnelFetch.fetch(applicationContext, input, requestOptions).also { metadata = it.metadata }.body
                     } else input
                     val sourceNodes = NodeShareParser.parse(text).let { if (kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION) SubscriptionNames.resolve(input, it) else it }
                     val (parsedNodes, rejected) = validateNodes(sourceNodes)
@@ -544,7 +581,7 @@ class MainActivity : ComponentActivity() {
     /** Keeps the saved nodes when the provider is unreachable, so the tunnel still starts. */
     private suspend fun refreshSubscriptionNodes(current: ClientProfile) {
         if (current.subscriptionUrls.isEmpty()) return
-        val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(current.subscriptionUrls) }
+        val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, current.subscriptionUrls) }
         if (fetched.isEmpty()) return
         update(SubscriptionRefreshPolicy.applyFetchedSources(profile, fetched, System.currentTimeMillis()))
     }
@@ -685,7 +722,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, onCheckNode: (String) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onHelp: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
+@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onHelp: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
     val clipboardContext = LocalContext.current
     ObserveAutomaticUpdates()
     var pendingNodeCheck by remember { mutableStateOf<String?>(null) }
@@ -828,7 +865,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                     style = MaterialTheme.typography.titleLarge,
                                 )
                                 Text(
-                                    when { blocked -> "Выберите другой сервер в списке «Серверы»"; connected -> profile.selectedNode?.let { "Через: ${NodePresentation.routeName(it)}" } ?: "Нажмите на водоворот, чтобы выключить"; starting -> "Подождите несколько секунд"; else -> "Нажмите на водоворот, чтобы включить" },
+                                    when { blocked -> if (profile.autoRotationEnabled) "Проверка повторится автоматически" else "Выберите другой сервер в списке «Серверы»"; connected -> profile.selectedNode?.let { "Через: ${NodePresentation.routeName(it)}" } ?: "Нажмите на водоворот, чтобы выключить"; starting -> "Подождите несколько секунд"; else -> "Нажмите на водоворот, чтобы включить" },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodyMedium,
                                     textAlign = TextAlign.Center,
@@ -836,6 +873,13 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 if (connected) VpnUptime(connectedSince)
                             }
                             if (blocked) OutlinedButton(onClick = onConnect, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = 52.dp).testTag("home-retry")) { Text("Проверить серверы снова") }
+                            if (notificationsBlocked) Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("home-notifications-off")) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Text("Уведомления выключены", color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.titleSmall)
+                                    Text("Вы не увидите, что VPN перестал работать. Включите уведомления для CehoProxy.", color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                                    OutlinedButton(onClick = onOpenNotificationSettings, modifier = Modifier.padding(top = 8.dp).heightIn(min = 44.dp)) { Text("Включить") }
+                                }
+                            }
                             val fastestIndex = profile.nodes.withIndex().filter { nodeAllowed(profile, it.value) && measurements.nodes[it.value.routeId]?.latencyMs != null && measurements.nodes[it.value.routeId]?.failed != true }
                                 .minByOrNull { measurements.nodes[it.value.routeId]?.latencyMs ?: Int.MAX_VALUE }?.index
                             if (blocked && !profile.autoRotationEnabled && fastestIndex != null) OutlinedButton(onClick = { onSelectNode(fastestIndex); onConnect() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 52.dp).testTag("home-switch-fastest")) { Text("Подключиться к самому быстрому") }
@@ -1177,13 +1221,28 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                         }
                         "Серверы" -> {
                             Text("${profile.nodes.size} серверов", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp, bottom = 12.dp))
+                            if (profile.nodes.size > 1) Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                                Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                                        Text("Автоматическое переключение", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleSmall)
+                                        Text(if (profile.autoRotationEnabled) "Если узел перестаёт отвечать, CehoProxy сам подключает следующий рабочий — в том числе из других подписок." else "Выключено: используется только выбранный вами узел.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Switch(checked = profile.autoRotationEnabled, onCheckedChange = { on -> onSaveRouteSettings(profile.copy(autoRotationEnabled = on)) }, modifier = Modifier.testTag("servers-auto-switch").semantics { contentDescription = "Автоматическое переключение" })
+                                }
+                            }
                             profile.nodes.withIndex().filter { nodeAllowed(profile, it.value) && measurements.nodes[it.value.routeId]?.latencyMs != null && measurements.nodes[it.value.routeId]?.failed != true }
                                 .minByOrNull { measurements.nodes[it.value.routeId]?.latencyMs ?: Int.MAX_VALUE }?.let { fastest ->
                                 OutlinedButton(onClick = { onSelectNode(fastest.index) }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).heightIn(min = 48.dp).testTag("subscriptions-fastest")) {
                                     Text("Самый быстрый · ${measurements.nodes[fastest.value.routeId]?.latencyMs} мс")
                                 }
                             }
-                            if (notice != null && !showQuickImport) Text(notice, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                            val allRouteIds = profile.nodes.map { it.routeId }
+            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onCheckNodes(allRouteIds) }, enabled = allRouteIds.isNotEmpty(), modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("servers-check-all")) { Text("Проверить все") }
+                OutlinedButton(onClick = onRefreshAllSubscriptions, enabled = refreshingSubscriptions.isEmpty() && profile.subscriptionUrls.isNotEmpty(), modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("servers-refresh-all")) { Text(if (refreshingSubscriptions.isEmpty()) "Обновить подписки" else "Обновляем…") }
+            }
+            if (!measurements.connected) Text("Без VPN: TCP-задержка до адреса сервера. UDP-узлы (Hysteria2) проверяются только при включённом VPN", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+            if (notice != null && !showQuickImport) Text(notice, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
                             if (profile.nodes.isEmpty()) EmptyInstruction("Серверов пока нет", "Добавьте подписку или ссылку от провайдера.")
                             else {
                                 OutlinedTextField(value = nodeSearch, onValueChange = { nodeSearch = it }, label = { Text("Найти узел или подписку") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("subscriptions-search"))
@@ -1206,9 +1265,20 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                                 OutlinedButton(onClick = { expandedSubscriptionSource = if (expandedSubscriptionSource == groupKey) null else groupKey }, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.heightIn(min = 36.dp).testTag("subscription-details-toggle:$index")) { Text(if (expandedSubscriptionSource == groupKey) "Скрыть" else "Сведения") }
                                                 OutlinedButton(onClick = { collapsedSubscriptions = if (subscriptionKey in collapsedSubscriptions) collapsedSubscriptions - subscriptionKey else collapsedSubscriptions + subscriptionKey }, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.heightIn(min = 36.dp).testTag("subscription-collapse:$index")) { Text(if (subscriptionKey in collapsedSubscriptions) "Развернуть" else "Свернуть") }
                                             }
+                                            val groupRouteIds = profile.nodes.filter { NodePresentation.subscriptionKey(it) == subscriptionKey }.map { it.routeId }
+                                            val groupUrl = SubscriptionRemovalPolicy.urlFor(profile, node.subscriptionMetadata)
+                                            val groupRefreshing = groupUrl != null && groupUrl in refreshingSubscriptions
+                                            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                OutlinedButton(onClick = { onCheckNodes(groupRouteIds) }, enabled = groupRouteIds.isNotEmpty(), modifier = Modifier.weight(1f).heightIn(min = 40.dp).testTag("subscription-check-group:$subscriptionKey")) { Text("Проверить") }
+                                                OutlinedButton(onClick = { groupUrl?.let(onRefreshSubscription) }, enabled = groupUrl != null && !groupRefreshing, modifier = Modifier.weight(1f).heightIn(min = 40.dp).testTag("subscription-refresh-group:$subscriptionKey")) { Text(if (groupRefreshing) "Обновляем…" else "Обновить") }
+                                            }
                                             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 Text("Использовать подписку", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                                                 Switch(checked = subscriptionKey !in profile.disabledSubscriptions, onCheckedChange = { enabled -> onSaveRouteSettings(subscriptionToggled(profile, subscriptionKey, enabled)) }, modifier = Modifier.testTag("subscription-enabled:$index").semantics { contentDescription = "Использовать подписку" })
+                                            }
+                                            if (profile.autoRotationEnabled && profile.nodes.size > 1) Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Text("Автопереключение в этой подписке", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                                                Switch(checked = subscriptionKey !in profile.autoDisabledSubscriptions, onCheckedChange = { on -> onSaveRouteSettings(profile.copy(autoDisabledSubscriptions = if (on) profile.autoDisabledSubscriptions - subscriptionKey else profile.autoDisabledSubscriptions + subscriptionKey)) }, enabled = subscriptionKey !in profile.disabledSubscriptions, modifier = Modifier.testTag("subscription-auto:$index").semantics { contentDescription = "Автопереключение в этой подписке" })
                                             }
                                         }
                                         if (expandedSubscriptionSource == groupKey) SubscriptionDetails(node.subscriptionMetadata, onOpenSubscriptionLink)

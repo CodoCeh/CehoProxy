@@ -5,11 +5,13 @@ internal object FailoverHealthPolicy {
     const val STARTUP_GRACE_MILLIS = 60_000L
     const val RETRY_DELAY_MILLIS = 3_000L
 
-    fun nextFailedRounds(previous: Int, healthy: Boolean, sinceStartMillis: Long): Int = when {
+    fun nextFailedRounds(previous: Int, healthy: Boolean, sinceStartMillis: Long, graceMillis: Long = STARTUP_GRACE_MILLIS): Int = when {
         healthy -> 0
-        sinceStartMillis < STARTUP_GRACE_MILLIS -> previous
+        sinceStartMillis < graceMillis -> previous
         else -> previous + 1
     }
 
-    fun showsError(failedRounds: Int): Boolean = failedRounds >= FAILED_ROUNDS_BEFORE_ERROR
+    // A first connection that fails a whole round, retry included, has nothing to recover from, so it reports at once.
+    fun showsError(failedRounds: Int, firstConnection: Boolean = false): Boolean =
+        failedRounds >= if (firstConnection) 1 else FAILED_ROUNDS_BEFORE_ERROR
 }

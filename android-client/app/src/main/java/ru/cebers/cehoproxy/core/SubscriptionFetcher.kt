@@ -1,6 +1,7 @@
 package ru.cebers.cehoproxy.core
 
 import java.io.ByteArrayOutputStream
+import java.net.Proxy
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
@@ -9,7 +10,7 @@ import java.util.Base64
 import java.util.zip.GZIPInputStream
 import java.util.zip.InflaterInputStream
 
-data class SubscriptionRequestOptions(val userAgent: String = DEFAULT_USER_AGENT, val headers: Map<String, String> = emptyMap()) {
+data class SubscriptionRequestOptions(val userAgent: String = DEFAULT_USER_AGENT, val headers: Map<String, String> = emptyMap(), val proxy: Proxy? = null) {
     companion object {
         const val DEFAULT_USER_AGENT = "CehoProxyAndroid/0.1 sing-box/1.14.0"
     }
@@ -38,7 +39,7 @@ object SubscriptionFetcher {
             "Basic " + Base64.getEncoder().encodeToString(decoded.toByteArray(StandardCharsets.UTF_8))
         }
         while (true) {
-            val connection = current.openConnection() as HttpURLConnection
+            val connection = current.openConnection(options.proxy ?: Proxy.NO_PROXY) as HttpURLConnection
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 12_000
             connection.readTimeout = 20_000

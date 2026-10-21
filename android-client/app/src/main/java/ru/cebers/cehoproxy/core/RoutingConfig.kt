@@ -19,6 +19,7 @@ data class RoutePolicy(
     val localDpiApps: List<String> = emptyList(),
     val blockYoutubeAds: Boolean = false,
     val disabledSubscriptions: Set<String> = emptySet(),
+    val autoDisabledSubscriptions: Set<String> = emptySet(),
     val xrayPorts: Map<String, Int> = emptyMap(),
 )
 
@@ -57,7 +58,7 @@ object RoutingConfig {
         if (policy.autoRotationEnabled && uniqueNodes.isNotEmpty()) {
             val autoTags = uniqueNodes.indices.filter { index ->
                 val node = uniqueNodes[index]
-                node.routeId !in policy.autoExcludedRouteIds && !countryExcluded(node, policy.excludedCountriesBySubscription)
+                node.routeId !in policy.autoExcludedRouteIds && NodePresentation.subscriptionKey(node) !in policy.autoDisabledSubscriptions && !countryExcluded(node, policy.excludedCountriesBySubscription)
             }.map { nodeTags[it] }.ifEmpty { nodeTags }
             outbounds.put(OrderedFailoverConfig.selector(OrderedFailoverConfig.GLOBAL_TAG, autoTags))
         }

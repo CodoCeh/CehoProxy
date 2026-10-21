@@ -9,6 +9,8 @@ import ru.cebers.cehoproxy.core.*
 import java.util.concurrent.atomic.AtomicLong
 
 private const val COUNTRY_TIMEOUT_MS = 15_000L
+private const val LATENCY_ATTEMPTS = 2
+private const val LATENCY_ATTEMPT_WAIT_MS = 6_000L
 
 /** Uses the running engine's named outbound; never selects it or changes VPN app scope. */
 internal class NodeMetricsController(context: android.content.Context, private val publish: (VpnMeasurements) -> Unit) {
@@ -27,6 +29,8 @@ internal class NodeMetricsController(context: android.content.Context, private v
     private var measurement = VpnMeasurements()
     private var previousTotals: Triple<Long, Long, Long>? = null
     private var probeId = 0L
+    private var latencyJob: Job? = null
+    private var latencyStartedAt = 0L
     private var selectedRouteId: String? = null
     private val countryInFlight = mutableSetOf<String>()
     private var flaglessRouteIds: Set<String> = emptySet()
@@ -46,8 +50,8 @@ internal class NodeMetricsController(context: android.content.Context, private v
     fun start(profile: ClientProfile) {
         if (!profile.importedConfig.isNullOrBlank()) { stop(); return }
         flaglessRouteIds = profile.nodes.filter { NodeCountry.resolve(it.name) == null }.map { it.routeId }.toSet()
-        val nextTags = NodeMetricsPolicy.tags(profile.nodes)
-        val nextFingerprint = nextTags.keys.toList()
+        val nextTags = NodeMetricsPolicy.tags(profile)
+        val nextFingerprint = nextTags.map { (id, tag) -> "$id=$tag" }
         if (reconnect.active && fingerprint == nextFingerprint) {
             selectedRouteId = profile.selectedNode?.routeId
             return
@@ -90,14 +94,19 @@ internal class NodeMetricsController(context: android.content.Context, private v
                 }
             }
             override fun writeOutbounds(items: OutboundGroupItemIterator) {
-                val delays = mutableMapOf<String, Pair<Int, Long>>()
+                val results = mutableMapOf<String, Pair<Int, Long>>()
                 while (items.hasNext()) {
                     val item = items.next()
-                    if (item.urlTestTime > 0 && item.urlTestDelay > 0) delays[item.tag] = item.urlTestDelay to item.urlTestTime * 1000
+                    if (item.urlTestTime > 0) results[item.tag] = item.urlTestDelay to item.urlTestTime * 1000
                 }
                 post(token) {
                     reconnect.receivedData()
-                    val updates = tags.mapNotNull { (id, tag) -> delays[tag]?.let { id to (measurement.nodes[id] ?: NodeMeasurement()).copy(latencyMs = it.first, measuredAt = it.second) } }.toMap()
+                    val updates = tags.mapNotNull { (id, tag) ->
+                        val (delay, at) = results[tag] ?: return@mapNotNull null
+                        val current = measurement.nodes[id] ?: NodeMeasurement()
+                        if (current.testing && at < latencyStartedAt) return@mapNotNull null
+                        NodeMetricsPolicy.applyUrlTest(current, delay, at)?.let { id to it }
+                    }.toMap()
                     measurement = measurement.copy(nodes = measurement.nodes + updates)
                     emit()
                 }
@@ -152,11 +161,42 @@ internal class NodeMetricsController(context: android.content.Context, private v
         if (!queued) countryInFlight.remove(routeId)
     }
 
-    fun check(routeId: String) {
+    /** Parallel URL test of the whole group, repeated once for nodes that did not answer; a node still silent after that is marked failed. */
+    fun checkLatency(routeIds: List<String>) {
         val native = client ?: return
-        val tag = tags[routeId] ?: return
-        if (!measurement.connected) return
-        cancelProbe()
+        val ids = routeIds.filter { it in tags }
+        if (ids.isEmpty() || !measurement.connected) return
+        stopProbe()
+        latencyJob?.cancel()
+        val token = generation.get()
+        latencyStartedAt = System.currentTimeMillis()
+        measurement = measurement.copy(nodes = measurement.nodes + ids.associateWith { NodeMetricsPolicy.beginCheck(measurement.nodes[it]) })
+        emit()
+        latencyJob = scope.launch {
+            repeat(LATENCY_ATTEMPTS) { attempt ->
+                if (attempt > 0 && ids.none { measurement.nodes[it]?.testing == true }) return@repeat
+                runCatching { native.urlTest(OrderedFailoverConfig.LATENCY_TAG) }
+                delay(LATENCY_ATTEMPT_WAIT_MS)
+            }
+            post(token) {
+                measurement = measurement.copy(nodes = measurement.nodes.mapValues { (id, item) ->
+                    if (id in ids && item.testing) NodeMeasurement(failed = true, failureReason = "Нет ответа", measuredAt = System.currentTimeMillis(), verifiedCountry = item.verifiedCountry) else item
+                })
+                emit()
+            }
+        }
+    }
+
+    fun check(routeId: String) {
+        startCheck(routeId)
+    }
+
+    private fun startCheck(routeId: String): Boolean {
+        val native = client ?: return false
+        val tag = tags[routeId] ?: return false
+        if (!measurement.connected) return false
+        latencyJob?.cancel()
+        stopProbe()
         val token = generation.get()
         val probe = ++probeId
         val startedAt = System.nanoTime()
@@ -166,7 +206,7 @@ internal class NodeMetricsController(context: android.content.Context, private v
         measurement = measurement.copy(nodes = measurement.nodes + (routeId to NodeMetricsPolicy.beginCheck(measurement.nodes[routeId])))
         emit()
         // Covers configuration download as well as the native 20-second measurement window.
-        watchdog = scope.launch { delay(35_000); post(token) { if (probeId == probe) { cancelProbe(); failMeasurement(routeId, "watchdog: deadline exceeded", probe, startedAt) } } }
+        watchdog = scope.launch { delay(35_000); post(token) { if (probeId == probe) { stopProbe(); failMeasurement(routeId, "watchdog: deadline exceeded", probe, startedAt) } } }
         scope.launch {
             runCatching {
                 native.startNetworkQualityTest(Libbox.NetworkQualityDefaultConfigURL, tag, false, 20, false, object : NetworkQualityTestHandler {
@@ -182,6 +222,7 @@ internal class NodeMetricsController(context: android.content.Context, private v
             }.onSuccess { created -> main.post { if (generation.get() == token && probeId == probe) session = created else scope.launch { runCatching { created.close() } } } }
                 .onFailure { error -> post(token) { if (probeId == probe) { watchdog?.cancel(); failMeasurement(routeId, error.message, probe, startedAt) } } }
         }
+        return true
     }
 
     private fun failMeasurement(id: String, message: String?, probe: Long, startedAt: Long) {
@@ -208,6 +249,11 @@ internal class NodeMetricsController(context: android.content.Context, private v
     }
 
     fun cancelProbe() {
+        latencyJob?.cancel()
+        stopProbe()
+    }
+
+    private fun stopProbe() {
         probeId++
         flagQueue.clear()
         watchdog?.cancel()
@@ -235,7 +281,10 @@ internal class NodeMetricsController(context: android.content.Context, private v
     }
 
     fun destroy() { stop() }
-    private fun finish(id: String, value: NodeMeasurement) { measurement = measurement.copy(nodes = measurement.nodes + (id to value.copy(verifiedCountry = value.verifiedCountry ?: measurement.nodes[id]?.verifiedCountry))); emit() }
+    private fun finish(id: String, value: NodeMeasurement) {
+        measurement = measurement.copy(nodes = measurement.nodes + (id to value.copy(verifiedCountry = value.verifiedCountry ?: measurement.nodes[id]?.verifiedCountry)))
+        emit()
+    }
     private fun emit() = publish(measurement)
     private fun post(token: Long, action: () -> Unit) { main.post { if (generation.get() == token) action() } }
 }
