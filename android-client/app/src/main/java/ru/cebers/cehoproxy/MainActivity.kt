@@ -24,6 +24,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -95,6 +96,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import ru.cebers.cehoproxy.core.*
+import ru.cebers.cehoproxy.ui.*
 import ru.cebers.cehoproxy.vpn.CehoVpnService
 import ru.cebers.cehoproxy.vpn.ConnectionDiagnostics
 import android.net.ConnectivityManager
@@ -619,7 +621,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun blockedTitle(notice: String?): String = when {
+internal fun blockedTitle(notice: String?): String = when {
     notice?.startsWith("Нет интернета") == true -> "Нет интернета"
     notice?.startsWith("Подписка истекла") == true -> "Подписка истекла"
     else -> "Серверы не отвечают"
@@ -635,46 +637,9 @@ private fun shareEventLog(context: Context) {
     return if (colors.background.luminance() > .5f) colors.primary else colors.primaryContainer
 }
 
-@Composable private fun CehoTheme(preference: ThemePreference, content: @Composable () -> Unit) {
-    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val useDark = when (preference) {
-        ThemePreference.SYSTEM -> systemDark
-        ThemePreference.LIGHT -> false
-        ThemePreference.DARK -> true
-    }
-    val scheme = if (useDark) darkColorScheme(
-        primary = Color(0xFF6FD39B), onPrimary = Color(0xFF101A16), primaryContainer = Color(0xFF22342B), onPrimaryContainer = Color(0xFFEAF4EE),
-        secondary = Color(0xFF6FD39B), onSecondary = Color(0xFF101A16), secondaryContainer = Color(0xFF22342B), onSecondaryContainer = Color(0xFFEAF4EE),
-        tertiary = Color(0xFFE8B657), onTertiary = Color(0xFF2A2110),
-        background = Color(0xFF101A16), onBackground = Color(0xFFEAF4EE), surface = Color(0xFF18251F), onSurface = Color(0xFFEAF4EE), onSurfaceVariant = Color(0xFF8AA397),
-        surfaceContainerLowest = Color(0xFF101A16), surfaceContainerLow = Color(0xFF18251F), surfaceContainer = Color(0xFF18251F),
-        surfaceContainerHigh = Color(0xFF22342B), surfaceContainerHighest = Color(0xFF2C4238),
-        outline = Color(0xFF5E786B), outlineVariant = Color(0xFF22342B), surfaceVariant = Color(0xFF2C4238), error = Color(0xFFF2857A), onError = Color(0xFF690005), errorContainer = Color(0xFF93000A), onErrorContainer = Color(0xFFFFDAD6),
-    ) else lightColorScheme(
-        primary = Color(0xFF275B42), onPrimary = Color(0xFFFFFFFF), primaryContainer = Color(0xFFD7E7DA), onPrimaryContainer = Color(0xFF173B29),
-        secondary = Color(0xFF456B53), onSecondary = Color(0xFFFFFFFF), secondaryContainer = Color(0xFFE0EADF), onSecondaryContainer = Color(0xFF223B2B),
-        tertiary = Color(0xFF79602C), onTertiary = Color(0xFFFFFFFF), tertiaryContainer = Color(0xFFF2E3B9), onTertiaryContainer = Color(0xFF302308),
-        background = Color(0xFFF5F2E9), onBackground = Color(0xFF1F2A22), surface = Color(0xFFFFFEFA), onSurface = Color(0xFF1F2A22), onSurfaceVariant = Color(0xFF56645A),
-        surfaceContainerLowest = Color(0xFFFFFEFA), surfaceContainerLow = Color(0xFFF9F6EE), surfaceContainer = Color(0xFFF1EEE4),
-        surfaceContainerHigh = Color(0xFFECE9DF), surfaceContainerHighest = Color(0xFFE5E2D8),
-        outline = Color(0xFF69776C), outlineVariant = Color(0xFFCBD2C8), error = Color(0xFFA3362D), onError = Color(0xFFFFFFFF), errorContainer = Color(0xFFF8DED8), onErrorContainer = Color(0xFF641B16),
-    )
-    val view = androidx.compose.ui.platform.LocalView.current
-    androidx.compose.runtime.SideEffect {
-        val activityWindow = (view.context as? Activity)?.window ?: return@SideEffect
-        activityWindow.statusBarColor = scheme.background.toArgb()
-        activityWindow.navigationBarColor = scheme.background.toArgb()
-        WindowCompat.getInsetsController(activityWindow, view).apply {
-            isAppearanceLightStatusBars = !useDark
-            isAppearanceLightNavigationBars = !useDark
-        }
-    }
-    MaterialTheme(colorScheme = scheme, content = content)
-}
-
 internal data class AppChoice(val packageName: String, val label: String, val icon: Drawable)
 
-private fun nodeAllowed(profile: ClientProfile, node: ProxyNode): Boolean =
+internal fun nodeAllowed(profile: ClientProfile, node: ProxyNode): Boolean =
     NodePresentation.subscriptionKey(node) !in profile.disabledSubscriptions && !RoutingConfig.countryExcluded(node, profile.excludedCountrySets)
 
 private fun moveNodeInList(profile: ClientProfile, raw: String, steps: Int): ClientProfile {
@@ -737,22 +702,6 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     pendingNodeCheck?.let { id ->
         AlertDialog(onDismissRequest = { pendingNodeCheck = null }, title = { Text("Проверить узел?") }, text = { Text("Измерим задержку и скорость через этот узел. Тест загружает и отправляет данные до 20 секунд. Расход зависит от скорости; лучше запускать по Wi-Fi. Маршруты приложений останутся прежними.") }, confirmButton = { TextButton(onClick = { pendingNodeCheck = null; onCheckNode(id) }, modifier = Modifier.testTag("node-check-confirm")) { Text("Начать проверку") } }, dismissButton = { TextButton(onClick = { pendingNodeCheck = null }) { Text("Отмена") } })
     }
-    var subscriptionPromptDismissed by remember { mutableStateOf(false) }
-    val needsSubscription = profile.nodes.isEmpty() && profile.importedConfig == null
-    if (onboardingCompleted && needsSubscription && !subscriptionPromptDismissed) AlertDialog(
-        onDismissRequest = { subscriptionPromptDismissed = true },
-        title = { Text("Добавьте подписку") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Без подписки VPN не подключится. Ссылку даёт ваш провайдер.")
-                OutlinedButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("subscription-prompt-qr")) { Text("Сканировать QR-код") }
-                OutlinedButton(onClick = onImportFile, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("subscription-prompt-file")) { Text("Открыть файл") }
-            }
-        },
-        confirmButton = { Button(onClick = onImportClipboard, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-prompt-paste")) { Text("Вставить из буфера") } },
-        dismissButton = { TextButton(onClick = { subscriptionPromptDismissed = true }, modifier = Modifier.testTag("subscription-prompt-later")) { Text("Позже") } },
-        modifier = Modifier.testTag("subscription-prompt"),
-    )
     var page by remember { mutableStateOf("Главная") }
     val pageHistory = remember { mutableStateListOf<String>() }
     fun openPage(target: String) {
@@ -795,11 +744,10 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     var autoRotationEnabled by remember(profile.autoRotationEnabled) { mutableStateOf(profile.autoRotationEnabled) }
     var showAppRoutePicker by remember { mutableStateOf(false) }
     var routeAppSearch by remember { mutableStateOf("") }
-    var showQuickImport by remember { mutableStateOf(false) }
     var nodeSearch by remember { mutableStateOf("") }
     LaunchedEffect(importRevision) {
         if (importRevision > 0) {
-            showQuickImport = false
+            showAddSheet = false
             importValue = ""
         }
     }
@@ -813,32 +761,31 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     var lastAnimatedRun by remember { mutableIntStateOf(0) }
     LaunchedEffect(connected) { if (connected) connectionRun++ }
     BackHandler(enabled = page != "Главная" && !showAppPicker && !showAppRoutePicker && !showAddSheet && shareCandidate == null) { backPage() }
-    val pageTitle = if (page == "Серверы") "Проверка задержки" else page
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (page == "Главная") {
+            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 24.dp, vertical = 8.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (page == "Главная" || !onboardingCompleted) {
                     androidx.compose.foundation.Image(
                         painter = painterResource(R.drawable.cehoproxy_mark_dark),
                         contentDescription = "CehoProxy",
-                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(11.dp)).background(BrandMarkBackground()).padding(5.dp),
+                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(BrandMarkBackground()).padding(5.dp),
                     )
                     Spacer(Modifier.width(10.dp))
-                    Text("CehoProxy", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { showAddSheet = true }, modifier = Modifier.testTag("header-add-subscription").semantics { contentDescription = "Добавить подписку" }) { PlusGlyph(MaterialTheme.colorScheme.primary) }
-                    IconButton(onClick = { openPage("Настройки") }, modifier = Modifier.testTag("header-settings").semantics { contentDescription = "Настройки" }) { GearGlyph(MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Text("CehoProxy", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    if (onboardingCompleted) {
+                        IconButton(onClick = { showAddSheet = true }, modifier = Modifier.size(48.dp).testTag("header-add-subscription").semantics { contentDescription = "Добавить подписку" }) { PlusGlyph(MaterialTheme.colorScheme.primary) }
+                        IconButton(onClick = { openPage("Настройки") }, modifier = Modifier.size(48.dp).testTag("header-settings").semantics { contentDescription = "Настройки" }) { GearGlyph(MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
                 } else {
-                    IconButton(onClick = { backPage() }, modifier = Modifier.size(42.dp).testTag("page-back").semantics { contentDescription = "Назад" }) { BackGlyph(MaterialTheme.colorScheme.onSurface) }
-                    Spacer(Modifier.width(8.dp))
-                    Text(pageTitle, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    IconButton(onClick = { backPage() }, modifier = Modifier.size(48.dp).testTag("page-back").semantics { contentDescription = "Назад" }) { BackGlyph(MaterialTheme.colorScheme.onSurface) }
+                    Spacer(Modifier.width(4.dp))
+                    Text("CehoProxy", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
             if (!onboardingCompleted) {
                 FirstRunOnboarding(
                     profile = profile,
                     onPickCountry = { code -> onSaveRouteSettings(countryOnboardingChoice(profile, code)) },
-                    onYoutubeAds = { onSaveRouteSettings(profile.copy(blockYoutubeAds = it)) },
                     onImportFile = onImportFile,
                     onImportClipboard = onImportClipboard,
                     onScanQr = onScanQr,
@@ -848,85 +795,18 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             } else {
-                Column(Modifier.weight(1f).verticalScroll(contentScroll).padding(horizontal = 22.dp).widthIn(max = 820.dp).align(Alignment.CenterHorizontally)) {
+                Column(Modifier.weight(1f).verticalScroll(contentScroll).padding(horizontal = 24.dp).widthIn(max = 820.dp).align(Alignment.CenterHorizontally)) {
                     when (page) {
-                        "Главная" -> {
-                            val tunnelPackages = TunnelAppsPolicy.packages(profile, appChoices.map { it.packageName }).toSet()
-                            val tunnelApps = appChoices.filter { it.packageName in tunnelPackages }
-                            val starting = connected || notice == "VPN запускается"
-                            val directOnly = profile.nodes.isEmpty() && profile.importedConfig == null && LocalDpiPolicy.activeApps(profile).isNotEmpty()
-                            TunnelVortex(
-                                apps = tunnelApps,
-                                active = starting,
-                                connected = connected,
-                                running = serviceRunning,
-                                blocked = blocked,
-                                fullTunnel = profile.excludeSelectedApps,
-                                directOnly = directOnly,
-                                onClick = { if (serviceRunning) onStop() else onConnect() },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    when { blocked -> blockedTitle(notice); connected && directOnly -> "Обход DPI подключён"; connected -> "Защищено"; starting -> "Подключаем…"; else -> "VPN выключен" },
-                                    color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    style = MaterialTheme.typography.titleLarge,
-                                )
-                                Text(
-                                    when { blocked -> if (profile.autoRotationEnabled) "Проверка повторится автоматически" else "Выберите другой сервер в списке «Серверы»"; connected -> profile.selectedNode?.let { "Через: ${NodePresentation.routeName(it)}" } ?: "Нажмите на водоворот, чтобы выключить"; starting -> "Подождите несколько секунд"; else -> "Нажмите на водоворот, чтобы включить" },
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = TextAlign.Center,
-                                )
-                                if (connected) VpnUptime(connectedSince)
-                            }
-                            if (blocked) OutlinedButton(onClick = onConnect, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = 52.dp).testTag("home-retry")) { Text("Проверить серверы снова") }
-                            if (notificationsBlocked) Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("home-notifications-off")) {
-                                Column(Modifier.padding(16.dp)) {
-                                    Text("Уведомления выключены", color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.titleSmall)
-                                    Text("Вы не увидите, что VPN перестал работать. Включите уведомления для CehoProxy.", color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-                                    OutlinedButton(onClick = onOpenNotificationSettings, modifier = Modifier.padding(top = 8.dp).heightIn(min = 44.dp)) { Text("Включить") }
-                                }
-                            }
-                            val fastestIndex = profile.nodes.withIndex().filter { nodeAllowed(profile, it.value) && measurements.nodes[it.value.routeId]?.latencyMs != null && measurements.nodes[it.value.routeId]?.failed != true }
-                                .minByOrNull { measurements.nodes[it.value.routeId]?.latencyMs ?: Int.MAX_VALUE }?.index
-                            if (blocked && !profile.autoRotationEnabled && fastestIndex != null) OutlinedButton(onClick = { onSelectNode(fastestIndex); onConnect() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 52.dp).testTag("home-switch-fastest")) { Text("Подключиться к самому быстрому") }
-                            (profile.selectedNode ?: profile.nodes.firstOrNull())?.let { node ->
-                                val expires = node.subscriptionExpiresAt ?: node.subscriptionMetadata.expiresAtEpochSeconds
-                                val url = SubscriptionRemovalPolicy.urlFor(profile, node.subscriptionMetadata)
-                                if (url != null || node.subscriptionMetadata.usedBytes != null || node.subscriptionMetadata.totalBytes != null || expires != null) {
-                                    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().padding(top = 20.dp).testTag("home-subscription")) {
-                                        SubscriptionCard(
-                                            metadata = node.subscriptionMetadata,
-                                            expiresAt = expires,
-                                            fetchedAt = url?.let { profile.subscriptionFetchedAtByUrl[it] },
-                                            serverCount = url?.let { u -> profile.nodes.count { SubscriptionMembership.belongs(it, u, profile.subscriptionUrls) } } ?: profile.nodes.size,
-                                            onOpenLink = onOpenSubscriptionLink,
-                                            onShare = url?.let { u -> { shareCandidate = u } },
-                                            onSettings = url?.let { u -> { subscriptionPageUrl = u; openPage("Подписка") } },
-                                            modifier = Modifier.padding(18.dp),
-                                        )
-                                    }
-                                }
-                            }
-                            Row(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("СЕРВЕРЫ", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                                if (profile.nodes.size > 3) TextButton(onClick = { openPage("Серверы") }, modifier = Modifier.testTag("home-all-nodes")) { Text("Все серверы ›") }
-                            }
-                            if (profile.nodes.isEmpty()) OutlinedButton(onClick = { showAddSheet = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("home-add-node")) { Text("Добавить ссылку от провайдера") }
-                            else profile.nodes.withIndex().take(3).forEach { (index, node) ->
-                                HomeNodeRow(
-                                    node = node,
-                                    selected = index == profile.selected,
-                                    measurement = measurements.nodes[node.routeId],
-                                    enabled = nodeAllowed(profile, node),
-                                    onClick = { if (nodeAllowed(profile, node)) onSelectNode(index) },
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("home-node-option:$index"),
-                                )
-                            }
-                            if (notice != null && !showQuickImport && !showAddSheet) Text(notice, color = if (notice.contains("ошиб", true) || notice.contains("не выдано", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp))
-                        }
+                        "Главная" -> HomeScreen(
+                            profile = profile, connected = connected, connectedSince = connectedSince, serviceRunning = serviceRunning, blocked = blocked,
+                            measurements = measurements, notificationsBlocked = notificationsBlocked, notice = notice.takeIf { !showAddSheet }, appChoices = appChoices,
+                            onOpenNotificationSettings = onOpenNotificationSettings, onConnect = onConnect, onStop = onStop, onSelectNode = onSelectNode,
+                            onOpenServers = { openPage("Серверы") }, onOpenRules = { openPage("Маршрутизация") },
+                            onOpenSubscription = { url -> subscriptionPageUrl = url; openPage("Подписка") },
+                            onAddSubscription = { showAddSheet = true },
+                        )
                         "Подписки" -> {
+                            PageHeading("Подписки", subtitle = "Автообновление, ссылки и удаление")
                             if (profile.subscriptionUrls.isEmpty()) {
                                 if (profile.nodes.isEmpty()) EmptyInstruction("Подписок пока нет", "Добавьте ссылку от провайдера или импортируйте файл.")
                                 else Text("Серверы добавлены ссылками: ${profile.nodes.size}. Подписок нет.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
@@ -956,16 +836,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                     Text(if (refreshingSubscriptions.isEmpty()) "Обновить все подписки" else "Обновляем…")
                                 }
                             }
-                            Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
-                                Column(Modifier.padding(18.dp)) {
-                                    Text("Добавить подписку", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                    Text("Ссылка, QR-код или файл конфигурации", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
-                                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        PillButton("Вставить ссылку", { showQuickImport = true }, Modifier.weight(1f).testTag("subscriptions-add"))
-                                        PillButton("Сканировать QR", onScanQr, Modifier.weight(1f))
-                                    }
-                                }
-                            }
+                            QuietButton("Добавить подписку", { showAddSheet = true }, Modifier.fillMaxWidth().padding(top = 14.dp).testTag("subscriptions-add"))
                             if (profile.subscriptionUrls.isNotEmpty()) {
                                 SectionLabel("АВТООБНОВЛЕНИЕ")
                                 SettingsGroup {
@@ -982,16 +853,20 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             }
                         }
                         "Маршрутизация" -> {
-                            SettingsGroup {
-                                SettingsRow(
-                                    title = "Весь трафик через VPN",
-                                    value = null,
-                                    switchChecked = profile.excludeSelectedApps,
-                                    onSwitch = onExcludeSelectedApps,
-                                    modifier = Modifier.testTag("route-all-traffic"),
-                                )
+                            PageHeading("Правила подключения", subtitle = "Что идёт через VPN, а что напрямую")
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(4.dp)) {
+                                listOf(false to "Только выбранные", true to "Все, кроме выбранных").forEach { (all, label) ->
+                                    val chosen = profile.excludeSelectedApps == all
+                                    Box(
+                                        Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+                                            .background(if (chosen) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                            .selectable(selected = chosen, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = { if (!chosen) onExcludeSelectedApps(all) })
+                                            .testTag(if (all) "route-mode:all" else "route-mode:only"),
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text(label, style = MaterialTheme.typography.labelLarge, color = if (chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
+                                }
                             }
-                            Text(if (profile.excludeSelectedApps) "Кроме отмеченных ниже" else "Только отмеченные ниже", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 6.dp))
+                            Text(if (profile.excludeSelectedApps) "Через VPN идёт всё, кроме приложений из списка. Они выходят напрямую." else "Через VPN идут только приложения из списка. Остальные выходят напрямую.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
                             Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf("Приложения", "Сайты", "Исключения").forEachIndexed { index, label ->
                                     Surface(
@@ -1010,7 +885,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             when (routeTab) {
                                 0 -> {
                                     val labels = profile.apps.map { name -> appChoices.firstOrNull { it.packageName == name }?.label ?: name }
-                                    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                                         Column(Modifier.padding(18.dp)) {
                                             Text(if (profile.excludeSelectedApps) "Исключены из VPN" else "Через VPN", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
                                             Text(
@@ -1063,7 +938,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                         )
                                     }
                                     Text(if (profile.onlySites) "Сайты из списка идут через VPN, остальные — напрямую." else "Сайты из списка идут напрямую, остальные — через VPN.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 6.dp, top = 6.dp, bottom = 8.dp))
-                                    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                                         Column(Modifier.padding(18.dp)) {
                                             Text(if (profile.onlySites) "Сайты через VPN" else "Сайты напрямую", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
                                             Text("Сайтов: ${profile.sites.size}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
@@ -1125,18 +1000,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                     }
                                 }
                             }
-                            SectionLabel("РЕКЛАМА")
-                            SettingsGroup {
-                                SettingsRow(
-                                    title = "Реклама YouTube",
-                                    value = null,
-                                    switchChecked = profile.blockYoutubeAds,
-                                    onSwitch = { onSaveRouteSettings(profile.copy(blockYoutubeAds = it)) },
-                                    modifier = Modifier.testTag("home-block-youtube-ads"),
-                                )
-                            }
-                            Text("Блокирует рекламные сайты. Реклама внутри видео может остаться.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 6.dp))
-                            Button(onClick = {
+                            QuietButton("Сохранить и применить", {
                                 val nextApps = appsValue.split(',', '\n').map(String::trim).filter(String::isNotBlank).distinct()
                                 val enteredSites = if (profile.importedConfig == null) sitesValue.split(',', '\n').map(RoutingConfig::normalizeDomain).filter(String::isNotBlank) else profile.sites
                                 val nextSites = (enteredSites + siteNodeRoutes.keys.map(RoutingConfig::normalizeDomain)).distinct()
@@ -1150,23 +1014,27 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                     autoRotationIntervalSeconds = profile.autoRotationIntervalSeconds,
                                 ))
                                 onNotice(if (profile.importedConfig == null) "Правила сохранены" else "Правила сохранены; часть настроек импортированной конфигурации может иметь приоритет")
-                            }, modifier = Modifier.padding(top = 16.dp).fillMaxWidth().heightIn(min = 48.dp).testTag("routing-save")) { Text("Сохранить и применить") }
-                            if (notice != null && !showQuickImport) Text(notice, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 10.dp))
+                            }, Modifier.padding(top = 16.dp).fillMaxWidth().testTag("routing-save"))
+                            if (notice != null && !showAddSheet) Text(notice, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 10.dp))
                         }
                         "Подписка" -> {
                             val url = subscriptionPageUrl?.takeIf { it in profile.subscriptionUrls }
-                            if (url == null) EmptyInstruction("Подписка не найдена", "Откройте список подписок и выберите её снова.")
+                            if (url == null) {
+                                PageHeading("Подписка")
+                                EmptyInstruction("Подписка не найдена", "Откройте список подписок и выберите её снова.")
+                            }
                             else {
                                 val node = profile.nodes.firstOrNull { SubscriptionRemovalPolicy.urlFor(profile, it.subscriptionMetadata) == url }
                                 val refreshing = url in refreshingSubscriptions
-                                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                PageHeading("Подписка", subtitle = "Сведения, страны и обновление")
+                                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                                     SubscriptionCard(
                                         metadata = node?.subscriptionMetadata ?: SubscriptionMetadata(sourceHost = SubscriptionRemovalPolicy.hostOf(url)),
                                         expiresAt = node?.let { it.subscriptionExpiresAt ?: it.subscriptionMetadata.expiresAtEpochSeconds },
                                         fetchedAt = profile.subscriptionFetchedAtByUrl[url],
                                         serverCount = profile.nodes.count { SubscriptionMembership.belongs(it, url, profile.subscriptionUrls) },
                                         onOpenLink = onOpenSubscriptionLink,
-                                        onShare = null,
+                                        onShare = { shareCandidate = url },
                                         onSettings = null,
                                         modifier = Modifier.padding(18.dp),
                                     )
@@ -1223,7 +1091,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 SettingsGroup {
                                     SettingsRow(title = "Ссылка подписки", value = "•••", onClick = { copySubscriptionLink(clipboardContext, url); onNotice("Ссылка подписки скопирована") })
                                 }
-                                Surface(onClick = { removeCandidate = url }, color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().padding(top = 18.dp).testTag("subscription-remove")) {
+                                Surface(onClick = { removeCandidate = url }, color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(top = 18.dp).testTag("subscription-remove")) {
                                     Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
                                         Text("Удалить подписку", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge)
                                     }
@@ -1231,32 +1099,29 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             }
                         }
                         "Серверы" -> {
-                            Text("${profile.nodes.size} серверов", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp, bottom = 12.dp))
-                            if (profile.nodes.size > 1) Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                                Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                                        Text("Автоматическое переключение", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleSmall)
-                                        Text(if (profile.autoRotationEnabled) "Если узел перестаёт отвечать, CehoProxy сам подключает следующий рабочий — в том числе из других подписок." else "Выключено: используется только выбранный вами узел.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    Switch(checked = profile.autoRotationEnabled, onCheckedChange = { on -> onSaveRouteSettings(profile.copy(autoRotationEnabled = on)) }, modifier = Modifier.testTag("servers-auto-switch").semantics { contentDescription = "Автоматическое переключение" })
-                                }
-                            }
-                            profile.nodes.withIndex().filter { nodeAllowed(profile, it.value) && measurements.nodes[it.value.routeId]?.latencyMs != null && measurements.nodes[it.value.routeId]?.failed != true }
-                                .minByOrNull { measurements.nodes[it.value.routeId]?.latencyMs ?: Int.MAX_VALUE }?.let { fastest ->
-                                OutlinedButton(onClick = { onSelectNode(fastest.index) }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).heightIn(min = 48.dp).testTag("subscriptions-fastest")) {
-                                    Text("Самый быстрый · ${measurements.nodes[fastest.value.routeId]?.latencyMs} мс")
-                                }
-                            }
+                            val sourceCount = profile.subscriptionUrls.size
+                            PageHeading("Ваши серверы", subtitle = listOfNotNull(
+                                when (sourceCount) { 0 -> null; 1 -> "Одна подписка"; else -> "Подписок: $sourceCount" },
+                                "${profile.nodes.size} ${SubscriptionSummary.plural(profile.nodes.size.toLong(), "сервер", "сервера", "серверов")}",
+                            ).joinToString(" · "))
                             val allRouteIds = profile.nodes.map { it.routeId }
-            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onCheckNodes(allRouteIds) }, enabled = allRouteIds.isNotEmpty(), modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("servers-check-all")) { Text("Проверить все") }
-                OutlinedButton(onClick = onRefreshAllSubscriptions, enabled = refreshingSubscriptions.isEmpty() && profile.subscriptionUrls.isNotEmpty(), modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("servers-refresh-all")) { Text(if (refreshingSubscriptions.isEmpty()) "Обновить подписки" else "Обновляем…") }
-            }
-            if (!measurements.connected) Text("Без VPN: TCP-задержка до адреса сервера. UDP-узлы (Hysteria2) проверяются только при включённом VPN", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
-            if (notice != null && !showQuickImport) Text(notice, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
                             if (profile.nodes.isEmpty()) EmptyInstruction("Серверов пока нет", "Добавьте подписку или ссылку от провайдера.")
                             else {
-                                OutlinedTextField(value = nodeSearch, onValueChange = { nodeSearch = it }, label = { Text("Найти узел или подписку") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("subscriptions-search"))
+                                OutlinedTextField(value = nodeSearch, onValueChange = { nodeSearch = it }, placeholder = { Text("Найти страну или сервер") }, singleLine = true, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().testTag("subscriptions-search"))
+                                if (profile.nodes.size > 1) {
+                                    QuietDivider(Modifier.padding(top = 16.dp))
+                                    QuietRow(
+                                        "Автопереключение",
+                                        subtitle = if (profile.autoRotationEnabled) "При сбое выберем следующий рабочий сервер, в том числе из других подписок" else "Выключено: используется только выбранный сервер",
+                                        trailing = { Switch(checked = profile.autoRotationEnabled, onCheckedChange = { on -> onSaveRouteSettings(profile.copy(autoRotationEnabled = on)) }, modifier = Modifier.testTag("servers-auto-switch").semantics { contentDescription = "Автоматическое переключение" }) },
+                                    )
+                                    QuietDivider()
+                                }
+                                profile.nodes.withIndex().filter { nodeAllowed(profile, it.value) && measurements.nodes[it.value.routeId]?.latencyMs != null && measurements.nodes[it.value.routeId]?.failed != true }
+                                    .minByOrNull { measurements.nodes[it.value.routeId]?.latencyMs ?: Int.MAX_VALUE }?.let { fastest ->
+                                    QuietButton("Самый быстрый · ${measurements.nodes[fastest.value.routeId]?.latencyMs} мс", { onSelectNode(fastest.index) }, Modifier.fillMaxWidth().padding(top = 12.dp).testTag("subscriptions-fastest"), primary = false)
+                                }
+                                if (notice != null && !showAddSheet) Text(notice, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
                                 val visibleNodes = profile.nodes.withIndex().filter { it.value.name.contains(nodeSearch, true) || NodePresentation.subscriptionSource(it.value).contains(nodeSearch, true) }
                                 visibleNodes.forEachIndexed { position, indexed ->
                                     val (index, node) = indexed
@@ -1266,38 +1131,40 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                     val previousNode = visibleNodes.getOrNull(position - 1)?.value
                                     val previousGroupKey = previousNode?.let { Triple(NodePresentation.subscriptionSource(it), it.subscriptionMetadata, it.subscriptionExpiresAt) }
                                     if (groupKey != previousGroupKey) {
-                                        Column(Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp)) {
-                                            Text("ПОДПИСКА", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        val groupRouteIds = profile.nodes.filter { NodePresentation.subscriptionKey(it) == subscriptionKey }.map { it.routeId }
+                                        val groupUrl = SubscriptionRemovalPolicy.urlFor(profile, node.subscriptionMetadata)
+                                        val groupRefreshing = groupUrl != null && groupUrl in refreshingSubscriptions
+                                        Column(Modifier.fillMaxWidth().padding(top = 24.dp)) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Column(Modifier.weight(1f)) {
-                                                    Text(source.removePrefix("Подписка: "), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                                    SubscriptionRemovalPolicy.urlFor(profile, node.subscriptionMetadata)?.let { url -> profile.subscriptionFetchedAtByUrl[url]?.let { at -> Text(SubscriptionRefreshPolicy.fetchedLabel(at, System.currentTimeMillis()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("subscription-fetched:$index")) } }
+                                                    Text(source.removePrefix("Подписка: "), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                                    groupUrl?.let { url -> profile.subscriptionFetchedAtByUrl[url]?.let { at -> Text(SubscriptionRefreshPolicy.fetchedLabel(at, System.currentTimeMillis()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("subscription-fetched:$index")) } }
                                                 }
-                                                OutlinedButton(onClick = { expandedSubscriptionSource = if (expandedSubscriptionSource == groupKey) null else groupKey }, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.heightIn(min = 36.dp).testTag("subscription-details-toggle:$index")) { Text(if (expandedSubscriptionSource == groupKey) "Скрыть" else "Сведения") }
-                                                OutlinedButton(onClick = { collapsedSubscriptions = if (subscriptionKey in collapsedSubscriptions) collapsedSubscriptions - subscriptionKey else collapsedSubscriptions + subscriptionKey }, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.heightIn(min = 36.dp).testTag("subscription-collapse:$index")) { Text(if (subscriptionKey in collapsedSubscriptions) "Развернуть" else "Свернуть") }
+                                                if (groupUrl != null) TextButton(onClick = { subscriptionPageUrl = groupUrl; openPage("Подписка") }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-manage:$index")) { Text("Управлять ›") }
                                             }
-                                            val groupRouteIds = profile.nodes.filter { NodePresentation.subscriptionKey(it) == subscriptionKey }.map { it.routeId }
-                                            val groupUrl = SubscriptionRemovalPolicy.urlFor(profile, node.subscriptionMetadata)
-                                            val groupRefreshing = groupUrl != null && groupUrl in refreshingSubscriptions
-                                            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                OutlinedButton(onClick = { onCheckNodes(groupRouteIds) }, enabled = groupRouteIds.isNotEmpty(), modifier = Modifier.weight(1f).heightIn(min = 40.dp).testTag("subscription-check-group:$subscriptionKey")) { Text("Проверить") }
-                                                OutlinedButton(onClick = { groupUrl?.let(onRefreshSubscription) }, enabled = groupUrl != null && !groupRefreshing, modifier = Modifier.weight(1f).heightIn(min = 40.dp).testTag("subscription-refresh-group:$subscriptionKey")) { Text(if (groupRefreshing) "Обновляем…" else "Обновить") }
+                                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                                                TextButton(onClick = { expandedSubscriptionSource = if (expandedSubscriptionSource == groupKey) null else groupKey }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-details-toggle:$index")) { Text(if (expandedSubscriptionSource == groupKey) "Скрыть сведения" else "Сведения") }
+                                                TextButton(onClick = { collapsedSubscriptions = if (subscriptionKey in collapsedSubscriptions) collapsedSubscriptions - subscriptionKey else collapsedSubscriptions + subscriptionKey }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-collapse:$index")) { Text(if (subscriptionKey in collapsedSubscriptions) "Развернуть" else "Свернуть") }
+                                                TextButton(onClick = { onCheckNodes(groupRouteIds) }, enabled = groupRouteIds.isNotEmpty(), modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-check-group:$subscriptionKey")) { Text("Проверить задержку") }
+                                                TextButton(onClick = { groupUrl?.let(onRefreshSubscription) }, enabled = groupUrl != null && !groupRefreshing, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-refresh-group:$subscriptionKey")) { Text(if (groupRefreshing) "Обновляем…" else "Обновить") }
                                             }
-                                            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Text("Использовать подписку", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                                                Switch(checked = subscriptionKey !in profile.disabledSubscriptions, onCheckedChange = { enabled -> onSaveRouteSettings(subscriptionToggled(profile, subscriptionKey, enabled)) }, modifier = Modifier.testTag("subscription-enabled:$index").semantics { contentDescription = "Использовать подписку" })
-                                            }
-                                            if (profile.autoRotationEnabled && profile.nodes.size > 1) Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Text("Автопереключение в этой подписке", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                                                Switch(checked = subscriptionKey !in profile.autoDisabledSubscriptions, onCheckedChange = { on -> onSaveRouteSettings(profile.copy(autoDisabledSubscriptions = if (on) profile.autoDisabledSubscriptions - subscriptionKey else profile.autoDisabledSubscriptions + subscriptionKey)) }, enabled = subscriptionKey !in profile.disabledSubscriptions, modifier = Modifier.testTag("subscription-auto:$index").semantics { contentDescription = "Автопереключение в этой подписке" })
-                                            }
+                                            QuietDivider()
+                                            QuietRow(
+                                                "Использовать подписку", modifier = Modifier.heightIn(min = 52.dp),
+                                                trailing = { Switch(checked = subscriptionKey !in profile.disabledSubscriptions, onCheckedChange = { enabled -> onSaveRouteSettings(subscriptionToggled(profile, subscriptionKey, enabled)) }, modifier = Modifier.testTag("subscription-enabled:$index").semantics { contentDescription = "Использовать подписку" }) },
+                                            )
+                                            if (profile.autoRotationEnabled && profile.nodes.size > 1) QuietRow(
+                                                "Автопереключение в этой подписке", modifier = Modifier.heightIn(min = 52.dp),
+                                                trailing = { Switch(checked = subscriptionKey !in profile.autoDisabledSubscriptions, onCheckedChange = { on -> onSaveRouteSettings(profile.copy(autoDisabledSubscriptions = if (on) profile.autoDisabledSubscriptions - subscriptionKey else profile.autoDisabledSubscriptions + subscriptionKey)) }, enabled = subscriptionKey !in profile.disabledSubscriptions, modifier = Modifier.testTag("subscription-auto:$index").semantics { contentDescription = "Автопереключение в этой подписке" }) },
+                                            )
+                                            QuietDivider()
                                         }
                                         if (expandedSubscriptionSource == groupKey) SubscriptionDetails(node.subscriptionMetadata, onOpenSubscriptionLink)
                                     }
                                     if (subscriptionKey !in collapsedSubscriptions) DraggableNodeRow(node.raw, onDragEnd = { steps -> onSaveRouteSettings(moveNodeInList(profile, node.raw, steps)) }) { rowModifier ->
                                         NodeRow(node, index == profile.selected, { if (nodeAllowed(profile, node)) onSelectNode(index) }, measurements.nodes[node.routeId], if (measurements.connected && profile.importedConfig == null) ({ if (measurements.nodes[node.routeId]?.testing == true) onCancelNodeCheck() else pendingNodeCheck = node.routeId }) else null, rowModifier.testTag("home-node-option:$index"),
                                             autoEnabled = node.routeId !in profile.autoExcludedRouteIds,
-                                            onAutoToggle = { on -> onSaveRouteSettings(profile.copy(autoExcludedRouteIds = if (on) profile.autoExcludedRouteIds - node.routeId else profile.autoExcludedRouteIds + node.routeId)) },
+                                            onAutoToggle = if (!profile.autoRotationEnabled) null else ({ on: Boolean -> onSaveRouteSettings(profile.copy(autoExcludedRouteIds = if (on) profile.autoExcludedRouteIds - node.routeId else profile.autoExcludedRouteIds + node.routeId)) }),
                                             autoSwitchTag = "node-auto-switch:$index",
                                             excludedLabel = when {
                                                 NodePresentation.subscriptionKey(node) in profile.disabledSubscriptions -> "Подписка отключена"
@@ -1308,63 +1175,105 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 }
                                 if (visibleNodes.isEmpty()) Text("Ничего не найдено. Измените запрос.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 20.dp))
                             }
+                            QuietButtonRow(Modifier.padding(top = 24.dp)) {
+                                QuietButton("Проверить", { onCheckNodes(allRouteIds) }, Modifier.weight(1f).testTag("servers-check-all"), primary = false, enabled = allRouteIds.isNotEmpty(), leading = { RefreshGlyph(MaterialTheme.colorScheme.onSurface) })
+                                QuietButton("Добавить подписку", { showAddSheet = true }, Modifier.weight(1f).testTag("servers-add"))
+                            }
+                            Text(
+                                (if (!measurements.connected) "Без VPN проверяется только TCP-задержка до адреса сервера, узлы Hysteria2 (UDP) проверяются при включённом VPN. " else "") + "Проверка скорости запускается отдельно, с предупреждением о расходе трафика.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp),
+                            )
+                            QuietDivider(Modifier.padding(top = 16.dp))
+                            QuietRow("Подписки и автообновление", subtitle = "Интервал, обновление всех подписок, удаление", onClick = { openPage("Подписки") }, modifier = Modifier.testTag("settings-subscriptions"))
+                            QuietDivider()
                         }
                         "Настройки" -> {
-                            SectionLabel("ИНТЕРФЕЙС")
-                            SettingsGroup {
-                                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                                    Text("Тема", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-                                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        ThemePreference.entries.forEach { option ->
-                                            FilterChip(selected = themePreference == option, onClick = { onThemePreference(option) }, label = { Text(option.label) }, modifier = Modifier.testTag("theme-${option.storageValue}").focusable())
-                                        }
-                                    }
-                                }
-                            }
-                            SectionLabel("ТУННЕЛЬ")
-                            SettingsGroup {
-                                SettingsRow(title = "Маршрутизация", onClick = { openPage("Маршрутизация") }, modifier = Modifier.testTag("settings-routing"))
-                                SettingsRow(title = "Постоянный VPN", value = "Автозапуск", onClick = { showAlwaysOnHelp = !showAlwaysOnHelp })
-                            }
+                            val primary = MaterialTheme.colorScheme.primary
+                            PageHeading("Настройки")
+                            CaptionLabel("Основное")
+                            QuietDivider()
+                            QuietRow("Серверы и подписки", subtitle = "Выбор сервера и управление подписками", onClick = { openPage("Серверы") }, leading = { QuietBadge { ServersGlyph(primary) } }, modifier = Modifier.testTag("settings-latency"))
+                            QuietDivider()
+                            QuietRow("Приложения и сайты", subtitle = "Что подключать через VPN", onClick = { openPage("Маршрутизация") }, leading = { QuietBadge { SlidersGlyph(primary) } }, modifier = Modifier.testTag("settings-routing"))
+                            QuietDivider()
+                            QuietRow("Постоянный VPN", subtitle = "Автозапуск средствами Android", onClick = { showAlwaysOnHelp = !showAlwaysOnHelp }, leading = { QuietBadge { ShieldGlyph(primary) } }, modifier = Modifier.testTag("settings-always-on"))
                             if (showAlwaysOnHelp) {
-                                Text("Android включит VPN сам после перезагрузки телефона.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
-                                OutlinedButton(onClick = onAlwaysOn, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp)) { Text("Открыть настройки Android") }
+                                Text("Android включит VPN сам после перезагрузки телефона.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
+                                QuietButton("Открыть настройки Android", onAlwaysOn, Modifier.fillMaxWidth().padding(bottom = 12.dp), primary = false)
                             }
-                            SectionLabel("СЕРВЕРЫ")
-                            SettingsGroup {
-                                SettingsRow(title = "Подписки", onClick = { openPage("Подписки") }, modifier = Modifier.testTag("settings-subscriptions"))
-                                SettingsRow(title = "Проверка задержки", onClick = { openPage("Серверы") }, modifier = Modifier.testTag("settings-latency"))
-                                SettingsRow(title = "Напоминать о сроке", switchChecked = profile.expiryRemindersEnabled, onSwitch = onExpiryReminders)
-                            }
-                            SectionLabel("ДАННЫЕ")
-                            SettingsGroup {
-                                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    OutlinedButton(onClick = onImportFile, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Импорт") }
-                                    Button(onClick = { openPage("Экспорт") }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Экспорт") }
+                            QuietDivider()
+                            QuietRow("Внешний вид", subtitle = themePreference.label, onClick = { openPage("Внешний вид") }, leading = { QuietBadge { AppearanceGlyph(primary) } }, modifier = Modifier.testTag("settings-appearance"))
+                            QuietDivider()
+                            CaptionLabel("Сервис")
+                            QuietDivider()
+                            QuietRow("Проверка и помощь", subtitle = "Соединение, журнал, поддержка", onClick = { openPage("Проверка и помощь") }, leading = { QuietBadge { HelpGlyph(primary) } }, modifier = Modifier.testTag("settings-help"))
+                            QuietDivider()
+                            QuietRow("Перенос настроек", subtitle = "Импорт и экспорт", onClick = { openPage("Перенос настроек") }, leading = { QuietBadge { DocumentGlyph(primary) } }, modifier = Modifier.testTag("settings-transfer"))
+                            QuietDivider()
+                            QuietRow("Дополнительные параметры", subtitle = "Редкие и технические настройки", onClick = { openPage("Дополнительные параметры") }, leading = { QuietBadge { SlidersGlyph(primary) } }, modifier = Modifier.testTag("settings-advanced"))
+                            QuietDivider()
+                            CaptionLabel("О приложении")
+                            UpdateSettingsSection()
+                        }
+                        "Внешний вид" -> {
+                            PageHeading("Внешний вид", subtitle = "Тема оформления")
+                            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ThemePreference.entries.forEach { option ->
+                                    FilterChip(selected = themePreference == option, onClick = { onThemePreference(option) }, label = { Text(option.label) }, modifier = Modifier.heightIn(min = 48.dp).testTag("theme-${option.storageValue}").focusable())
                                 }
-                                SettingsRow(title = "Проверить соединение", onClick = { scope.launch { diagnostics = withContext(Dispatchers.IO) { ConnectionDiagnostics.run(context) } } }, modifier = Modifier.testTag("settings-diagnostics"))
-                                SettingsRow(title = "Поделиться журналом", onClick = { shareEventLog(context) }, modifier = Modifier.testTag("settings-share-log"))
-                                SettingsRow(title = "Помощь и поддержка", onClick = { openPage("Помощь") })
-                                if (android.os.Build.MANUFACTURER.equals("samsung", true)) {
-                                    SettingsRow(
-                                        title = "Скрыть значок VPN на Samsung",
-                                        onClick = {
-                                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("samsungapps://ProductDetail/com.samsung.android.qstuner"))) }
-                                                .recoverCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://apps.samsung.com/appquery/appDetail.as?appId=com.samsung.android.qstuner"))) }
-                                                .onFailure { onNotice("Не удалось открыть Galaxy Store. Найдите QuickStar в приложении Good Lock.") }
-                                        },
-                                    )
-                                }
-                                SettingsRow(title = "Пройти знакомство заново", color = MaterialTheme.colorScheme.error, onClick = { pageHistory.clear(); page = "Главная"; onRestartOnboarding() }, modifier = Modifier.testTag("restart-onboarding"))
                             }
-                            SectionLabel("О ПРИЛОЖЕНИИ")
-                            SettingsGroup {
-                                Text("Версия ${BuildConfig.VERSION_NAME}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, top = 14.dp))
-                                UpdateSettingsSection()
+                            Text("«Системная» следует настройке Android.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
+                        }
+                        "Проверка и помощь" -> {
+                            PageHeading("Проверка и помощь", subtitle = "Соединение, журнал, поддержка")
+                            QuietDivider()
+                            QuietRow("Проверить соединение", subtitle = "Пошаговая проверка сети и сервера", onClick = { scope.launch { diagnostics = withContext(Dispatchers.IO) { ConnectionDiagnostics.run(context) } } }, modifier = Modifier.testTag("settings-diagnostics"))
+                            QuietDivider()
+                            QuietRow("Поделиться журналом", subtitle = "Ссылки подписок в журнале скрыты", onClick = { shareEventLog(context) }, modifier = Modifier.testTag("settings-share-log"))
+                            QuietDivider()
+                            QuietRow("Помощь и поддержка", subtitle = "Как получить подписку и подключиться", onClick = { openPage("Помощь") })
+                            QuietDivider()
+                            if (android.os.Build.MANUFACTURER.equals("samsung", true)) {
+                                QuietRow(
+                                    "Скрыть значок VPN на Samsung",
+                                    onClick = {
+                                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("samsungapps://ProductDetail/com.samsung.android.qstuner"))) }
+                                            .recoverCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://apps.samsung.com/appquery/appDetail.as?appId=com.samsung.android.qstuner"))) }
+                                            .onFailure { onNotice("Не удалось открыть Galaxy Store. Найдите QuickStar в приложении Good Lock.") }
+                                    },
+                                )
+                                QuietDivider()
                             }
+                            if (notice != null && !showAddSheet) Text(notice, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
+                        }
+                        "Перенос настроек" -> {
+                            PageHeading("Перенос настроек", subtitle = "Импорт и экспорт настроек и подписок")
+                            QuietDivider()
+                            QuietRow("Импорт из файла", subtitle = "Резервная копия, подписка или конфигурация", onClick = onImportFile, modifier = Modifier.testTag("transfer-import"))
+                            QuietDivider()
+                            QuietRow("Экспорт", subtitle = "Сохранить настройки и подписки в файл", onClick = { openPage("Экспорт") }, modifier = Modifier.testTag("transfer-export"))
+                            QuietDivider()
+                            if (notice != null && !showAddSheet) Text(notice, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
+                        }
+                        "Дополнительные параметры" -> {
+                            PageHeading("Дополнительные параметры", subtitle = "Редкие и технические настройки")
+                            QuietDivider()
+                            QuietRow(
+                                "Блокировка рекламных сайтов", subtitle = "Блокирует рекламные домены. Реклама внутри видео, например в YouTube, может остаться.",
+                                trailing = { Switch(checked = profile.blockYoutubeAds, onCheckedChange = { onSaveRouteSettings(profile.copy(blockYoutubeAds = it)) }, modifier = Modifier.testTag("home-block-youtube-ads").semantics { contentDescription = "Реклама YouTube" }) },
+                            )
+                            QuietDivider()
+                            QuietRow(
+                                "Напоминать о сроке", subtitle = "Уведомление перед окончанием подписки",
+                                trailing = { Switch(checked = profile.expiryRemindersEnabled, onCheckedChange = onExpiryReminders, modifier = Modifier.semantics { contentDescription = "Напоминать о сроке" }) },
+                            )
+                            QuietDivider()
+                            QuietRow("Пройти знакомство заново", subtitle = "Подписки и правила останутся без изменений", titleColor = MaterialTheme.colorScheme.error, onClick = { pageHistory.clear(); page = "Главная"; onRestartOnboarding() }, modifier = Modifier.testTag("restart-onboarding"))
+                            QuietDivider()
                         }
                         "Помощь" -> {
-                            Text("Подскажем, как получить ссылку и подключиться", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+                            PageHeading("Помощь")
+                            Text("Подскажем, как получить ссылку и подключиться", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 20.dp))
                             Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
                                 Column(Modifier.fillMaxWidth().padding(20.dp)) {
                                     Text("Нет подписки?", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
@@ -1376,25 +1285,20 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             Text("Если VPN не запускается: проверьте, что список узлов не пуст, разрешение VPN выдано, а срок подписки не истёк.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp))
                         }
                         "Экспорт" -> {
-                            Text("Выберите, что перенести. Файлы могут содержать ссылки подписок или собственную конфигурацию с данными доступа.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 18.dp))
+                            PageHeading("Экспорт", subtitle = "Выберите, что перенести")
+                            Text("Выберите, что перенести. Файлы могут содержать ссылки подписок или собственную конфигурацию с данными доступа.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 12.dp))
+                            QuietDivider()
                             ProfileExportScope.entries.forEach { scope ->
-                                OutlinedButton(
+                                QuietRow(
+                                    scope.title,
+                                    subtitle = when (scope) {
+                                        ProfileExportScope.SETTINGS -> "Правила, приложения и конфигурация"
+                                        ProfileExportScope.SUBSCRIPTIONS -> "Узлы и данные подписок"
+                                        ProfileExportScope.ALL -> "Настройки и подписки вместе"
+                                    },
                                     onClick = { onExport(scope) },
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).heightIn(min = 64.dp),
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(scope.title)
-                                        Text(
-                                            when (scope) {
-                                                ProfileExportScope.SETTINGS -> "Правила, приложения и конфигурация"
-                                                ProfileExportScope.SUBSCRIPTIONS -> "Узлы и данные подписок"
-                                                ProfileExportScope.ALL -> "Настройки и подписки вместе"
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                }
+                                )
+                                QuietDivider()
                             }
                         }
                     }
@@ -1403,13 +1307,31 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
             }
         }
     }
-    if (showAddSheet) ModalBottomSheet(onDismissRequest = { showAddSheet = false }, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            Text("Добавить подписку", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-            Text("Серверы загрузятся сами, подписка появится в списке", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-            SheetOption(title = "Вставить ссылку", subtitle = "Ссылка или текст конфигурации", glyph = { LinkGlyph(MaterialTheme.colorScheme.primary) }, modifier = Modifier.testTag("add-sheet-paste"), onClick = { showAddSheet = false; showQuickImport = true })
-            SheetOption(title = "Сканировать QR-код", subtitle = "Камера телефона", glyph = { ScanGlyph(MaterialTheme.colorScheme.primary) }, modifier = Modifier.testTag("add-sheet-qr"), onClick = { showAddSheet = false; onScanQr() })
-            SheetOption(title = "Открыть файл", subtitle = "Конфигурация .json или .txt", glyph = { FileGlyph(MaterialTheme.colorScheme.primary) }, modifier = Modifier.testTag("add-sheet-file"), onClick = { showAddSheet = false; onImportFile() })
+    if (showAddSheet) {
+        val importingNow by rememberUpdatedState(importing)
+        val addSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { !importingNow })
+        val noticeAtOpen = remember { notice }
+        ModalBottomSheet(onDismissRequest = { if (!importing) showAddSheet = false }, sheetState = addSheetState, containerColor = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp).imePadding().testTag("add-sheet")) {
+                Text("Добавить подписку", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                Text("Подписка — это ссылка с серверами от вашего провайдера. CehoProxy сам её не выдаёт.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                OutlinedTextField(value = importValue, onValueChange = { importValue = it }, label = { Text("Ссылка или конфигурация") }, enabled = !importing, minLines = 2, maxLines = 4, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("import-input"))
+                QuietButton("Добавить подписку", { onTextImport(importValue) }, Modifier.fillMaxWidth().padding(top = 12.dp).testTag("import-submit"), enabled = !importing && importValue.isNotBlank())
+                if (importing) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("import-progress"))
+                    Text("Загружаем и проверяем узлы…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                } else notice?.takeIf { it != noticeAtOpen }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp).testTag("import-error")) }
+                CaptionLabel("Другие способы")
+                QuietDivider()
+                QuietRow("Из буфера обмена", subtitle = "Ссылка или текст конфигурации", onClick = onImportClipboard, enabled = !importing, leading = { QuietBadge(size = 40.dp) { CopyGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-paste"))
+                QuietDivider()
+                QuietRow("Камера: QR-код", subtitle = "Сканирование камерой телефона", onClick = onScanQr, enabled = !importing, leading = { QuietBadge(size = 40.dp) { ScanGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-qr"))
+                QuietDivider()
+                QuietRow("QR-код из изображения", subtitle = "Выбрать картинку из галереи", onClick = onImportQrImage, enabled = !importing, leading = { QuietBadge(size = 40.dp) { ScanGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-qr-image"))
+                QuietDivider()
+                QuietRow("Файл", subtitle = "Конфигурация .json или .txt", onClick = onImportFile, enabled = !importing, leading = { QuietBadge(size = 40.dp) { FileGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-file"))
+                QuietDivider()
+            }
         }
     }
     if (showSitesSheet) SitesSheet(
@@ -1445,33 +1367,6 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                 }
             }
         }, confirmButton = { TextButton(onClick = { diagnostics = null }) { Text("Закрыть") } })
-    }
-    if (showQuickImport) {
-        AlertDialog(
-            onDismissRequest = { if (!importing) showQuickImport = false },
-            title = { Text("Добавить подписку") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text("Вставьте ссылку или выберите способ добавления", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                    OutlinedTextField(value = importValue, onValueChange = { importValue = it }, label = { Text("Ссылка или конфигурация") }, enabled = !importing, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("import-input"), minLines = 2, maxLines = 4)
-                    if (importing) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("import-progress"))
-                        Text("Загружаем и проверяем узлы…", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-                    }
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onImportClipboard, enabled = !importing, modifier = Modifier.weight(1f)) { Text("Из буфера") }
-                        OutlinedButton(onClick = onScanQr, enabled = !importing, modifier = Modifier.weight(1f)) { Text("Камера QR") }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onImportFile, enabled = !importing, modifier = Modifier.weight(1f)) { Text("Файл") }
-                        OutlinedButton(onClick = onImportQrImage, enabled = !importing, modifier = Modifier.weight(1f)) { Text("QR-картинка") }
-                    }
-                    notice?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)) }
-                }
-            },
-            confirmButton = { Button(onClick = { onTextImport(importValue) }, enabled = !importing && importValue.isNotBlank(), modifier = Modifier.testTag("import-submit")) { Text("Добавить") } },
-            dismissButton = { TextButton(onClick = { showQuickImport = false }, enabled = !importing) { Text("Отмена") } },
-        )
     }
     if (showAppRoutePicker) {
         val excluded = if (profile.excludeSelectedApps) appsValue.split(',', '\n').map(String::trim).toSet() else emptySet()
@@ -1535,7 +1430,6 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 private fun FirstRunOnboarding(
     profile: ClientProfile,
     onPickCountry: (String) -> Unit,
-    onYoutubeAds: (Boolean) -> Unit,
     onImportFile: () -> Unit,
     onImportClipboard: () -> Unit,
     onScanQr: () -> Unit,
@@ -1546,68 +1440,94 @@ private fun FirstRunOnboarding(
 ) {
     var step by rememberSaveable { mutableIntStateOf(0) }
     var showOther by remember { mutableStateOf(false) }
-    LaunchedEffect(step, profile.nodes.isNotEmpty()) { if (step == 1 && profile.nodes.isNotEmpty()) onFinish() }
-    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp).widthIn(max = 760.dp)) {
-        if (step == 0) {
-            Text("Какая у вас страна?", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 24.dp))
-            Text("Сайты этой страны открываются без VPN. Если страны нет в списке, выберите «Другая страна».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 10.dp))
-            CountryRouting.countries.forEach { option ->
-                OnboardingCountryRow(
-                    title = "${NodePresentation.flag(option.code.uppercase()) ?: ""} ${option.name}",
-                    subtitle = null,
-                    selected = profile.directCountryCode == option.code,
-                    tag = "onboarding-country:${option.code}",
-                    onClick = { onPickCountry(option.code) },
-                )
+    val nodesOnEntry = remember(step) { profile.nodes.size }
+    LaunchedEffect(step, profile.nodes.size) { if (step == 1 && profile.nodes.size > nodesOnEntry) step = 2 }
+    BackHandler(enabled = step > 0) { step -= 1 }
+    val colors = MaterialTheme.colorScheme
+    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp).widthIn(max = 760.dp)) {
+        if (step > 0) IconButton(onClick = { step -= 1 }, modifier = Modifier.size(48.dp).testTag("onboarding-back").semantics { contentDescription = "Назад" }) { BackGlyph(colors.onSurface) }
+        when (step) {
+            0 -> {
+                VortexArt(Modifier.fillMaxWidth().padding(top = 8.dp).height(220.dp))
+                Text("CEHOPROXY", style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp), color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 24.dp))
+                Text("Интернет.\nВ вашем ритме.", style = cappedStyle(MaterialTheme.typography.displaySmall), color = colors.onSurface, modifier = Modifier.padding(top = 8.dp))
+                Text("Добавьте подписку и выберите, какие приложения будут работать через VPN.", style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+                QuietButton("Настроить подключение", { step = 1 }, Modifier.fillMaxWidth().padding(top = 28.dp).testTag("onboarding-next"), leading = { ArrowRightGlyph(colors.onPrimary) })
+                TextButton(onClick = onFinish, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).testTag("onboarding-skip")) { Text("Уже настроено? Открыть главную", color = colors.primary) }
+                Text("Подписку предоставляет ваш провайдер", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             }
-            OnboardingCountryRow(title = "Другая страна", subtitle = null, selected = profile.directCountryCode.isEmpty(), tag = "onboarding-country:none", onClick = { onPickCountry("") })
-            if (profile.directCountryCode == "ru") {
-                Surface(modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("onboarding-youtube"), color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(16.dp)) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Реклама YouTube", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                            Text("Блокирует рекламные сайты. Реклама внутри видео может остаться.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            1 -> {
+                Text("Добавьте подписку", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
+                Text("Подписка — это ссылка с серверами от вашего провайдера. CehoProxy сам подписки не выдаёт. Вставьте ссылку, остальное настроится само.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+                if (profile.nodes.isNotEmpty()) {
+                    Text("Подписка уже добавлена: серверов ${profile.nodes.size}.", color = colors.primary, style = MaterialTheme.typography.bodyLarge)
+                    QuietButton("Далее", { step = 2 }, Modifier.fillMaxWidth().padding(top = 16.dp).testTag("onboarding-continue"))
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        QuietButton("Вставить из буфера", onImportClipboard, Modifier.weight(3f).testTag("onboarding-paste"))
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.weight(2f)) {
+                            QuietButton("Другое", { showOther = true }, Modifier.fillMaxWidth().testTag("onboarding-other"), primary = false)
+                            DropdownMenu(expanded = showOther, onDismissRequest = { showOther = false }) {
+                                DropdownMenuItem(text = { Text("Сканировать QR-код") }, onClick = { showOther = false; onScanQr() })
+                                DropdownMenuItem(text = { Text("Открыть файл") }, onClick = { showOther = false; onImportFile() })
+                                DropdownMenuItem(text = { Text("Помощь в Telegram") }, onClick = { showOther = false; onHelp() })
+                            }
                         }
-                        Switch(checked = profile.blockYoutubeAds, onCheckedChange = onYoutubeAds, modifier = Modifier.testTag("onboarding-youtube-switch"))
                     }
+                    notice?.let { Text(it, color = if (it.contains("ошиб", true) || it.contains("не удалось", true) || it.contains("не содержит", true) || it.contains("нет ", true)) colors.error else colors.primary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp)) }
+                    TextButton(onClick = { step = 2 }, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 12.dp).heightIn(min = 48.dp).testTag("onboarding-later")) { Text("Добавить позже") }
                 }
             }
-            Button(onClick = { step = 1 }, modifier = Modifier.fillMaxWidth().padding(top = 18.dp).heightIn(min = 52.dp).testTag("onboarding-next")) { Text("Далее") }
-        } else {
-            Text("Добавьте подписку", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 24.dp))
-            Text("Вставьте ссылку от провайдера. Остальное настроится само.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 18.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = onImportClipboard, modifier = Modifier.weight(3f).heightIn(min = 56.dp).testTag("onboarding-paste")) { Text("Вставить из буфера") }
-                Spacer(Modifier.width(8.dp))
-                Box(Modifier.weight(2f)) {
-                    OutlinedButton(onClick = { showOther = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("onboarding-other")) { Text("Другое") }
-                    DropdownMenu(expanded = showOther, onDismissRequest = { showOther = false }) {
-                        DropdownMenuItem(text = { Text("Сканировать QR-код") }, onClick = { showOther = false; onScanQr() })
-                        DropdownMenuItem(text = { Text("Открыть файл") }, onClick = { showOther = false; onImportFile() })
-                        DropdownMenuItem(text = { Text("Помощь в Telegram") }, onClick = { showOther = false; onHelp() })
-                    }
+            2 -> {
+                Text("Какая у вас страна?", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
+                Text("Ресурсы из набора выбранной страны открываются напрямую, без VPN. Это не значит, что напрямую пойдут все сайты страны. Если вашей страны нет в списке, выберите «Другая страна».", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp, bottom = 12.dp))
+                QuietDivider()
+                CountryRouting.countries.forEach { option ->
+                    OnboardingCountryRow(
+                        title = "${NodePresentation.flag(option.code.uppercase()) ?: ""} ${option.name}",
+                        subtitle = option.coverage,
+                        selected = profile.directCountryCode == option.code,
+                        tag = "onboarding-country:${option.code}",
+                        onClick = { onPickCountry(option.code) },
+                    )
+                    QuietDivider()
                 }
+                OnboardingCountryRow(title = "Другая страна", subtitle = "Все ресурсы пойдут по вашим правилам", selected = profile.directCountryCode.isEmpty(), tag = "onboarding-country:none", onClick = { onPickCountry("") })
+                QuietDivider()
+                if (profile.directCountryCode == "ru") Text("Для России блокировка рекламных сайтов включается сама. Отключить её можно в «Настройки → Дополнительные параметры».", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp).testTag("onboarding-ads-note"))
+                QuietButton("Далее", { step = 3 }, Modifier.fillMaxWidth().padding(top = 20.dp).testTag("onboarding-country-next"))
             }
-            notice?.let { Text(it, color = if (it.contains("ошиб", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp)) }
-            TextButton(onClick = onFinish, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 12.dp).heightIn(min = 48.dp).testTag("onboarding-later")) { Text("Добавить позже") }
+            else -> {
+                Text("Разрешение Android", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
+                Text("При первом подключении Android покажет системный запрос на VPN-соединение. Без этого разрешения VPN не запустится. Если вы откажетесь, запрос можно повторить: нажмите на водоворот на главном экране.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+                QuietButton("Перейти на главную", onFinish, Modifier.fillMaxWidth().testTag("onboarding-finish"))
+            }
         }
     }
 }
 
 @Composable
 private fun OnboardingCountryRow(title: String, subtitle: String?, selected: Boolean, tag: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 64.dp).testTag(tag),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(16.dp),
-    ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    QuietRow(title, Modifier.testTag(tag), subtitle = subtitle, onClick = onClick, trailing = { RadioButton(selected = selected, onClick = null) }, selected = selected)
+}
+
+@Composable
+private fun VortexArt(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Canvas(modifier) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = minOf(size.width, size.height) * .46f
+        drawCircle(colors.outlineVariant, radius * 1.02f, center, style = Stroke(1.dp.toPx()))
+        drawCircle(colors.primaryContainer, radius * .14f, center)
+        repeat(VORTEX_ARMS) { arm ->
+            val spiral = Path().apply {
+                for (step in 0..96) {
+                    val point = vortexPoint(center, radius, step / 96f, arm)
+                    if (step == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                }
             }
-            RadioButton(selected = selected, onClick = null)
+            drawPath(spiral, colors.secondary, style = Stroke(1.6.dp.toPx(), cap = StrokeCap.Round))
         }
     }
 }
@@ -1659,7 +1579,7 @@ private fun cubicPoint(start: Offset, control1: Offset, control2: Offset, end: O
 }
 
 @Composable
-private fun TunnelVortex(
+internal fun TunnelVortex(
     apps: List<AppChoice>,
     active: Boolean,
     connected: Boolean,
@@ -1694,29 +1614,27 @@ private fun TunnelVortex(
     val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
     Surface(
         onClick = onClick,
-        modifier = modifier.height(204.dp).focusable().testTag("home-vortex").semantics {
-            contentDescription = if (running) "Служба VPN запущена. Нажмите, чтобы отключить." else "Воронка CehoProxy. Нажмите, чтобы подключить."
+        modifier = modifier.height(220.dp).focusable().testTag("home-vortex").semantics {
+            contentDescription = when {
+                connected -> "VPN подключён. Нажмите, чтобы выключить."
+                running -> "Идёт подключение. Нажмите, чтобы отменить."
+                else -> "VPN выключен. Нажмите, чтобы подключить."
+            }
         },
-        color = MaterialTheme.colorScheme.background,
+        color = Color.Transparent,
         shape = RoundedCornerShape(24.dp),
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val density = androidx.compose.ui.platform.LocalDensity.current
             val widthPx = with(density) { maxWidth.toPx() }
             val heightPx = with(density) { maxHeight.toPx() }
-            val center = Offset(widthPx / 2f, heightPx * .4f)
-            val radius = with(density) { 76.dp.toPx() }.coerceAtMost(widthPx * .34f)
+            val center = Offset(widthPx / 2f, heightPx * .5f)
+            val radius = with(density) { 96.dp.toPx() }.coerceAtMost(widthPx * .34f).coerceAtMost(heightPx * .48f)
             val moving = active && motionEnabled
             val turn = if (moving) phase * 2f * Math.PI.toFloat() else 0f
             Canvas(Modifier.fillMaxSize()) {
-                listOf(.98f, .76f, .55f).forEachIndexed { index, scale ->
-                    drawCircle(
-                        color = when (index) { 0 -> themeColors.primary; 1 -> themeColors.secondary; else -> themeColors.primary.copy(alpha = .72f) },
-                        radius = radius * scale,
-                        center = center,
-                        style = Stroke(width = if (index == 0) 2.dp.toPx() else 3.dp.toPx()),
-                    )
-                }
+                drawCircle(color = themeColors.outlineVariant, radius = radius * 1.02f, center = center, style = Stroke(width = 1.dp.toPx()))
+                drawCircle(color = if (active) themeColors.primaryContainer else themeColors.surfaceContainerHigh, radius = radius * .14f, center = center)
                 repeat(VORTEX_ARMS) { arm ->
                     val spiral = Path().apply {
                         val steps = 96
@@ -1725,7 +1643,7 @@ private fun TunnelVortex(
                             if (step == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
                         }
                     }
-                    drawPath(spiral, themeColors.secondary, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+                    drawPath(spiral, themeColors.secondary, style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round))
                 }
             }
             displayedApps.forEachIndexed { index, app ->
@@ -1745,8 +1663,8 @@ private fun TunnelVortex(
                 Surface(
                     modifier = Modifier.offset { IntOffset((x - with(density) { (iconSize / 2).toPx() }).roundToInt(), (y - with(density) { (iconSize / 2).toPx() }).roundToInt()) }
                         .size(iconSize).alpha(iconAlpha).clip(RoundedCornerShape(13.dp)),
-                    color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(13.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary),
+                    color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(13.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
                     androidx.compose.foundation.Image(icon, contentDescription = app.label, modifier = Modifier.fillMaxSize().padding(iconSize * .12f))
                 }
@@ -1813,7 +1731,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
     }
 }
 
-@Composable private fun NodeCountryMark(country: VerifiedNodeCountry?, nameCode: String?) {
+@Composable internal fun NodeCountryMark(country: VerifiedNodeCountry?, nameCode: String?) {
     val color = MaterialTheme.colorScheme.onSurfaceVariant
     val verified = country?.takeIf { NodeCountryCachePolicy.isFresh(it, System.currentTimeMillis()) }
     val code = nameCode ?: verified?.countryCode
@@ -1828,27 +1746,27 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
 }
 
 @Composable private fun NodeRow(node: ProxyNode, selected: Boolean, onClick: () -> Unit, measurement: NodeMeasurement? = null, onCheck: (() -> Unit)? = null, modifier: Modifier = Modifier, autoEnabled: Boolean? = null, onAutoToggle: ((Boolean) -> Unit)? = null, autoSwitchTag: String = "", excludedLabel: String? = null) {
-    val textColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-    val subColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    val colors = MaterialTheme.colorScheme
+    val subColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().padding(vertical = 5.dp).heightIn(min = 68.dp).alpha(if (excludedLabel != null) .45f else 1f),
-        shape = RoundedCornerShape(20.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+        modifier = modifier.fillMaxWidth().padding(vertical = 3.dp).heightIn(min = 64.dp).alpha(if (excludedLabel != null) .5f else 1f),
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) colors.primaryContainer else Color.Transparent,
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            NodeCountryMark(measurement?.verifiedCountry, NodeCountry.resolve(node.name))
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            QuietBadge(size = 44.dp, background = if (selected) colors.surface else colors.primaryContainer) { NodeCountryMark(measurement?.verifiedCountry, NodeCountry.resolve(node.name)) }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(NodePresentation.displayName(node.name), color = textColor, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(NodePresentation.withoutFlag(NodePresentation.displayName(node.name)), color = colors.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(node.type.uppercase() + " · " + NodeMetricsPolicy.summary(measurement), color = subColor, style = MaterialTheme.typography.bodySmall)
-                excludedLabel?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall) }
+                excludedLabel?.let { Text(it, color = colors.error, style = MaterialTheme.typography.labelSmall) }
             }
             if (onAutoToggle != null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Авто", style = MaterialTheme.typography.labelSmall, color = subColor)
                 Switch(checked = autoEnabled == true, onCheckedChange = onAutoToggle, modifier = if (autoSwitchTag.isNotEmpty()) Modifier.testTag(autoSwitchTag) else Modifier)
             }
-            if (onCheck != null) OutlinedButton(onClick = onCheck, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.heightIn(min = 36.dp)) { Text(if (measurement?.testing == true) "Отмена" else "Проверить") }
-            else if (selected) Text("Выбран", color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 8.dp))
+            if (onCheck != null) TextButton(onClick = onCheck, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (measurement?.testing == true) "Отмена" else "Скорость") }
+            else if (selected) Text("Выбран", color = colors.onPrimaryContainer, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp))
         }
     }
 }
@@ -1858,11 +1776,10 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
     Column(modifier.fillMaxWidth()) {
         Text("ПОДПИСКА", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(metadata.title ?: metadata.sourceHost ?: "Подписка", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Text(metadata.title ?: metadata.sourceHost ?: "Подписка", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             telegramLink(metadata)?.let { link ->
                 IconButton(onClick = { onOpenLink(link) }, modifier = Modifier.size(34.dp).testTag("home-subscription-telegram").semantics { contentDescription = "Telegram подписки" }) { TelegramGlyph(telegramBlue) }
             }
-            Spacer(Modifier.weight(1f))
             onShare?.let { share -> IconButton(onClick = share, modifier = Modifier.size(34.dp).testTag("home-subscription-share").semantics { contentDescription = "Поделиться подпиской" }) { ShareGlyph(MaterialTheme.colorScheme.primary) } }
             onSettings?.let { open -> IconButton(onClick = open, modifier = Modifier.size(34.dp).testTag("home-subscription-settings").semantics { contentDescription = "Настройки подписки" }) { MoreGlyph(MaterialTheme.colorScheme.onSurfaceVariant) } }
         }
@@ -1908,7 +1825,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
 }
 
 @Composable private fun SubscriptionListItem(index: Int, metadata: SubscriptionMetadata, serverCount: Int, fetchedAt: Long?, expiresAt: Long?, refreshing: Boolean, detailsShown: Boolean, onRefresh: () -> Unit, onCopy: () -> Unit, onDetails: () -> Unit, onShare: () -> Unit, onRemove: () -> Unit, onOpenLink: (String) -> Unit, modifier: Modifier = Modifier) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = modifier.fillMaxWidth().testTag("subscription-item:$index")) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp), modifier = modifier.fillMaxWidth().testTag("subscription-item:$index")) {
         Column(Modifier.padding(18.dp)) {
             SubscriptionCard(metadata = metadata, expiresAt = expiresAt, fetchedAt = fetchedAt, serverCount = serverCount, onOpenLink = onOpenLink, onShare = null, onSettings = null)
             Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1925,37 +1842,13 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
     }
 }
 
-@Composable private fun HomeNodeRow(node: ProxyNode, selected: Boolean, measurement: NodeMeasurement?, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val ping = measurement?.latencyMs
-    Surface(
-        onClick = onClick,
-        modifier = modifier.heightIn(min = 64.dp).alpha(if (enabled) 1f else .45f),
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            NodeCountryMark(measurement?.verifiedCountry, NodeCountry.resolve(node.name))
-            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(NodePresentation.displayName(node.name), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(node.type.uppercase(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            }
-            Text(
-                ping?.let { "$it мс" } ?: "—",
-                style = MaterialTheme.typography.labelLarge,
-                color = if (ping != null && ping > 800) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
-    }
-}
-
 @Composable private fun PillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, textColor: Color = MaterialTheme.colorScheme.onSurface) {
     Surface(
         onClick = onClick,
         enabled = enabled,
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = modifier.heightIn(min = 40.dp),
+        modifier = modifier.heightIn(min = 48.dp),
     ) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
             Text(text, style = MaterialTheme.typography.labelLarge, color = if (enabled) textColor else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1964,11 +1857,11 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
 }
 
 @Composable private fun SectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(start = 6.dp, top = 22.dp, bottom = 8.dp))
+    Text(text, style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.4.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 24.dp, bottom = 8.dp))
 }
 
 @Composable private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
         Column(content = content)
     }
 }
@@ -1981,7 +1874,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
         Text(title, color = color, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         value?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp)) }
         switchChecked?.let { Switch(checked = it, onCheckedChange = onSwitch ?: {}, modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = title }) }
-        if (onClick != null && switchChecked == null) Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
+        if (onClick != null && switchChecked == null) { Spacer(Modifier.width(8.dp)); ChevronGlyph(MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
@@ -2114,7 +2007,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
     }
 }
 
-private fun subscriptionDateLabel(epochSeconds: Long): String =
+internal fun subscriptionDateLabel(epochSeconds: Long): String =
     java.time.Instant.ofEpochSecond(epochSeconds).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
 
 private fun shareSubscriptionLink(context: Context, url: String, telegram: Boolean) {
@@ -2134,14 +2027,7 @@ private fun telegramLink(metadata: SubscriptionMetadata): String? {
     return Regex("""^https?://t\.me/([A-Za-z0-9_]+)/?$""").find(link)?.let { "tg://resolve?domain=${it.groupValues[1]}" } ?: link
 }
 
-@Composable private fun VpnUptime(sinceMillis: Long) {
-    if (sinceMillis <= 0L) return
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(sinceMillis) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
-    Text("Работает ${UptimeFormat.label(now - sinceMillis)}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 6.dp).testTag("home-uptime"))
-}
-
-@Composable private fun RefreshGlyph(color: Color, spinning: Boolean = false) {
+@Composable internal fun RefreshGlyph(color: Color, spinning: Boolean = false) {
     val transition = rememberInfiniteTransition(label = "refresh")
     val angle by transition.animateFloat(initialValue = 0f, targetValue = 360f, animationSpec = infiniteRepeatable(animation = tween(durationMillis = 900, easing = LinearEasing)), label = "refresh-angle")
     Canvas(Modifier.size(24.dp).graphicsLayer { rotationZ = if (spinning) angle else 0f }) {
@@ -2171,7 +2057,7 @@ private fun telegramLink(metadata: SubscriptionMetadata): String? {
     }
 }
 
-@Composable private fun PlusGlyph(color: Color) {
+@Composable internal fun PlusGlyph(color: Color) {
     Canvas(Modifier.size(24.dp)) {
         val s = size.minDimension / 24f
         drawLine(color, Offset(12f * s, 5f * s), Offset(12f * s, 19f * s), strokeWidth = 2f * s, cap = StrokeCap.Round)
@@ -2179,7 +2065,7 @@ private fun telegramLink(metadata: SubscriptionMetadata): String? {
     }
 }
 
-@Composable private fun GearGlyph(color: Color) {
+@Composable internal fun GearGlyph(color: Color) {
     Canvas(Modifier.size(24.dp)) {
         val s = size.minDimension / 24f
         val center = Offset(12f * s, 12f * s)
@@ -2230,7 +2116,7 @@ private fun telegramLink(metadata: SubscriptionMetadata): String? {
     }
 }
 
-private fun formatBytes(bytes: Long): String {
+internal fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes Б"
     val units = listOf("КиБ", "МиБ", "ГиБ", "ТиБ")
     var value = bytes.toDouble()

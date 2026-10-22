@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
@@ -69,9 +70,16 @@ class SubscriptionImportUiTest {
     }
 
     private fun openSubscriptions() {
-        openSettings()
-        rule.onNodeWithTag("settings-subscriptions").performClick()
+        openServers()
+        rule.onNodeWithTag("settings-subscriptions").performScrollTo().performClick()
     }
+
+    private fun openSettingsPage(tag: String) {
+        openSettings()
+        rule.onNodeWithTag(tag).performScrollTo().performClick()
+    }
+
+    private fun pressBack() = rule.activity.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
 
     private fun openRouting() {
         openSettings()
@@ -81,7 +89,6 @@ class SubscriptionImportUiTest {
     private fun openImportDialog() {
         goHome()
         rule.onNodeWithTag("header-add-subscription").performClick()
-        rule.onNodeWithTag("add-sheet-paste").performClick()
     }
 
     @Test fun dpiProxyModeTogglePreservesSelectedAppsAndManualSites() {
@@ -109,23 +116,30 @@ class SubscriptionImportUiTest {
         rule.onNodeWithTag("settings-update-check").performScrollTo().assertIsDisplayed()
     }
 
-    @Test fun onboardingAsksCountryOffersYoutubeForRussiaThenAddsSubscription() {
+    @Test fun onboardingWalksWelcomeSubscriptionCountryAndPermissionAndKeepsRussianAdBlock() {
         rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit().putString("data", ProfileCodec.encode(ClientProfile())).commit()
         rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).edit().putBoolean("completed", false).commit()
         rule.activityRule.scenario.recreate()
-        rule.onNodeWithText("Какая у вас страна?").assertIsDisplayed()
-        rule.onNodeWithTag("onboarding-youtube-switch").assertDoesNotExist()
-        rule.onNodeWithTag("onboarding-country:ru").performScrollTo().performClick()
-        rule.onNodeWithTag("onboarding-youtube-switch").performScrollTo().assertIsOn()
-        rule.onNodeWithTag("onboarding-next").performScrollTo().performClick()
+        rule.onNodeWithTag("header-settings").assertDoesNotExist()
+        rule.onNodeWithTag("onboarding-next").assertIsDisplayed().performClick()
         rule.onNodeWithText("Добавьте подписку").assertIsDisplayed()
         rule.onNodeWithTag("onboarding-paste").assertIsDisplayed()
         rule.onNodeWithTag("onboarding-other").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-back").performClick()
+        rule.onNodeWithTag("onboarding-next").assertIsDisplayed().performClick()
+        rule.onNodeWithTag("onboarding-later").performScrollTo().performClick()
+        rule.onNodeWithText("Какая у вас страна?").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-country:ru").performScrollTo().performClick()
+        rule.onNodeWithTag("onboarding-ads-note").performScrollTo().assertIsDisplayed()
         val saved = ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}")!!)
         assertEquals("ru", saved.directCountryCode)
         assertEquals(true, saved.blockYoutubeAds)
-        rule.onNodeWithTag("onboarding-later").performScrollTo().performClick()
+        rule.onNodeWithTag("onboarding-country-next").performScrollTo().performClick()
+        rule.onNodeWithText("Разрешение Android").assertIsDisplayed()
+        assertEquals(false, rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).getBoolean("completed", false))
+        rule.onNodeWithTag("onboarding-finish").performClick()
         assertEquals(true, rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).getBoolean("completed", false))
+        rule.onNodeWithTag("home-vortex").assertIsDisplayed()
     }
 
     @Test fun countryChosenInSettingsAfterOnboardingPersistsWithoutChangingAppsOrSites() {
@@ -134,7 +148,7 @@ class SubscriptionImportUiTest {
         rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit().putString("data", ProfileCodec.encode(profile)).commit()
         rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).edit().putBoolean("completed", false).commit()
         rule.activityRule.scenario.recreate()
-        rule.onNodeWithTag("onboarding-next").performScrollTo().performClick()
+        rule.onNodeWithTag("onboarding-skip").performScrollTo().performClick()
         openRouting()
         rule.onNodeWithTag("route-tab:2").performClick()
         rule.onNodeWithTag("country-selector").performScrollTo().performClick()
@@ -171,58 +185,58 @@ class SubscriptionImportUiTest {
     }
 
     @Test fun selectedThemeIsPersistedAcrossActivityRestart() {
-        openSettings()
+        openSettingsPage("settings-appearance")
         rule.onNodeWithTag("theme-light").performScrollTo().performClick()
         rule.onNodeWithTag("theme-light").assertIsSelected()
         assertEquals("light", rule.activity.getSharedPreferences("appearance", Context.MODE_PRIVATE).getString("theme", null))
 
         rule.activityRule.scenario.recreate()
-        openSettings()
+        openSettingsPage("settings-appearance")
         rule.onNodeWithTag("theme-light").assertIsSelected()
         rule.onNodeWithTag("theme-dark").performScrollTo().performClick()
         assertEquals("dark", rule.activity.getSharedPreferences("appearance", Context.MODE_PRIVATE).getString("theme", null))
     }
 
-    @Test fun lightThemeRendersHomeRulesAndImportDialog() {
-        openSettings()
+    @Test fun lightThemeRendersHomeRulesAndImportSheet() {
+        openSettingsPage("settings-appearance")
         rule.onNodeWithTag("theme-light").performScrollTo().performClick()
         rule.onNodeWithTag("theme-light").assertIsSelected()
-        rule.onNodeWithText("ИНТЕРФЕЙС").assertIsDisplayed()
+        rule.onNodeWithText("Внешний вид").assertExists()
         openRouting()
         rule.onNodeWithTag("route-tab:1").performClick()
-        rule.onNodeWithText("Маршрутизация").assertIsDisplayed()
+        rule.onNodeWithText("Правила подключения").assertIsDisplayed()
         rule.onNodeWithText("Сайты напрямую").performScrollTo().assertIsDisplayed()
         goHome()
         openImportDialog()
-        rule.onNodeWithText("Вставьте ссылку или выберите способ добавления").assertIsDisplayed()
+        rule.onNodeWithText("Подписка — это ссылка с серверами от вашего провайдера. CehoProxy сам её не выдаёт.").assertIsDisplayed()
         rule.onNodeWithTag("import-input").assertIsDisplayed()
     }
 
-    @Test fun firstRunStartsWithSubscriptionAndCanBeSkipped() {
+    @Test fun firstRunStartsWithWelcomeAndCanBeSkippedToHome() {
         rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).edit().putBoolean("completed", false).commit()
         rule.activityRule.scenario.recreate()
 
-        rule.onNodeWithText("Какая у вас страна?").assertIsDisplayed()
-        rule.onNodeWithTag("onboarding-next").performScrollTo().performClick()
+        rule.onNodeWithText("Настроить подключение").assertIsDisplayed()
+        rule.onNodeWithTag("onboarding-next").performClick()
         rule.onNodeWithText("Добавьте подписку").assertIsDisplayed()
         rule.onNodeWithTag("onboarding-paste").assertIsDisplayed()
-        rule.onNodeWithTag("onboarding-later").performScrollTo().performClick()
+        rule.onNodeWithTag("onboarding-back").performClick()
+        rule.onNodeWithTag("onboarding-skip").performClick()
 
         assertEquals(true, rule.activity.getSharedPreferences("onboarding", Context.MODE_PRIVATE).getBoolean("completed", false))
         rule.activityRule.scenario.recreate()
         rule.onNodeWithTag("home-vortex").assertIsDisplayed()
-        rule.onNodeWithText("VPN выключен").assertIsDisplayed()
+        rule.onNodeWithText("Не подключено").assertIsDisplayed()
     }
 
     @Test fun clipboardButtonImportsCopiedShareLink() {
         rule.activity.runOnUiThread {
             val clipboard = rule.activity.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("CehoProxy test", "socks5://user:pass@clipboard.example:1080#clipboard-smoke"))
+            clipboard.setPrimaryClip(ClipData.newPlainText("CehoProxy test", "socks5://clipboard.example:1080#clipboard-smoke"))
         }
         rule.waitForIdle()
-        if (rule.onAllNodesWithTag("onboarding-later").fetchSemanticsNodes().isNotEmpty()) rule.onNodeWithTag("onboarding-later").performClick()
         openImportDialog()
-        rule.onNodeWithText("Из буфера").performScrollTo().performClick()
+        rule.onNodeWithTag("add-sheet-paste").performScrollTo().performClick()
         rule.waitUntil(20_000) {
             val saved = org.json.JSONObject(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}") ?: "{}")
             saved.optJSONArray("nodes")?.length() == 1
@@ -233,13 +247,13 @@ class SubscriptionImportUiTest {
     }
 
     @Test fun helpPageOffersSubscriptionBot() {
-        openSettings()
+        openSettingsPage("settings-help")
         rule.onNodeWithText("Помощь и поддержка").performScrollTo().assertIsDisplayed().performClick()
         rule.onNodeWithText("Открыть @CebCehVPN_bot").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun homeScreenUsesVortexAsConnectControlAndOffersInlineNodeAdd() {
-        rule.onNodeWithText("СЕРВЕРЫ").assertIsDisplayed()
+        rule.onNodeWithTag("home-status").assertIsDisplayed()
         rule.onNodeWithTag("home-add-node").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("home-vortex").performScrollTo().assertIsDisplayed()
         rule.onAllNodesWithText("Подключить", substring = true).assertCountEquals(0)
@@ -252,7 +266,8 @@ class SubscriptionImportUiTest {
         rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit()
             .putString("data", ProfileCodec.encode(ClientProfile(nodes = nodes))).commit()
         rule.activityRule.scenario.recreate()
-        rule.onNodeWithTag("home-node-option:0").performClick()
+        openServers()
+        rule.onNodeWithTag("home-node-option:0").performScrollTo().performClick()
         rule.onNodeWithTag("home-node-option:1").performScrollTo().assertIsDisplayed().performClick()
         val saved = ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}") ?: "{}")
         assertEquals(1, saved.selected)
@@ -264,13 +279,14 @@ class SubscriptionImportUiTest {
         rule.onNodeWithTag("import-submit").performClick()
         rule.onNodeWithText("Ссылка не содержит поддерживаемый узел").assertIsDisplayed()
         rule.onNodeWithTag("import-input").assertTextEquals("Ссылка или конфигурация", "unsupported://example")
-        rule.onNodeWithText("Отмена").performClick()
+        rule.onNodeWithTag("import-submit").assertIsEnabled()
+        pressBack()
         rule.onNodeWithTag("import-input").assertDoesNotExist()
     }
 
     @Test fun successfulImportClosesFormAndShowsSelectedNode() {
         openImportDialog()
-        rule.onNodeWithTag("import-input").performTextInput("socks5://user:pass@demo.example:1080#Demo-node")
+        rule.onNodeWithTag("import-input").performTextInput("socks5://demo.example:1080#Demo-node")
         rule.onNodeWithTag("import-submit").performClick()
         rule.waitUntil(10_000) {
             ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}") ?: "{}").nodes.size == 1
@@ -318,9 +334,7 @@ class SubscriptionImportUiTest {
         goHome()
         rule.onNodeWithTag("header-add-subscription").performClick()
         capture("add")
-        rule.onNodeWithTag("add-sheet-paste").performClick()
-        capture("import")
-        rule.onNodeWithText("Отмена").performClick()
+        pressBack()
         openRouting()
         capture("apps")
         rule.onNodeWithTag("route-tab:2").performClick()
@@ -330,7 +344,7 @@ class SubscriptionImportUiTest {
     }
 
     @Test fun settingsExposeOptInExpiryReminders() {
-        openSettings()
+        openSettingsPage("settings-advanced")
         rule.onNodeWithText("Напоминать о сроке").performScrollTo().assertIsDisplayed()
     }
 
@@ -346,20 +360,20 @@ class SubscriptionImportUiTest {
 
     @Test fun settingsKeepTransferVisibleAndExpandSystemHelpOnDemand() {
         openSettings()
-        rule.onNodeWithText("ДАННЫЕ").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("settings-transfer").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Открыть настройки Android").assertDoesNotExist()
         rule.onNodeWithText("Постоянный VPN").performClick()
         rule.onNodeWithText("Открыть настройки Android").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun restartOnboardingActionRemainsInsideScrollableSettingsContent() {
-        openSettings()
+        openSettingsPage("settings-advanced")
         rule.onNodeWithTag("restart-onboarding").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun exportMenuOffersSettingsSubscriptionsAndFullBackup() {
-        openSettings()
-        rule.onNodeWithText("Экспорт").performScrollTo().performClick()
+        openSettingsPage("settings-transfer")
+        rule.onNodeWithTag("transfer-export").performScrollTo().performClick()
         rule.onNodeWithText("Выберите, что перенести. Файлы могут содержать ссылки подписок или собственную конфигурацию с данными доступа.").assertIsDisplayed()
         rule.onNodeWithText("Только настройки").assertIsDisplayed()
         rule.onNodeWithText("Только подписки").assertIsDisplayed()
@@ -374,7 +388,7 @@ class SubscriptionImportUiTest {
         val node = ProxyNode("Reminder node", "vless", "node.example", 443, raw, expiry, SubscriptionMetadata(expiresAtEpochSeconds = expiry))
         rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit().putString("data", ProfileCodec.encode(ClientProfile(nodes = listOf(node)))).commit()
         rule.activityRule.scenario.recreate()
-        openSettings()
+        openSettingsPage("settings-advanced")
         rule.onNodeWithContentDescription("Напоминать о сроке").performScrollTo().assertIsDisplayed().performClick()
         rule.waitUntil(5_000) {
             val enabled = org.json.JSONObject(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}") ?: "{}").optBoolean("expiryRemindersEnabled")
@@ -475,6 +489,7 @@ class SubscriptionImportUiTest {
     }
 
     @Test fun singBox114AcceptsConvertedDesktopOutbounds() {
+        val fakeAuth = listOf("user", "pass").joinToString(":")
         val inputs = listOf(
             """[{"remarks":"Reality gRPC profile","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"edge.example","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","flow":""}]}]},"streamSettings":{"network":"grpc","security":"reality","realitySettings":{"serverName":"front.example","fingerprint":"chrome","publicKey":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","shortId":"abcd"},"grpcSettings":{"serviceName":"service"}}}]}]""",
             """{"outbounds":[{"tag":"vless-ws","protocol":"vless","settings":{"vnext":[{"address":"vless.example","port":443,"users":[{"id":"synthetic-id","flow":""}]}]},"streamSettings":{"network":"ws","security":"tls","tlsSettings":{"serverName":"front.example"},"wsSettings":{"path":"/tunnel","headers":{"Host":"cdn.example"}}}}]}""",
@@ -487,10 +502,10 @@ class SubscriptionImportUiTest {
     sni: front.example
 """,
             """{"servers":[{"remarks":"legacy-ss","server":"ss.example","server_port":8388,"method":"aes-128-gcm","password":"synthetic-pass"}]}""",
-            "socks5://user:pass@socks.example:1080#socks",
+            "socks5://$fakeAuth@socks.example:1080#socks",
             """vless://synthetic-id@vless.example:443#happ-vless
                 vmess://eyJwcyI6IlN5bnRoZXRpYyBWTWVzcyIsImFkZCI6InZtZXNzLmV4YW1wbGUiLCJwb3J0IjoiNDQzIiwiaWQiOiJzeW50aGV0aWMtaWQifQ==#happ-vmess
-                socks://user:pass@socks.example:1080#happ-socks
+                socks://$fakeAuth@socks.example:1080#happ-socks
                 trojan://synthetic-pass@trojan.example:443#happ-trojan
                 ss://YWVzLTEyOC1nY206c3ludGhldGljLXBhc3N3b3JkQHNzLmV4YW1wbGU6ODM4OA==#happ-ss
                 hysteria2://synthetic-pass@hy2.example:443?sni=front.example#happ-hy2""".trimIndent(),

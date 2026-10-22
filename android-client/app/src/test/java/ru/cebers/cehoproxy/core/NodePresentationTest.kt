@@ -41,4 +41,10 @@ class NodePresentationTest {
         assertEquals("Германия-4", NodePresentation.displayName("Германия-4"))
         assertEquals("[only]", NodePresentation.displayName("[only]"))
     }
+
+    @Test fun titleDropsTheFlagThatTheBadgeAlreadyShows() {
+        assertEquals("Германия G+ CebCeh-master", NodePresentation.withoutFlag("🇩🇪 Германия G+ CebCeh-master"))
+        assertEquals("proxy", NodePresentation.withoutFlag("proxy"))
+        assertEquals("🇩🇪", NodePresentation.withoutFlag("🇩🇪"))
+    }
 }

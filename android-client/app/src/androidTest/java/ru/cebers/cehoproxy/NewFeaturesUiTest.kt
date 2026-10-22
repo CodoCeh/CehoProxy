@@ -26,6 +26,7 @@ class NewFeaturesUiTest {
 
     @Test fun connectionDiagnosticsShowsFourChecks() {
         rule.onNodeWithTag("header-settings").performClick()
+        rule.onNodeWithTag("settings-help").performScrollTo().performClick()
         rule.onNodeWithTag("settings-diagnostics").performScrollTo().performClick()
         rule.waitUntil(15_000) { rule.onAllNodesWithText("Интернет без VPN").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Сеть телефона").assertIsDisplayed()

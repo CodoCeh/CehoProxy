@@ -76,7 +76,8 @@ class HomeNodeLabelsUiTest {
 
     @Test fun homePrimaryActionsRemainAccessible() {
         rule.onNodeWithTag("home-vortex").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithTag("home-node-option:0").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("home-server").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("home-rules").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("header-add-subscription").assertIsDisplayed()
         rule.onNodeWithTag("header-settings").performClick()
         rule.onNodeWithTag("settings-routing").assertIsDisplayed()

@@ -20,6 +20,9 @@ internal object NodePresentation {
     // Node name as the subscription gives it; the server address is only a fallback for nameless nodes.
     fun routeName(node: ProxyNode): String = displayName(node.name).ifBlank { node.server }
 
+    // The badge already shows the flag, so the title does not repeat it.
+    fun withoutFlag(name: String): String = name.replace(Regex("[\\x{1F1E6}-\\x{1F1FF}]{2}"), "").replace(Regex("\\s+"), " ").trim().ifBlank { name }
+
     fun flag(verifiedCountryCode: String?): String? {
         val code = verifiedCountryCode?.trim()?.uppercase(Locale.ROOT) ?: return null
         if (code !in Locale.getISOCountries().toSet()) return null
