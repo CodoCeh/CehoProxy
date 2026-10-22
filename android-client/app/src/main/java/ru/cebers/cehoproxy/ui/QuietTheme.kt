@@ -1,9 +1,29 @@
 package ru.cebers.cehoproxy.ui
 
 import android.app.Activity
+import androidx.compose.foundation.IndicationNodeFactory
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.invalidateDraw
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.ripple.RippleAlpha
+import androidx.compose.material3.RippleConfiguration
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -68,6 +88,41 @@ private val paperDark = darkColorScheme(
     error = Color(0xFFF2857A), onError = Color(0xFF690005), errorContainer = Color(0xFF5A2A25), onErrorContainer = Color(0xFFFFDAD6),
 )
 
+/** Keyboard, D-pad and remote-control focus must be visible: a clear ring around the focused element, a soft veil while pressed. */
+private class FocusRingIndication(private val ring: Color) : IndicationNodeFactory {
+    override fun create(interactionSource: InteractionSource): DelegatableNode = FocusRingNode(interactionSource, ring)
+    override fun equals(other: Any?) = other is FocusRingIndication && other.ring == ring
+    override fun hashCode() = ring.hashCode()
+
+    private class FocusRingNode(private val source: InteractionSource, private val ringColor: Color) : Modifier.Node(), DrawModifierNode {
+        private var focused = false
+        private var pressed = false
+
+        override fun onAttach() {
+            coroutineScope.launch {
+                source.interactions.collect { interaction ->
+                    when (interaction) {
+                        is FocusInteraction.Focus -> focused = true
+                        is FocusInteraction.Unfocus -> focused = false
+                        is PressInteraction.Press -> pressed = true
+                        is PressInteraction.Release, is PressInteraction.Cancel -> pressed = false
+                    }
+                    invalidateDraw()
+                }
+            }
+        }
+
+        override fun ContentDrawScope.draw() {
+            drawContent()
+            val radius = CornerRadius(14.dp.toPx())
+            if (pressed) drawRoundRect(Color.Gray.copy(alpha = .18f), cornerRadius = radius)
+            if (focused) drawRoundRect(ringColor, topLeft = Offset(1.5.dp.toPx(), 1.5.dp.toPx()), size = Size(size.width - 3.dp.toPx(), size.height - 3.dp.toPx()), cornerRadius = radius, style = Stroke(3.dp.toPx()))
+        }
+
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun CehoTheme(preference: ThemePreference, content: @Composable () -> Unit) {
     val useDark = when (preference) {
         ThemePreference.SYSTEM -> isSystemInDarkTheme()
@@ -85,5 +140,11 @@ private val paperDark = darkColorScheme(
             isAppearanceLightNavigationBars = !useDark
         }
     }
-    MaterialTheme(colorScheme = scheme, typography = QuietTypography, shapes = QuietShapes, content = content)
+    MaterialTheme(colorScheme = scheme, typography = QuietTypography, shapes = QuietShapes) {
+        CompositionLocalProvider(
+            LocalIndication provides FocusRingIndication(scheme.onBackground),
+            LocalRippleConfiguration provides RippleConfiguration(scheme.onBackground, RippleAlpha(draggedAlpha = .16f, focusedAlpha = .22f, hoveredAlpha = .08f, pressedAlpha = .16f)),
+            content = content,
+        )
+    }
 }

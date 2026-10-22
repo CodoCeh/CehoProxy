@@ -51,6 +51,7 @@ import ru.cebers.cehoproxy.ui.QuietBadge
 import ru.cebers.cehoproxy.ui.QuietButton
 import ru.cebers.cehoproxy.ui.QuietDivider
 import ru.cebers.cehoproxy.ui.QuietRow
+import ru.cebers.cehoproxy.ui.QuietTextButton
 import ru.cebers.cehoproxy.ui.SlidersGlyph
 
 @Composable private fun rememberClockMillis(stepMillis: Long): Long {
@@ -115,7 +116,7 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
         Column(Modifier.padding(16.dp)) {
             Text("Уведомления выключены", color = colors.onErrorContainer, style = MaterialTheme.typography.titleSmall)
             Text("Вы не увидите, что VPN перестал работать. Включите уведомления для CehoProxy.", color = colors.onErrorContainer, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-            TextButton(onClick = onOpenNotificationSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("Включить") }
+            QuietTextButton(onClick = onOpenNotificationSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("Включить") }
         }
     }
 
@@ -200,7 +201,7 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
                 val meta = listOfNotNull(serverCount?.let { "$it ${SubscriptionSummary.plural(it.toLong(), "сервер", "сервера", "серверов")}" }, updated).joinToString(" · ")
                 if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
-            if (url != null) TextButton(onClick = { onOpenSubscription(url) }, modifier = Modifier.heightIn(min = 48.dp).testTag("home-subscription-details")) {
+            if (url != null) QuietTextButton(onClick = { onOpenSubscription(url) }, modifier = Modifier.heightIn(min = 48.dp).testTag("home-subscription-details")) {
                 Text("Подробнее", color = colors.onSurfaceVariant)
                 Spacer(Modifier.width(2.dp))
                 ChevronGlyph(colors.onSurfaceVariant)

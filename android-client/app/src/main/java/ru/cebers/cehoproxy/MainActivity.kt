@@ -314,8 +314,8 @@ class MainActivity : ComponentActivity() {
                         onDismissRequest = { pendingLinkImport = null },
                         title = { Text("Добавить подписку?") },
                         text = { Text("Ссылка открыта из браузера: ${runCatching { java.net.URL(link).host }.getOrDefault(link)}. Подписка добавится в CehoProxy.") },
-                        confirmButton = { TextButton(onClick = { pendingLinkImport = null; importText(link) }, modifier = Modifier.testTag("link-import-confirm")) { Text("Добавить") } },
-                        dismissButton = { TextButton(onClick = { pendingLinkImport = null }) { Text("Отмена") } },
+                        confirmButton = { QuietTextButton(onClick = { pendingLinkImport = null; importText(link) }, modifier = Modifier.testTag("link-import-confirm")) { Text("Добавить") } },
+                        dismissButton = { QuietTextButton(onClick = { pendingLinkImport = null }) { Text("Отмена") } },
                     )
                 }
             }
@@ -708,7 +708,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     ObserveAutomaticUpdates()
     var pendingNodeCheck by remember { mutableStateOf<String?>(null) }
     pendingNodeCheck?.let { id ->
-        AlertDialog(onDismissRequest = { pendingNodeCheck = null }, title = { Text("Проверить узел?") }, text = { Text("Измерим задержку и скорость через этот узел. Тест загружает и отправляет данные до 20 секунд. Расход зависит от скорости; лучше запускать по Wi-Fi. Маршруты приложений останутся прежними.") }, confirmButton = { TextButton(onClick = { pendingNodeCheck = null; onCheckNode(id) }, modifier = Modifier.testTag("node-check-confirm")) { Text("Начать проверку") } }, dismissButton = { TextButton(onClick = { pendingNodeCheck = null }) { Text("Отмена") } })
+        AlertDialog(onDismissRequest = { pendingNodeCheck = null }, title = { Text("Проверить узел?") }, text = { Text("Измерим задержку и скорость через этот узел. Тест загружает и отправляет данные до 20 секунд. Расход зависит от скорости; лучше запускать по Wi-Fi. Маршруты приложений останутся прежними.") }, confirmButton = { QuietTextButton(onClick = { pendingNodeCheck = null; onCheckNode(id) }, modifier = Modifier.testTag("node-check-confirm")) { Text("Начать проверку") } }, dismissButton = { QuietTextButton(onClick = { pendingNodeCheck = null }) { Text("Отмена") } })
     }
     var page by remember { mutableStateOf("Главная") }
     val pageHistory = remember { mutableStateListOf<String>() }
@@ -730,8 +730,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
             onDismissRequest = { removeCandidate = null },
             title = { Text("Удалить подписку?") },
             text = { Text("Её узлы пропадут из списка. Вернуть можно, добавив ссылку подписки снова.") },
-            confirmButton = { TextButton(onClick = { onRemoveSubscription(url); removeCandidate = null; if (page == "Подписка") backPage() }, modifier = Modifier.testTag("subscription-remove-confirm")) { Text("Удалить", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { removeCandidate = null }) { Text("Отмена") } },
+            confirmButton = { QuietTextButton(onClick = { onRemoveSubscription(url); removeCandidate = null; if (page == "Подписка") backPage() }, modifier = Modifier.testTag("subscription-remove-confirm")) { Text("Удалить", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { QuietTextButton(onClick = { removeCandidate = null }) { Text("Отмена") } },
         )
     }
     var removeNodeRaw by remember { mutableStateOf<String?>(null) }
@@ -741,8 +741,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
             onDismissRequest = { removeNodeRaw = null },
             title = { Text("Удалить сервер?") },
             text = { Text("«${target?.let { NodePresentation.displayName(it.name) } ?: "Сервер"}» исчезнет из списка вместе с сохранёнными для него логином и паролем. Добавить его можно снова.") },
-            confirmButton = { TextButton(onClick = { removeNodeRaw = null; onSaveRouteSettings(NodeRemovalPolicy.remove(profile, raw)) }, modifier = Modifier.testTag("node-remove-confirm")) { Text("Удалить", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { removeNodeRaw = null }) { Text("Отмена") } },
+            confirmButton = { QuietTextButton(onClick = { removeNodeRaw = null; onSaveRouteSettings(NodeRemovalPolicy.remove(profile, raw)) }, modifier = Modifier.testTag("node-remove-confirm")) { Text("Удалить", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { QuietTextButton(onClick = { removeNodeRaw = null }) { Text("Отмена") } },
         )
     }
     var shareCandidate by remember { mutableStateOf<String?>(null) }
@@ -810,11 +810,11 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     Spacer(Modifier.width(10.dp))
                     Text("CehoProxy", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     if (onboardingCompleted) {
-                        IconButton(onClick = { showAddSheet = true }, modifier = Modifier.size(48.dp).testTag("header-add-subscription").semantics { contentDescription = "Добавить подписку" }) { PlusGlyph(MaterialTheme.colorScheme.primary) }
-                        IconButton(onClick = { openPage("Настройки") }, modifier = Modifier.size(48.dp).testTag("header-settings").semantics { contentDescription = "Настройки" }) { GearGlyph(MaterialTheme.colorScheme.onSurfaceVariant) }
+                        IconButton(onClick = { showAddSheet = true }, modifier = Modifier.size(48.dp).focusRing(24.dp).testTag("header-add-subscription").semantics { contentDescription = "Добавить подписку" }) { PlusGlyph(MaterialTheme.colorScheme.primary) }
+                        IconButton(onClick = { openPage("Настройки") }, modifier = Modifier.size(48.dp).focusRing(24.dp).testTag("header-settings").semantics { contentDescription = "Настройки" }) { GearGlyph(MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 } else {
-                    IconButton(onClick = { backPage() }, modifier = Modifier.size(48.dp).testTag("page-back").semantics { contentDescription = "Назад" }) { BackGlyph(MaterialTheme.colorScheme.onSurface) }
+                    IconButton(onClick = { backPage() }, modifier = Modifier.size(48.dp).focusRing(24.dp).testTag("page-back").semantics { contentDescription = "Назад" }) { BackGlyph(MaterialTheme.colorScheme.onSurface) }
                     Spacer(Modifier.width(4.dp))
                     Text("CehoProxy", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -910,7 +910,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                         onClick = { routeTab = index },
                                         shape = RoundedCornerShape(12.dp),
                                         color = if (routeTab == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
-                                        modifier = Modifier.weight(1f).heightIn(min = 42.dp).testTag("route-tab:$index"),
+                                        modifier = Modifier.weight(1f).focusRing(12.dp).heightIn(min = 48.dp).testTag("route-tab:$index"),
                                     ) {
                                         Box(Modifier.fillMaxSize().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
                                             Text(label, style = MaterialTheme.typography.labelLarge, color = if (routeTab == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -918,7 +918,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                     }
                                 }
                             }
-                            TextButton(onClick = { showAdvancedRoutes = !showAdvancedRoutes }, contentPadding = PaddingValues(0.dp), modifier = Modifier.padding(top = 4.dp)) { Text(if (showAdvancedRoutes) "Скрыть дополнительные правила" else "Дополнительно") }
+                            QuietTextButton(onClick = { showAdvancedRoutes = !showAdvancedRoutes }, contentPadding = PaddingValues(0.dp), modifier = Modifier.padding(top = 4.dp)) { Text(if (showAdvancedRoutes) "Скрыть дополнительные правила" else "Дополнительно") }
                             when (routeTab) {
                                 0 -> {
                                     val labels = profile.apps.map { name -> appChoices.firstOrNull { it.packageName == name }?.label ?: name }
@@ -1144,7 +1144,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             val allRouteIds = profile.nodes.map { it.routeId }
                             if (profile.nodes.isEmpty()) EmptyInstruction("Серверов пока нет", "Добавьте подписку или ссылку от провайдера.")
                             else {
-                                OutlinedTextField(value = nodeSearch, onValueChange = { nodeSearch = it }, placeholder = { Text("Найти страну или сервер") }, singleLine = true, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().testTag("subscriptions-search"))
+                                OutlinedTextField(value = nodeSearch, onValueChange = { nodeSearch = it }, placeholder = { Text("Найти страну или сервер") }, singleLine = true, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().dpadLeavesField().testTag("subscriptions-search"))
                                 if (profile.nodes.size > 1) {
                                     QuietDivider(Modifier.padding(top = 16.dp))
                                     QuietRow(
@@ -1177,13 +1177,13 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                                     Text(source.removePrefix("Подписка: "), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                                     groupUrl?.let { url -> profile.subscriptionFetchedAtByUrl[url]?.let { at -> Text(SubscriptionRefreshPolicy.fetchedLabel(at, System.currentTimeMillis()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("subscription-fetched:$index")) } }
                                                 }
-                                                if (groupUrl != null) TextButton(onClick = { subscriptionPageUrl = groupUrl; openPage("Подписка") }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-manage:$index")) { Text("Управлять ›") }
+                                                if (groupUrl != null) QuietTextButton(onClick = { subscriptionPageUrl = groupUrl; openPage("Подписка") }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-manage:$index")) { Text("Управлять ›") }
                                             }
                                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                                                TextButton(onClick = { expandedSubscriptionSource = if (expandedSubscriptionSource == groupKey) null else groupKey }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-details-toggle:$index")) { Text(if (expandedSubscriptionSource == groupKey) "Скрыть сведения" else "Сведения") }
-                                                TextButton(onClick = { collapsedSubscriptions = if (subscriptionKey in collapsedSubscriptions) collapsedSubscriptions - subscriptionKey else collapsedSubscriptions + subscriptionKey }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-collapse:$index")) { Text(if (subscriptionKey in collapsedSubscriptions) "Развернуть" else "Свернуть") }
-                                                TextButton(onClick = { onCheckNodes(groupRouteIds) }, enabled = groupRouteIds.isNotEmpty(), modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-check-group:$subscriptionKey")) { Text("Проверить задержку") }
-                                                TextButton(onClick = { groupUrl?.let(onRefreshSubscription) }, enabled = groupUrl != null && !groupRefreshing, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-refresh-group:$subscriptionKey")) { Text(if (groupRefreshing) "Обновляем…" else "Обновить") }
+                                                QuietTextButton(onClick = { expandedSubscriptionSource = if (expandedSubscriptionSource == groupKey) null else groupKey }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-details-toggle:$index")) { Text(if (expandedSubscriptionSource == groupKey) "Скрыть сведения" else "Сведения") }
+                                                QuietTextButton(onClick = { collapsedSubscriptions = if (subscriptionKey in collapsedSubscriptions) collapsedSubscriptions - subscriptionKey else collapsedSubscriptions + subscriptionKey }, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-collapse:$index")) { Text(if (subscriptionKey in collapsedSubscriptions) "Развернуть" else "Свернуть") }
+                                                QuietTextButton(onClick = { onCheckNodes(groupRouteIds) }, enabled = groupRouteIds.isNotEmpty(), modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-check-group:$subscriptionKey")) { Text("Проверить задержку") }
+                                                QuietTextButton(onClick = { groupUrl?.let(onRefreshSubscription) }, enabled = groupUrl != null && !groupRefreshing, modifier = Modifier.heightIn(min = 48.dp).testTag("subscription-refresh-group:$subscriptionKey")) { Text(if (groupRefreshing) "Обновляем…" else "Обновить") }
                                             }
                                             QuietDivider()
                                             QuietRow(
@@ -1277,19 +1277,19 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 },
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp),
                             )
-                            OutlinedTextField(value = manualName, onValueChange = { manualName = it }, label = { Text("Название (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-name"))
-                            OutlinedTextField(value = manualHost, onValueChange = { manualHost = it; manualError = null }, label = { Text("Адрес сервера") }, placeholder = { Text("proxy.example.com или 203.0.113.5") }, singleLine = true, shape = fieldShape, enabled = !importing, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-host"))
-                            OutlinedTextField(value = manualPort, onValueChange = { v -> manualPort = v.filter(Char::isDigit).take(5); manualError = null }, label = { Text("Порт") }, placeholder = { Text(protocol.defaultPort.toString()) }, singleLine = true, shape = fieldShape, enabled = !importing, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-port"))
-                            OutlinedTextField(value = manualUser, onValueChange = { manualUser = it; manualError = null }, label = { Text(if (protocol.loginRequired) "Логин" else "Логин (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-user"))
+                            OutlinedTextField(value = manualName, onValueChange = { manualName = it }, label = { Text("Название (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-name"))
+                            OutlinedTextField(value = manualHost, onValueChange = { manualHost = it; manualError = null }, label = { Text("Адрес сервера") }, placeholder = { Text("proxy.example.com или 203.0.113.5") }, singleLine = true, shape = fieldShape, enabled = !importing, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-host"))
+                            OutlinedTextField(value = manualPort, onValueChange = { v -> manualPort = v.filter(Char::isDigit).take(5); manualError = null }, label = { Text("Порт") }, placeholder = { Text(protocol.defaultPort.toString()) }, singleLine = true, shape = fieldShape, enabled = !importing, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-port"))
+                            OutlinedTextField(value = manualUser, onValueChange = { manualUser = it; manualError = null }, label = { Text(if (protocol.loginRequired) "Логин" else "Логин (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-user"))
                             OutlinedTextField(
                                 value = manualPassword, onValueChange = { manualPassword = it; manualError = null }, label = { Text(if (protocol.loginRequired) "Пароль" else "Пароль (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing,
                                 visualTransformation = if (manualShowPassword) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                trailingIcon = { TextButton(onClick = { manualShowPassword = !manualShowPassword }, modifier = Modifier.heightIn(min = 48.dp).testTag("manual-password-toggle")) { Text(if (manualShowPassword) "Скрыть" else "Показать") } },
+                                trailingIcon = { QuietTextButton(onClick = { manualShowPassword = !manualShowPassword }, modifier = Modifier.heightIn(min = 48.dp).testTag("manual-password-toggle")) { Text(if (manualShowPassword) "Скрыть" else "Показать") } },
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-password"),
                             )
                             if (protocol == ManualProtocol.HTTPS) {
-                                OutlinedTextField(value = manualSni, onValueChange = { manualSni = it }, label = { Text("Имя сервера для TLS (SNI)") }, placeholder = { Text("по умолчанию — адрес сервера") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-sni"))
+                                OutlinedTextField(value = manualSni, onValueChange = { manualSni = it }, label = { Text("Имя сервера для TLS (SNI)") }, placeholder = { Text("по умолчанию — адрес сервера") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-sni"))
                             }
                             val shownError = manualError ?: result?.takeIf { it.error && it.id != manualResultBaseline && !importing }?.message
                             if (importing) {
@@ -1410,7 +1410,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp).imePadding().testTag("add-sheet")) {
                 Text("Добавить подписку", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                 Text("Подписка — это ссылка с серверами от вашего провайдера. CehoProxy сам её не выдаёт.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
-                OutlinedTextField(value = importValue, onValueChange = { importValue = it }, label = { Text("Ссылка или конфигурация") }, enabled = !importing, minLines = 2, maxLines = 4, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("import-input"))
+                OutlinedTextField(value = importValue, onValueChange = { importValue = it }, label = { Text("Ссылка или конфигурация") }, enabled = !importing, minLines = 2, maxLines = 4, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).dpadLeavesField().testTag("import-input"))
                 QuietButton("Добавить подписку", { onTextImport(importValue) }, Modifier.fillMaxWidth().padding(top = 12.dp).testTag("import-submit"), enabled = !importing && importValue.isNotBlank())
                 if (importing) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("import-progress"))
@@ -1463,7 +1463,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     Text(step.result, style = MaterialTheme.typography.bodyMedium, color = if (step.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 12.dp))
                 }
             }
-        }, confirmButton = { TextButton(onClick = { diagnostics = null }) { Text("Закрыть") } })
+        }, confirmButton = { QuietTextButton(onClick = { diagnostics = null }) { Text("Закрыть") } })
     }
     if (showAppRoutePicker) {
         val excluded = if (profile.excludeSelectedApps) appsValue.split(',', '\n').map(String::trim).toSet() else emptySet()
@@ -1473,19 +1473,19 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
             title = { Text("Приложение для отдельного выхода") },
             text = {
                 Column {
-                    OutlinedTextField(value = routeAppSearch, onValueChange = { routeAppSearch = it }, label = { Text("Поиск") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = routeAppSearch, onValueChange = { routeAppSearch = it }, label = { Text("Поиск") }, singleLine = true, modifier = Modifier.fillMaxWidth().dpadLeavesField())
                     LazyColumn(Modifier.heightIn(max = 420.dp)) {
                         items(candidates, key = { it.packageName }) { app ->
                             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
                                 androidx.compose.foundation.Image(app.icon.toBitmap(48, 48).asImageBitmap(), contentDescription = null, modifier = Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)))
                                 Column(Modifier.weight(1f).padding(start = 10.dp)) { Text(app.label, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(app.packageName, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                                TextButton(onClick = { appNodeRoutes = appNodeRoutes + (app.packageName to ""); showAppRoutePicker = false }) { Text("Добавить") }
+                                QuietTextButton(onClick = { appNodeRoutes = appNodeRoutes + (app.packageName to ""); showAppRoutePicker = false }) { Text("Добавить") }
                             }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showAppRoutePicker = false }) { Text("Готово") } },
+            confirmButton = { QuietTextButton(onClick = { showAppRoutePicker = false }) { Text("Готово") } },
         )
     }
 
@@ -1498,7 +1498,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                 }
                 Text(if (profile.excludeSelectedApps) "Отмеченные приложения останутся напрямую." else "Отмеченные приложения пойдут через VPN.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
                 if (!profile.excludeSelectedApps) {
-                    TextButton(onClick = {
+                    QuietTextButton(onClick = {
                         val starterApps = StarterAppPolicy.installed(appChoices.map { it.packageName })
                         selectedApps = selectedApps + starterApps
                         appSearch = ""
@@ -1508,7 +1508,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     Text("Чтобы добавить стартовый набор, выключите переключатель выше.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
                 }
                 pickerNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 8.dp)) }
-                OutlinedTextField(value = appSearch, onValueChange = { appSearch = it }, label = { Text("Поиск") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = appSearch, onValueChange = { appSearch = it }, label = { Text("Поиск") }, singleLine = true, modifier = Modifier.fillMaxWidth().dpadLeavesField())
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     items(appChoices.filter { it.label.contains(appSearch, true) || it.packageName.contains(appSearch, true) }, key = { it.packageName }) { app ->
                         Row(Modifier.fillMaxWidth().clickable { selectedApps = if (app.packageName in selectedApps) selectedApps - app.packageName else selectedApps + app.packageName }.heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1519,7 +1519,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     }
                 }
             }
-        }, confirmButton = { TextButton(onClick = { appsValue = selectedApps.sorted().joinToString(", "); onApps(appsValue); showAppPicker = false }) { Text("Готово") } }, dismissButton = { TextButton(onClick = { showAppPicker = false }) { Text("Отмена") } })
+        }, confirmButton = { QuietTextButton(onClick = { appsValue = selectedApps.sorted().joinToString(", "); onApps(appsValue); showAppPicker = false }) { Text("Готово") } }, dismissButton = { QuietTextButton(onClick = { showAppPicker = false }) { Text("Отмена") } })
     }
 }
 
@@ -1542,16 +1542,26 @@ private fun FirstRunOnboarding(
     BackHandler(enabled = step > 0) { step -= 1 }
     val colors = MaterialTheme.colorScheme
     Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp).widthIn(max = 760.dp)) {
-        if (step > 0) IconButton(onClick = { step -= 1 }, modifier = Modifier.size(48.dp).testTag("onboarding-back").semantics { contentDescription = "Назад" }) { BackGlyph(colors.onSurface) }
+        if (step > 0) IconButton(onClick = { step -= 1 }, modifier = Modifier.size(48.dp).focusRing(24.dp).testTag("onboarding-back").semantics { contentDescription = "Назад" }) { BackGlyph(colors.onSurface) }
         when (step) {
             0 -> {
-                VortexArt(Modifier.fillMaxWidth().padding(top = 8.dp).height(220.dp))
-                Text("CEHOPROXY", style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp), color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 24.dp))
-                Text("Интернет.\nВ вашем ритме.", style = cappedStyle(MaterialTheme.typography.displaySmall), color = colors.onSurface, modifier = Modifier.padding(top = 8.dp))
-                Text("Добавьте подписку и выберите, какие приложения будут работать через VPN.", style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
-                QuietButton("Настроить подключение", { step = 1 }, Modifier.fillMaxWidth().padding(top = 28.dp).testTag("onboarding-next"), leading = { ArrowRightGlyph(colors.onPrimary) })
-                TextButton(onClick = onFinish, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).testTag("onboarding-skip")) { Text("Уже настроено? Открыть главную", color = colors.primary) }
-                Text("Подписку предоставляет ваш провайдер", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                val config = androidx.compose.ui.platform.LocalConfiguration.current
+                val sideBySide = config.screenWidthDp >= 600 && config.screenHeightDp < 700
+                val welcomeText: @Composable ColumnScope.() -> Unit = {
+                    Text("CEHOPROXY", style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp), color = colors.onSurfaceVariant, modifier = Modifier.padding(top = if (sideBySide) 0.dp else 24.dp))
+                    Text("Интернет.\nВ вашем ритме.", style = cappedStyle(MaterialTheme.typography.displaySmall), color = colors.onSurface, modifier = Modifier.padding(top = 8.dp))
+                    Text("Добавьте подписку и выберите, какие приложения будут работать через VPN.", style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+                    QuietButton("Настроить подключение", { step = 1 }, Modifier.fillMaxWidth().padding(top = 28.dp).testTag("onboarding-next"), leading = { ArrowRightGlyph(colors.onPrimary) })
+                    QuietTextButton(onClick = onFinish, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).testTag("onboarding-skip")) { Text("Уже настроено? Открыть главную", color = colors.primary) }
+                    Text("Подписку предоставляет ваш провайдер", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                }
+                if (sideBySide) Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    VortexArt(Modifier.weight(1f).height(280.dp))
+                    Column(Modifier.weight(1f), content = welcomeText)
+                } else {
+                    VortexArt(Modifier.fillMaxWidth().padding(top = 8.dp).height(220.dp))
+                    welcomeText()
+                }
             }
             1 -> {
                 Text("Добавьте подписку", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
@@ -1573,7 +1583,7 @@ private fun FirstRunOnboarding(
                         }
                     }
                     notice?.let { Text(it, color = if (it.contains("ошиб", true) || it.contains("не удалось", true) || it.contains("не содержит", true) || it.contains("нет ", true)) colors.error else colors.primary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp)) }
-                    TextButton(onClick = { step = 2 }, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 12.dp).heightIn(min = 48.dp).testTag("onboarding-later")) { Text("Добавить позже") }
+                    QuietTextButton(onClick = { step = 2 }, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 12.dp).heightIn(min = 48.dp).testTag("onboarding-later")) { Text("Добавить позже") }
                 }
             }
             2 -> {
@@ -1711,7 +1721,7 @@ internal fun TunnelVortex(
     val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
     Surface(
         onClick = onClick,
-        modifier = modifier.height(220.dp).focusable().testTag("home-vortex").semantics {
+        modifier = modifier.height(220.dp).focusRing(24.dp).focusable().testTag("home-vortex").semantics {
             contentDescription = when {
                 connected -> "VPN подключён. Нажмите, чтобы выключить."
                 running -> "Идёт подключение. Нажмите, чтобы отменить."
@@ -1847,7 +1857,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
     val subColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().padding(vertical = 3.dp).heightIn(min = 64.dp).alpha(if (excludedLabel != null) .5f else 1f),
+        modifier = modifier.fillMaxWidth().padding(vertical = 3.dp).focusRing(16.dp).heightIn(min = 64.dp).alpha(if (excludedLabel != null) .5f else 1f),
         shape = RoundedCornerShape(16.dp),
         color = if (selected) colors.primaryContainer else Color.Transparent,
     ) {
@@ -1858,8 +1868,8 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
                 Text(node.type.uppercase() + " · " + NodeMetricsPolicy.summary(measurement), color = subColor, style = MaterialTheme.typography.bodySmall)
                 excludedLabel?.let { Text(it, color = colors.error, style = MaterialTheme.typography.labelSmall) }
                 if (onCheck != null || onRemove != null) Row {
-                    if (onCheck != null) TextButton(onClick = onCheck, contentPadding = PaddingValues(end = 12.dp), modifier = Modifier.heightIn(min = 48.dp)) { Text(if (measurement?.testing == true) "Отмена" else "Скорость") }
-                    if (onRemove != null) TextButton(onClick = onRemove, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.heightIn(min = 48.dp).let { if (removeTag.isNotEmpty()) it.testTag(removeTag) else it }) { Text("Удалить", color = colors.error) }
+                    if (onCheck != null) QuietTextButton(onClick = onCheck, contentPadding = PaddingValues(end = 12.dp), modifier = Modifier.heightIn(min = 48.dp)) { Text(if (measurement?.testing == true) "Отмена" else "Скорость") }
+                    if (onRemove != null) QuietTextButton(onClick = onRemove, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.heightIn(min = 48.dp).let { if (removeTag.isNotEmpty()) it.testTag(removeTag) else it }) { Text("Удалить", color = colors.error) }
                 }
             }
             if (onAutoToggle != null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2209,10 +2219,10 @@ private fun telegramLink(metadata: SubscriptionMetadata): String? {
         metadata.announcement?.let { Text(it, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
         metadata.infoText?.let { Text(it, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
         if (metadata.notifyOnExpiry) Text("Уведомления от провайдера: включены", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        metadata.supportUrl?.let { TextButton(onClick = { onOpenLink(it) }) { Text(if (it.contains("t.me/", true) || it.startsWith("tg:")) "Telegram поддержки" else "Поддержка", color = MaterialTheme.colorScheme.primary) } }
-        metadata.webPageUrl?.let { TextButton(onClick = { onOpenLink(it) }) { Text("Сайт подписки", color = MaterialTheme.colorScheme.primary) } }
-        if (metadata.infoButtonUrl != null) TextButton(onClick = { onOpenLink(metadata.infoButtonUrl) }) { Text(metadata.infoButtonText ?: "Подробнее", color = MaterialTheme.colorScheme.primary) }
-        metadata.renewUrl?.let { TextButton(onClick = { onOpenLink(it) }) { Text("Продлить подписку", color = MaterialTheme.colorScheme.primary) } }
+        metadata.supportUrl?.let { QuietTextButton(onClick = { onOpenLink(it) }) { Text(if (it.contains("t.me/", true) || it.startsWith("tg:")) "Telegram поддержки" else "Поддержка", color = MaterialTheme.colorScheme.primary) } }
+        metadata.webPageUrl?.let { QuietTextButton(onClick = { onOpenLink(it) }) { Text("Сайт подписки", color = MaterialTheme.colorScheme.primary) } }
+        if (metadata.infoButtonUrl != null) QuietTextButton(onClick = { onOpenLink(metadata.infoButtonUrl) }) { Text(metadata.infoButtonText ?: "Подробнее", color = MaterialTheme.colorScheme.primary) }
+        metadata.renewUrl?.let { QuietTextButton(onClick = { onOpenLink(it) }) { Text("Продлить подписку", color = MaterialTheme.colorScheme.primary) } }
     }
 }
 

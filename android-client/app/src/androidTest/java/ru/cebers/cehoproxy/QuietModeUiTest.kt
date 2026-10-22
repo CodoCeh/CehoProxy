@@ -89,14 +89,14 @@ class QuietModeUiTest {
             subscriptionNode("Node-2", secondUrl, "Вторая", expiresAt = now + 40 * 86_400L + 3_600),
         )
         install(ClientProfile(nodes = nodes, subscriptionUrls = listOf(firstUrl, secondUrl), apps = listOf("a.b")))
-        rule.onNodeWithText("Первая").assertIsDisplayed()
-        rule.onNodeWithTag("home-term").assertTextContains("10 дней", substring = true)
+        rule.onNodeWithText("Первая").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("home-term").performScrollTo().assertTextContains("10 дней", substring = true)
         rule.onNodeWithTag("home-server").performClick()
         rule.onNodeWithTag("home-node-option:1").performScrollTo().performClick()
         assertEquals(1, stored().selected)
         rule.onNodeWithTag("page-back").performClick()
-        rule.onNodeWithText("Вторая").assertIsDisplayed()
-        rule.onNodeWithTag("home-term").assertTextContains("40 дней", substring = true)
+        rule.onNodeWithText("Вторая").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("home-term").performScrollTo().assertTextContains("40 дней", substring = true)
     }
 
     @Test fun routeModeIsAnExplicitChoiceBetweenSelectedAndAllExceptSelected() {

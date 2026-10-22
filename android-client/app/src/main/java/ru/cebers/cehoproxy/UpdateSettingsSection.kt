@@ -1,5 +1,6 @@
 package ru.cebers.cehoproxy
 
+import ru.cebers.cehoproxy.ui.QuietTextButton
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*

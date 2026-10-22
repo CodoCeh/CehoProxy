@@ -150,7 +150,7 @@ class SubscriptionImportUiTest {
         rule.activityRule.scenario.recreate()
         rule.onNodeWithTag("onboarding-skip").performScrollTo().performClick()
         openRouting()
-        rule.onNodeWithTag("route-tab:2").performClick()
+        rule.onNodeWithTag("route-tab:2").performScrollTo().performClick()
         rule.onNodeWithTag("country-selector").performScrollTo().performClick()
         rule.onNodeWithTag("country-option:ru").performClick()
         rule.onNodeWithTag("country-coverage").performScrollTo().assertTextEquals("Домены и IP-адреса. Наборы правил сохранены в приложении и доступны без сети. Ручные правила сайтов важнее.")
@@ -162,7 +162,7 @@ class SubscriptionImportUiTest {
         assertEquals(false, saved.excludeSelectedApps)
         rule.activityRule.scenario.recreate()
         openRouting()
-        rule.onNodeWithTag("route-tab:2").performClick()
+        rule.onNodeWithTag("route-tab:2").performScrollTo().performClick()
         rule.onNodeWithTag("country-selector").performScrollTo().assertTextEquals("Россия").performClick()
         rule.onNodeWithTag("country-option:none").performClick()
         saved = ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}")!!)
@@ -176,7 +176,7 @@ class SubscriptionImportUiTest {
         rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit().putString("data", ProfileCodec.encode(profile)).commit()
         rule.activityRule.scenario.recreate()
         openRouting()
-        rule.onNodeWithTag("route-tab:2").performClick()
+        rule.onNodeWithTag("route-tab:2").performScrollTo().performClick()
         rule.onNodeWithTag("country-selector").assertIsNotEnabled()
         rule.onNodeWithTag("country-coverage").assertTextEquals("Правила страны CehoProxy не применяются к импортированной конфигурации. Её маршруты сохраняются.")
         val saved = ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}")!!)
@@ -203,7 +203,7 @@ class SubscriptionImportUiTest {
         rule.onNodeWithTag("theme-light").assertIsSelected()
         rule.onNodeWithText("Внешний вид").assertExists()
         openRouting()
-        rule.onNodeWithTag("route-tab:1").performClick()
+        rule.onNodeWithTag("route-tab:1").performScrollTo().performClick()
         rule.onNodeWithText("Правила подключения").assertIsDisplayed()
         rule.onNodeWithText("Сайты напрямую").performScrollTo().assertIsDisplayed()
         goHome()
@@ -280,8 +280,12 @@ class SubscriptionImportUiTest {
         rule.onNodeWithText("Ссылка не содержит поддерживаемый узел").assertIsDisplayed()
         rule.onNodeWithTag("import-input").assertTextEquals("Ссылка или конфигурация", "unsupported://example")
         rule.onNodeWithTag("import-submit").assertIsEnabled()
-        pressBack()
-        if (rule.onAllNodesWithTag("import-input").fetchSemanticsNodes().isNotEmpty()) pressBack()
+        repeat(3) {
+            if (rule.onAllNodesWithTag("import-input").fetchSemanticsNodes().isNotEmpty()) {
+                pressBack()
+                runCatching { rule.waitUntil(2_000) { rule.onAllNodesWithTag("import-input").fetchSemanticsNodes().isEmpty() } }
+            }
+        }
         rule.waitUntil(5_000) { rule.onAllNodesWithTag("import-input").fetchSemanticsNodes().isEmpty() }
         rule.onNodeWithTag("import-input").assertDoesNotExist()
     }
@@ -340,7 +344,7 @@ class SubscriptionImportUiTest {
         pressBack()
         openRouting()
         capture("apps")
-        rule.onNodeWithTag("route-tab:2").performClick()
+        rule.onNodeWithTag("route-tab:2").performScrollTo().performClick()
         capture("rules")
         openSettings()
         capture("settings")
@@ -353,7 +357,7 @@ class SubscriptionImportUiTest {
 
     @Test fun siteListLabelExplainsBothDirections() {
         openRouting()
-        rule.onNodeWithTag("route-tab:1").performClick()
+        rule.onNodeWithTag("route-tab:1").performScrollTo().performClick()
         rule.onNodeWithText("Сайты напрямую").performScrollTo().assertIsDisplayed()
         rule.onNodeWithContentDescription("Через VPN только указанные сайты").performScrollTo().performClick()
         rule.onNodeWithText("Сайты через VPN").assertExists()
@@ -467,14 +471,14 @@ class SubscriptionImportUiTest {
         rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).edit().putString("data", ProfileCodec.encode(profile)).commit()
         rule.activityRule.scenario.recreate()
         openRouting()
-        rule.onNodeWithText("Дополнительно").performClick()
+        rule.onNodeWithText("Дополнительно").performScrollTo().performClick()
         rule.onNodeWithText("ВЫХОД ДЛЯ ПРИЛОЖЕНИЙ").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithTag("route-tab:1").performClick()
+        rule.onNodeWithTag("route-tab:1").performScrollTo().performClick()
         rule.onNodeWithText("ВЫХОД ДЛЯ САЙТОВ").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("route-select:chat.example").performScrollTo().performClick()
         rule.onNodeWithText("Node-B").performClick()
         rule.onNodeWithTag("route-select:chat.example").assertTextEquals("Node-B")
-        rule.onNodeWithTag("route-tab:2").performClick()
+        rule.onNodeWithTag("route-tab:2").performScrollTo().performClick()
         rule.onNodeWithText("Автоматически выбирать узел").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("routing-save").performScrollTo().performClick()
         rule.onNodeWithText("Правила сохранены").performScrollTo().assertIsDisplayed()

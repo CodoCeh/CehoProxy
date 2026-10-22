@@ -41,6 +41,11 @@ class ManualConnectionUiTest {
         rule.activityRule.scenario.recreate()
     }
 
+    private fun assumeTouchDevice() = org.junit.Assume.assumeFalse(
+        "On Android TV a focused text field keeps the window redrawing and the Compose test never goes idle",
+        rule.activity.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK),
+    )
+
     private fun openManualForm() {
         rule.onNodeWithTag("header-add-subscription").performClick()
         rule.onNodeWithTag("add-sheet-manual").performScrollTo().performClick()
@@ -51,6 +56,7 @@ class ManualConnectionUiTest {
     @After fun cleanup() { prefs("profile").edit().remove("data").commit() }
 
     @Test fun formAddsSocksServerWithSpecialCharacterPasswordAndEngineAcceptsIt() {
+        assumeTouchDevice()
         install(ClientProfile(apps = listOf("a.b")))
         openManualForm()
         rule.onNodeWithTag("manual-protocol:SOCKS5").performClick()
@@ -74,10 +80,13 @@ class ManualConnectionUiTest {
     }
 
     @Test fun httpsProxyWithoutLoginShowsTheReasonAndAddsNothing() {
+        assumeTouchDevice()
         install(ClientProfile(apps = listOf("a.b")))
         openManualForm()
         rule.onNodeWithTag("manual-host").performTextInput("proxy.example")
+        rule.waitUntil(5_000) { rule.onAllNodes(androidx.compose.ui.test.hasTestTag("manual-submit") and androidx.compose.ui.test.isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("manual-submit").performScrollTo().performClick()
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag("manual-error").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("manual-error").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Для HTTPS-прокси нужны логин и пароль").assertIsDisplayed()
         assertTrue(stored().nodes.isEmpty())

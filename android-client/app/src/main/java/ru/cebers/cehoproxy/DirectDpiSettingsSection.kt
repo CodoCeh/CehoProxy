@@ -1,5 +1,6 @@
 package ru.cebers.cehoproxy
 
+import ru.cebers.cehoproxy.ui.QuietTextButton
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -26,20 +27,20 @@ internal fun DirectDpiSettingsSection(profile: ClientProfile, apps: List<AppChoi
         profile.localDpiApps.forEach { packageName ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text(apps.firstOrNull { it.packageName == packageName }?.label ?: packageName, modifier = Modifier.weight(1f))
-                TextButton(onClick = { setMode(packageName, false) }, enabled = enabled, modifier = Modifier.testTag("dpi-disable:$packageName")) { Text("Через VPN-узел") }
+                QuietTextButton(onClick = { setMode(packageName, false) }, enabled = enabled, modifier = Modifier.testTag("dpi-disable:$packageName")) { Text("Через VPN-узел") }
             }
         }
         OutlinedButton(onClick = { choosing = true }, enabled = enabled, modifier = Modifier.testTag("dpi-app-picker")) { Text("Выбрать приложение") }
         val youtube = apps.firstOrNull { it.packageName == "com.google.android.youtube" }
-        if (youtube != null && youtube.packageName !in profile.localDpiApps) TextButton(onClick = { setMode(youtube.packageName, true) }, enabled = enabled, modifier = Modifier.testTag("dpi-add-youtube")) { Text("Добавить YouTube") }
+        if (youtube != null && youtube.packageName !in profile.localDpiApps) QuietTextButton(onClick = { setMode(youtube.packageName, true) }, enabled = enabled, modifier = Modifier.testTag("dpi-add-youtube")) { Text("Добавить YouTube") }
     }
     if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text("Обход DPI для приложения") }, text = {
         Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
             Text("Выберите приложение в вашем туннеле. Его IP останется прежним.", style = MaterialTheme.typography.bodySmall)
             included.filterNot { it.packageName in profile.localDpiApps }.forEach { app ->
-                TextButton(onClick = { setMode(app.packageName, true); choosing = false }, modifier = Modifier.testTag("dpi-enable:${app.packageName}")) { Text(app.label) }
+                QuietTextButton(onClick = { setMode(app.packageName, true); choosing = false }, modifier = Modifier.testTag("dpi-enable:${app.packageName}")) { Text(app.label) }
             }
             if (included.isEmpty()) Text("Сначала выберите приложения для туннеля.")
         }
-    }, confirmButton = { TextButton(onClick = { choosing = false }) { Text("Закрыть") } })
+    }, confirmButton = { QuietTextButton(onClick = { choosing = false }) { Text("Закрыть") } })
 }

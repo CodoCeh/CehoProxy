@@ -3,6 +3,7 @@ package ru.cebers.cehoproxy.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +27,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -107,6 +119,39 @@ import androidx.compose.ui.unit.sp
 @Composable internal fun CaptionLabel(text: String, modifier: Modifier = Modifier) =
     Text(text.uppercase(), style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.4.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier.fillMaxWidth().padding(top = 24.dp, bottom = 4.dp))
 
+/** A multi-line field would swallow Up and Down for caret movement; with a remote or D-pad they must leave the field instead. */
+@Composable internal fun Modifier.dpadLeavesField(): Modifier {
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    return onPreviewKeyEvent { event ->
+        val down = event.key == Key.DirectionDown
+        val up = event.key == Key.DirectionUp
+        if ((down || up) && event.type == KeyEventType.KeyDown) {
+            focusManager.moveFocus(if (down) androidx.compose.ui.focus.FocusDirection.Down else androidx.compose.ui.focus.FocusDirection.Up); true
+        } else false
+    }
+}
+
+/** Focus ring for components that draw their own filled background, where the ripple alone would be invisible. */
+@Composable internal fun Modifier.focusRing(corner: Dp = 14.dp): Modifier {
+    var focused by remember { mutableStateOf(false) }
+    val ring = MaterialTheme.colorScheme.onBackground
+    return this.onFocusChanged { focused = it.hasFocus }.drawWithContent {
+        drawContent()
+        if (focused) {
+            val stroke = 3.dp.toPx()
+            drawRoundRect(ring, topLeft = Offset(stroke / 2, stroke / 2), size = Size(size.width - stroke, size.height - stroke), cornerRadius = CornerRadius(corner.toPx()), style = Stroke(stroke))
+        }
+    }
+}
+
+@Composable internal fun QuietTextButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues = ButtonDefaults.TextButtonContentPadding,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+) = TextButton(onClick, modifier.focusRing(), enabled, contentPadding = contentPadding, content = content)
+
 @Composable internal fun QuietButton(
     text: String,
     onClick: () -> Unit,
@@ -119,9 +164,9 @@ import androidx.compose.ui.unit.sp
         if (leading != null) { leading(); Spacer(Modifier.width(10.dp)) }
         Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp), maxLines = 2)
     }
-    if (primary) Button(onClick, modifier.heightIn(min = 52.dp), enabled, shape = RoundedCornerShape(14.dp), content = { content() })
+    if (primary) Button(onClick, modifier.focusRing().heightIn(min = 52.dp), enabled, shape = RoundedCornerShape(14.dp), content = { content() })
     else OutlinedButton(
-        onClick, modifier.heightIn(min = 52.dp), enabled, shape = RoundedCornerShape(14.dp),
+        onClick, modifier.focusRing().heightIn(min = 52.dp), enabled, shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         colors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface),
         content = { content() },
