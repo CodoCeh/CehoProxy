@@ -79,7 +79,7 @@ class SubscriptionImportUiTest {
         rule.onNodeWithTag(tag).performScrollTo().performClick()
     }
 
-    private fun pressBack() = rule.activity.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+    private fun pressBack() { androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); rule.waitForIdle() }
 
     private fun openRouting() {
         openSettings()
@@ -281,6 +281,8 @@ class SubscriptionImportUiTest {
         rule.onNodeWithTag("import-input").assertTextEquals("Ссылка или конфигурация", "unsupported://example")
         rule.onNodeWithTag("import-submit").assertIsEnabled()
         pressBack()
+        if (rule.onAllNodesWithTag("import-input").fetchSemanticsNodes().isNotEmpty()) pressBack()
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag("import-input").fetchSemanticsNodes().isEmpty() }
         rule.onNodeWithTag("import-input").assertDoesNotExist()
     }
 

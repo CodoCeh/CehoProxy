@@ -39,7 +39,7 @@ class QuietModeUiTest {
 
     private fun prefs(name: String) = rule.activity.getSharedPreferences(name, Context.MODE_PRIVATE)
     private fun stored() = ProfileCodec.decode(prefs("profile").getString("data", "{}")!!)
-    private fun pressBack() = rule.activity.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+    private fun pressBack() { androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK); rule.waitForIdle() }
 
     private fun subscriptionNode(name: String, url: String, title: String, expiresAt: Long? = null, used: Long? = null, total: Long? = null): ProxyNode {
         val metadata = SubscriptionMetadata(expiresAtEpochSeconds = expiresAt, downloadBytes = used, totalBytes = total, title = title, sourceHost = java.net.URL(url).host, sourceUrl = url)
@@ -139,6 +139,7 @@ class QuietModeUiTest {
         rule.onNodeWithTag("onboarding-next").performClick()
         rule.onNodeWithText("Добавьте подписку").assertIsDisplayed()
         pressBack()
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("Настроить подключение").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Настроить подключение").assertIsDisplayed()
     }
 }
