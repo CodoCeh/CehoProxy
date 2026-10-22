@@ -19,7 +19,7 @@ Windows, Linux, macOS и Android. На компьютере управление
 | macOS, Intel | [CehoProxy-macos-intel.pkg](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-intel.pkg) | [macos-intel.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-macos-intel.zip) |
 | Ubuntu, Debian, Mint (x86-64) | [CehoProxy-linux-x64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.deb) | [linux-x64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-x64.zip) |
 | Ubuntu, Debian, Raspberry Pi (ARM) | [CehoProxy-linux-arm64.deb](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.deb) | [linux-arm64.zip](https://github.com/CodoCeh/CehoProxy/releases/latest/download/CehoProxy-linux-arm64.zip) |
-| Android 10 и новее: телефон, планшет, магнитола | [cehoproxy-android-0.1.8-arm64-v8a.apk](https://github.com/CodoCeh/CehoProxy/releases/download/android-v0.1.8/cehoproxy-android-0.1.8-arm64-v8a.apk) | [armeabi-v7a.apk](https://github.com/CodoCeh/CehoProxy/releases/download/android-v0.1.8/cehoproxy-android-0.1.8-armeabi-v7a.apk) (старые 32-битные устройства) |
+| Android 10 и новее: телефон, планшет, магнитола | [cehoproxy-android-0.1.9-arm64-v8a.apk](https://github.com/CodoCeh/CehoProxy/releases/download/android-v0.1.9/cehoproxy-android-0.1.9-arm64-v8a.apk) | [armeabi-v7a.apk](https://github.com/CodoCeh/CehoProxy/releases/download/android-v0.1.9/cehoproxy-android-0.1.9-armeabi-v7a.apk) (старые 32-битные устройства) |
 
 Android: скачайте файл на устройство и откройте его, при запросе разрешите установку из этого источника. Для телефона и магнитолы берите `arm64-v8a`. Приложение само проверяет новые версии на GitHub.
 
