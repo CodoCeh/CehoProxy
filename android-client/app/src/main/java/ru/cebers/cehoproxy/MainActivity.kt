@@ -112,6 +112,9 @@ import kotlin.math.roundToInt
 
 private const val SUPPORT_BOT_URL = "https://t.me/CebCehVPN_bot"
 
+/** Outcome of adding or refreshing something; shown on any screen until the user closes it or it times out. */
+internal data class UiResult(val id: Int, val message: String, val error: Boolean)
+
 class MainActivity : ComponentActivity() {
     private lateinit var store: ProfileStore
     private var profile by mutableStateOf(newInstallProfile())
@@ -148,6 +151,9 @@ class MainActivity : ComponentActivity() {
     }
     private var themePreference by mutableStateOf(ThemePreference.DARK)
     private var notice by mutableStateOf<String?>(null)
+    private var result by mutableStateOf<UiResult?>(null)
+    private var resultCounter = 0
+    private fun report(message: String, error: Boolean = true) { result = UiResult(++resultCounter, message, error) }
     private var pendingLinkImport by mutableStateOf<String?>(null)
     private var refreshingUrls by mutableStateOf(emptySet<String>())
     private val statusReceiver = object : BroadcastReceiver() {
@@ -169,7 +175,7 @@ class MainActivity : ComponentActivity() {
         val load = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) lifecycleScope.launch {
                 runCatching { withContext(Dispatchers.IO) { readTextFile(uri) } }
-                    .onSuccess { importText(it) }.onFailure { notice = "Не удалось прочитать файл: ${it.message}" }
+                    .onSuccess { importText(it) }.onFailure { report("Не удалось прочитать файл: ${it.message}") }
             }
         }
         val qrImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -183,7 +189,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == Activity.RESULT_OK) connect() else notice = "Разрешение Android VPN не выдано"
+            if (result.resultCode == Activity.RESULT_OK) connect() else { notice = "Разрешение Android VPN не выдано"; report("Разрешение Android VPN не выдано. Нажмите на водоворот, чтобы запросить его снова.") }
         }
         val connectNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
             refreshVpnStatus()
@@ -197,7 +203,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             CehoTheme(themePreference) {
                 ClientScreen(
-                    profile = profile, connected = connected, connectedSince = connectedSince, serviceRunning = serviceRunning, blocked = blocked, measurements = measurements, notificationsBlocked = notificationsBlocked, onOpenNotificationSettings = ::openNotificationSettings, onCheckNode = metrics::check, onCheckNodes = ::checkNodes, onCancelNodeCheck = metrics::cancelProbe, notice = notice, importing = importing, importRevision = importRevision,
+                    profile = profile, connected = connected, connectedSince = connectedSince, serviceRunning = serviceRunning, blocked = blocked, measurements = measurements, notificationsBlocked = notificationsBlocked, onOpenNotificationSettings = ::openNotificationSettings, onCheckNode = metrics::check, onCheckNodes = ::checkNodes, onCancelNodeCheck = metrics::cancelProbe, notice = notice, result = result, onDismissResult = { result = null }, importing = importing, importRevision = importRevision,
                     themePreference = themePreference, onThemePreference = { selected ->
                         themePreference = selected
                         getSharedPreferences("appearance", MODE_PRIVATE).edit().putString("theme", selected.storageValue).apply()
@@ -214,8 +220,8 @@ class MainActivity : ComponentActivity() {
                     onNotice = { notice = it }, onImportFile = { load.launch(arrayOf("*/*")) },
                     onImportClipboard = { importClipboard() },
                     onScanQr = {
-                        scanQr.startScan().addOnSuccessListener { code -> code.rawValue?.let(::importText) ?: run { notice = "В QR-коде нет текста" } }
-                            .addOnFailureListener { notice = "Сканер недоступен. Выберите QR-изображение или вставьте ссылку из буфера обмена." }
+                        scanQr.startScan().addOnSuccessListener { code -> code.rawValue?.let(::importText) ?: run { report("В QR-коде нет текста") } }
+                            .addOnFailureListener { report("Сканер недоступен. Выберите QR-изображение или вставьте ссылку из буфера обмена.") }
                     },
                     onImportQrImage = { qrImage.launch("image/*") },
                     onExport = { scope -> pendingExportScope = scope; export.launch(scope.fileName) },
@@ -269,10 +275,10 @@ class MainActivity : ComponentActivity() {
                             try {
                                 notice = "Обновляем подписку…"
                                 val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, listOf(url)) }
-                                if (fetched.isEmpty()) notice = "Подписка не ответила, узлы сохранены"
+                                if (fetched.isEmpty()) report("Подписка не ответила, прежние серверы сохранены. Проверьте интернет и попробуйте ещё раз.")
                                 else {
                                     applyFetched(fetched)
-                                    notice = "Подписка обновлена: узлов ${fetched.values.sumOf { it.size }}"
+                                    report("Подписка обновлена: серверов ${fetched.values.sumOf { it.size }}", error = false); notice = null
                                 }
                             } finally {
                                 refreshingUrls = refreshingUrls - url
@@ -287,10 +293,10 @@ class MainActivity : ComponentActivity() {
                             try {
                                 notice = "Обновляем подписки…"
                                 val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, urls) }
-                                if (fetched.isEmpty()) notice = "Подписки не ответили, узлы сохранены"
+                                if (fetched.isEmpty()) report("Подписки не ответили, прежние серверы сохранены. Проверьте интернет и попробуйте ещё раз.")
                                 else {
                                     applyFetched(fetched)
-                                    notice = "Обновлено подписок: ${fetched.size} из ${urls.size}, узлов ${fetched.values.sumOf { it.size }}"
+                                    report("Обновлено подписок: ${fetched.size} из ${urls.size}, серверов ${fetched.values.sumOf { it.size }}", error = fetched.size < urls.size); notice = null
                                 }
                             } finally {
                                 refreshingUrls = refreshingUrls - urls.toSet()
@@ -337,7 +343,7 @@ class MainActivity : ComponentActivity() {
     private fun importClipboard() {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val text = runCatching { clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()?.trim() }.getOrNull()
-        if (text.isNullOrBlank()) notice = "В буфере обмена нет текста для импорта" else importText(text)
+        if (text.isNullOrBlank()) report("В буфере обмена нет текста для импорта") else importText(text)
     }
 
     private fun readTextFile(uri: Uri): String {
@@ -397,6 +403,7 @@ class MainActivity : ComponentActivity() {
         val kind = SubscriptionInput.classify(input)
         importing = true
         notice = null
+        result = null
         lifecycleScope.launch {
             try {
                 val (nodes, rejectedByEngine, unsupportedTypes) = withContext(Dispatchers.IO) {
@@ -412,13 +419,13 @@ class MainActivity : ComponentActivity() {
                     Triple(validNodes, rejected, NodeShareParser.unsupportedTypes(text))
                 }
                 if (nodes.isEmpty()) {
-                    notice = when {
+                    report(when {
                         input.trimStart().startsWith("happ://crypt", ignoreCase = true) -> "Зашифрованную подписку Happ нельзя открыть напрямую. Попросите у провайдера обычную HTTPS-ссылку подписки или ссылку на узел."
                         rejectedByEngine > 0 -> "Узлы распознаны, но sing-box не принял их конфигурацию. Проверьте параметры ноды."
                         unsupportedTypes.isNotEmpty() -> "Не поддерживаются типы узлов: ${unsupportedTypes.joinToString()}."
                         kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION -> "В подписке нет поддерживаемых узлов"
                         else -> "Ссылка не содержит поддерживаемый узел"
-                    }
+                    })
                     return@launch
                 }
                 val mergedByRaw = profile.nodes.associateBy { it.raw }.toMutableMap()
@@ -436,15 +443,15 @@ class MainActivity : ComponentActivity() {
                     subscriptionFetchedAtByUrl = if (remote) profile.subscriptionFetchedAtByUrl + (input.trim() to System.currentTimeMillis()) else profile.subscriptionFetchedAtByUrl))
                 importRevision++
                 val duplicates = nodes.size - count
-                notice = buildString {
+                report(buildString {
                     append("Добавлено узлов: $count")
                     if (duplicates > 0) append(" · дубликатов: $duplicates")
                     if (rejectedByEngine > 0) append(" · отклонено проверкой: $rejectedByEngine")
                     if (unsupportedTypes.isNotEmpty()) append(" · не поддерживаются: ${unsupportedTypes.joinToString()}")
-                }
+                }, error = count == 0 && duplicates == 0)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                notice = when {
+                report(when {
                     error is SubscriptionBodyTooLarge -> "Подписка превышает допустимый размер 8 МиБ"
                     error is SubscriptionHttpException -> "Сервер подписки вернул HTTP ${error.statusCode}"
                     error is java.net.SocketTimeoutException -> "Сервер подписки не ответил вовремя. Проверьте сеть и попробуйте ещё раз."
@@ -452,9 +459,9 @@ class MainActivity : ComponentActivity() {
                     error is javax.net.ssl.SSLException -> "Не удалось установить защищённое соединение с сервером подписки."
                     error is IllegalArgumentException && error.message?.contains("размер") == true -> error.message
                     error.message?.contains("cleartext", ignoreCase = true) == true && error.message?.contains("not permitted", ignoreCase = true) == true -> "Незащищённая HTTP-подписка заблокирована Android. Используйте HTTPS."
-                    kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION -> "Не удалось загрузить подписку"
-                    else -> "Не удалось импортировать ссылку или текст"
-                }
+                    kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION -> "Не удалось загрузить подписку: ${error.message ?: error.javaClass.simpleName}"
+                    else -> "Не удалось импортировать ссылку или текст: ${error.message ?: error.javaClass.simpleName}"
+                } ?: "Не удалось добавить подписку")
             } finally {
                 importing = false
             }
@@ -468,9 +475,9 @@ class MainActivity : ComponentActivity() {
                     .getOrElse { QrImportDecision.Unsupported }
             }
             when (decision) {
-                QrImportDecision.NoCode -> notice = "На изображении не найден QR-код"
-                QrImportDecision.MultipleCodes -> notice = "Найдено несколько QR-кодов. Выберите изображение с одной ссылкой."
-                QrImportDecision.Unsupported -> notice = "QR-код не содержит поддерживаемую ссылку или подписку"
+                QrImportDecision.NoCode -> report("На изображении не найден QR-код")
+                QrImportDecision.MultipleCodes -> report("Найдено несколько QR-кодов. Выберите изображение с одной ссылкой.")
+                QrImportDecision.Unsupported -> report("QR-код не содержит поддерживаемую ссылку или подписку")
                 is QrImportDecision.Import -> importSubscription(decision.value)
             }
         }
@@ -500,6 +507,7 @@ class MainActivity : ComponentActivity() {
         val currentProfile = profile
         importing = true
         notice = null
+        result = null
         lifecycleScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
@@ -528,8 +536,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-            }.onSuccess { (nextProfile, message) -> update(nextProfile); notice = message; importRevision++ }
-                .onFailure { notice = "Импорт не выполнен: ${it.message}" }
+            }.onSuccess { (nextProfile, message) -> update(nextProfile); report(message, error = false); importRevision++ }
+                .onFailure { report("Импорт не выполнен: ${it.message}") }
             importing = false
         }
     }
@@ -557,9 +565,9 @@ class MainActivity : ComponentActivity() {
             "tg" -> uri.host.equals("resolve", true) || uri.host.equals("join", true)
             else -> false
         }
-        if (!allowed) { notice = "Ссылка подписки имеет неподдерживаемый формат"; return }
+        if (!allowed) { report("Ссылка подписки имеет неподдерживаемый формат"); return }
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-            .onFailure { notice = "Не удалось открыть ссылку. Установите Telegram или браузер." }
+            .onFailure { report("Не удалось открыть ссылку. Установите Telegram или браузер.") }
     }
     private fun hasNetwork(): Boolean {
         val connectivity = getSystemService(ConnectivityManager::class.java)
@@ -695,7 +703,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onHelp: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
+@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onHelp: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
     val clipboardContext = LocalContext.current
     ObserveAutomaticUpdates()
     var pendingNodeCheck by remember { mutableStateOf<String?>(null) }
@@ -765,10 +773,10 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     var manualPassword by remember { mutableStateOf("") }
     var manualShowPassword by remember { mutableStateOf(false) }
     var manualError by remember { mutableStateOf<String?>(null) }
-    var manualNoticeBaseline by remember { mutableStateOf<String?>(null) }
+    var manualResultBaseline by remember { mutableStateOf<Int?>(null) }
     fun openManualForm() {
         manualProtocol = ManualProtocol.HTTPS.name; manualName = ""; manualHost = ""; manualPort = ""; manualUser = ""; manualSni = ""
-        manualPassword = ""; manualShowPassword = false; manualError = null; manualNoticeBaseline = notice
+        manualPassword = ""; manualShowPassword = false; manualError = null; manualResultBaseline = result?.id
         showAddSheet = false
         openPage("Вручную")
     }
@@ -790,6 +798,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     LaunchedEffect(connected) { if (connected) connectionRun++ }
     BackHandler(enabled = page != "Главная" && !showAppPicker && !showAppRoutePicker && !showAddSheet && shareCandidate == null) { backPage() }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+      Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 24.dp, vertical = 8.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (page == "Главная" || !onboardingCompleted) {
@@ -819,7 +828,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     onScanQr = onScanQr,
                     onHelp = onHelp,
                     onFinish = onCompleteOnboarding,
-                    notice = notice,
+                    notice = result?.takeIf { it.error }?.message,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             } else {
@@ -1282,7 +1291,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             if (protocol == ManualProtocol.HTTPS) {
                                 OutlinedTextField(value = manualSni, onValueChange = { manualSni = it }, label = { Text("Имя сервера для TLS (SNI)") }, placeholder = { Text("по умолчанию — адрес сервера") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-sni"))
                             }
-                            val shownError = manualError ?: notice?.takeIf { it != manualNoticeBaseline && !importing }
+                            val shownError = manualError ?: result?.takeIf { it.error && it.id != manualResultBaseline && !importing }?.message
                             if (importing) {
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("manual-progress"))
                                 Text("Проверяем настройки сервера…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
@@ -1386,11 +1395,17 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                 }
             }
         }
+        val banner = result
+        if (banner != null && onboardingCompleted && !showAddSheet && page != "Вручную") {
+            LaunchedEffect(banner.id) { kotlinx.coroutines.delay(if (banner.error) 12_000L else 6_000L); onDismissResult() }
+            ResultBanner(banner.message, banner.error, onDismissResult, Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(16.dp).testTag("result-banner"))
+        }
+      }
     }
     if (showAddSheet) {
         val importingNow by rememberUpdatedState(importing)
         val addSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { !importingNow })
-        val noticeAtOpen = remember { notice }
+        val resultAtOpen = remember { result?.id }
         ModalBottomSheet(onDismissRequest = { if (!importing) showAddSheet = false }, sheetState = addSheetState, containerColor = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp).imePadding().testTag("add-sheet")) {
                 Text("Добавить подписку", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
@@ -1400,7 +1415,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                 if (importing) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("import-progress"))
                     Text("Загружаем и проверяем узлы…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-                } else notice?.takeIf { it != noticeAtOpen }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp).testTag("import-error")) }
+                } else result?.takeIf { it.error && it.id != resultAtOpen }?.let { Text(it.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp).testTag("import-error")) }
                 CaptionLabel("Другие способы")
                 QuietDivider()
                 QuietRow("Из буфера обмена", subtitle = "Ссылка или текст конфигурации", onClick = onImportClipboard, enabled = !importing, leading = { QuietBadge(size = 40.dp) { CopyGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-paste"))

@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +39,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -121,6 +126,20 @@ import androidx.compose.ui.unit.sp
         colors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface),
         content = { content() },
     )
+}
+
+@Composable internal fun ResultBanner(message: String, error: Boolean, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        color = if (error) colors.errorContainer else colors.primaryContainer,
+        shape = MaterialTheme.shapes.large, shadowElevation = 6.dp,
+    ) {
+        Row(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = if (error) colors.onErrorContainer else colors.onPrimaryContainer, modifier = Modifier.weight(1f).padding(vertical = 10.dp))
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).testTag("result-banner-close")) { Text("Закрыть", color = if (error) colors.onErrorContainer else colors.onPrimaryContainer) }
+        }
+    }
 }
 
 @Composable internal fun QuietButtonRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) =

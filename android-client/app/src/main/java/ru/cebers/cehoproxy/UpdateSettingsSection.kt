@@ -6,6 +6,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.util.Date
@@ -27,7 +29,7 @@ internal fun UpdateSettingsSection() {
         Text("Установлена версия ${BuildConfig.VERSION_NAME}. Источник — CodoCeh/CehoProxy на GitHub.", style = MaterialTheme.typography.bodySmall)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Проверять автоматически", modifier = Modifier.weight(1f))
-            Switch(checked = state.automatic, onCheckedChange = controller::automatic)
+            Switch(checked = state.automatic, onCheckedChange = controller::automatic, modifier = Modifier.semantics { contentDescription = "Проверять обновления автоматически" })
         }
         Text("Проверка при открытии приложения, не чаще раза в сутки. Установка — только после вашего подтверждения.", style = MaterialTheme.typography.bodySmall)
         Text(state.message)
