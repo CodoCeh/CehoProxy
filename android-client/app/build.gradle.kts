@@ -1,5 +1,6 @@
 import java.net.URL
 import java.security.MessageDigest
+import java.util.Properties
 import java.util.zip.ZipFile
 
 plugins {
@@ -19,6 +20,17 @@ android {
         versionCode = 9
         versionName = "0.1.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    val releaseKeys = File(System.getProperty("user.home"), ".android-keys/cehoproxy-release.properties").takeIf { it.exists() }?.let { file -> Properties().apply { file.inputStream().use(::load) } }
+    if (releaseKeys != null) {
+        signingConfigs.create("release") {
+            storeFile = File(releaseKeys.getProperty("storeFile"))
+            storePassword = releaseKeys.getProperty("storePassword")
+            keyAlias = releaseKeys.getProperty("keyAlias")
+            keyPassword = releaseKeys.getProperty("keyPassword")
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
     }
 
     buildFeatures {
