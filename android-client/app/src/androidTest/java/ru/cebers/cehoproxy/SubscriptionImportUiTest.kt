@@ -293,7 +293,8 @@ class SubscriptionImportUiTest {
         rule.waitUntil(10_000) {
             ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}") ?: "{}").nodes.size == 1
         }
-        rule.onNodeWithTag("import-input").assertDoesNotExist()
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag("import-input").fetchSemanticsNodes().isEmpty() }
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("Demo-node").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Demo-node").assertIsDisplayed()
     }
 

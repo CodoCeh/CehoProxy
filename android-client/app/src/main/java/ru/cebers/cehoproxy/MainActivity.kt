@@ -726,6 +726,17 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
             dismissButton = { TextButton(onClick = { removeCandidate = null }) { Text("Отмена") } },
         )
     }
+    var removeNodeRaw by remember { mutableStateOf<String?>(null) }
+    removeNodeRaw?.let { raw ->
+        val target = profile.nodes.firstOrNull { it.raw == raw }
+        AlertDialog(
+            onDismissRequest = { removeNodeRaw = null },
+            title = { Text("Удалить сервер?") },
+            text = { Text("«${target?.let { NodePresentation.displayName(it.name) } ?: "Сервер"}» исчезнет из списка вместе с сохранёнными для него логином и паролем. Добавить его можно снова.") },
+            confirmButton = { TextButton(onClick = { removeNodeRaw = null; onSaveRouteSettings(NodeRemovalPolicy.remove(profile, raw)) }, modifier = Modifier.testTag("node-remove-confirm")) { Text("Удалить", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { removeNodeRaw = null }) { Text("Отмена") } },
+        )
+    }
     var shareCandidate by remember { mutableStateOf<String?>(null) }
     val shareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showAddSheet by remember { mutableStateOf(false) }
@@ -745,10 +756,27 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     var showAppRoutePicker by remember { mutableStateOf(false) }
     var routeAppSearch by remember { mutableStateOf("") }
     var nodeSearch by remember { mutableStateOf("") }
+    var manualProtocol by rememberSaveable { mutableStateOf(ManualProtocol.HTTPS.name) }
+    var manualName by rememberSaveable { mutableStateOf("") }
+    var manualHost by rememberSaveable { mutableStateOf("") }
+    var manualPort by rememberSaveable { mutableStateOf("") }
+    var manualUser by rememberSaveable { mutableStateOf("") }
+    var manualSni by rememberSaveable { mutableStateOf("") }
+    var manualPassword by remember { mutableStateOf("") }
+    var manualShowPassword by remember { mutableStateOf(false) }
+    var manualError by remember { mutableStateOf<String?>(null) }
+    var manualNoticeBaseline by remember { mutableStateOf<String?>(null) }
+    fun openManualForm() {
+        manualProtocol = ManualProtocol.HTTPS.name; manualName = ""; manualHost = ""; manualPort = ""; manualUser = ""; manualSni = ""
+        manualPassword = ""; manualShowPassword = false; manualError = null; manualNoticeBaseline = notice
+        showAddSheet = false
+        openPage("Вручную")
+    }
     LaunchedEffect(importRevision) {
         if (importRevision > 0) {
             showAddSheet = false
             importValue = ""
+            if (page == "Вручную") { manualPassword = ""; backPage() }
         }
     }
     var showAdvancedRoutes by remember { mutableStateOf(false) }
@@ -1166,6 +1194,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                             autoEnabled = node.routeId !in profile.autoExcludedRouteIds,
                                             onAutoToggle = if (!profile.autoRotationEnabled) null else ({ on: Boolean -> onSaveRouteSettings(profile.copy(autoExcludedRouteIds = if (on) profile.autoExcludedRouteIds - node.routeId else profile.autoExcludedRouteIds + node.routeId)) }),
                                             autoSwitchTag = "node-auto-switch:$index",
+                                            onRemove = if (NodeRemovalPolicy.removable(profile, node)) ({ removeNodeRaw = node.raw }) else null, removeTag = "node-remove:$index",
                                             excludedLabel = when {
                                                 NodePresentation.subscriptionKey(node) in profile.disabledSubscriptions -> "Подписка отключена"
                                                 RoutingConfig.countryExcluded(node, profile.excludedCountrySets) -> "Страна исключена"
@@ -1214,6 +1243,57 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             QuietDivider()
                             CaptionLabel("О приложении")
                             UpdateSettingsSection()
+                        }
+                        "Вручную" -> {
+                            val protocol = ManualProtocol.valueOf(manualProtocol)
+                            val fieldShape = MaterialTheme.shapes.large
+                            PageHeading("Ручное подключение", subtitle = "Свой сервер или корпоративный прокси")
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(4.dp)) {
+                                ManualProtocol.entries.forEach { option ->
+                                    val chosen = option == protocol
+                                    Box(
+                                        Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+                                            .background(if (chosen) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                            .selectable(selected = chosen, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = { manualProtocol = option.name; manualError = null })
+                                            .testTag("manual-protocol:${option.name}"),
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text(option.label, style = MaterialTheme.typography.labelLarge, color = if (chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
+                                }
+                            }
+                            Text(
+                                when (protocol) {
+                                    ManualProtocol.HTTPS -> "Прокси по HTTPS с логином и паролем (NaiveProxy, Caddy). Порт обычно 443 или 8443."
+                                    ManualProtocol.SOCKS5 -> "Обычный SOCKS5-прокси. Логин и пароль нужны, только если их требует сервер."
+                                    ManualProtocol.HTTP -> "HTTP-прокси: до сервера данные не шифруются. Подходит для доверенной сети."
+                                },
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp),
+                            )
+                            OutlinedTextField(value = manualName, onValueChange = { manualName = it }, label = { Text("Название (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-name"))
+                            OutlinedTextField(value = manualHost, onValueChange = { manualHost = it; manualError = null }, label = { Text("Адрес сервера") }, placeholder = { Text("proxy.example.com или 203.0.113.5") }, singleLine = true, shape = fieldShape, enabled = !importing, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-host"))
+                            OutlinedTextField(value = manualPort, onValueChange = { v -> manualPort = v.filter(Char::isDigit).take(5); manualError = null }, label = { Text("Порт") }, placeholder = { Text(protocol.defaultPort.toString()) }, singleLine = true, shape = fieldShape, enabled = !importing, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-port"))
+                            OutlinedTextField(value = manualUser, onValueChange = { manualUser = it; manualError = null }, label = { Text(if (protocol.loginRequired) "Логин" else "Логин (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-user"))
+                            OutlinedTextField(
+                                value = manualPassword, onValueChange = { manualPassword = it; manualError = null }, label = { Text(if (protocol.loginRequired) "Пароль" else "Пароль (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing,
+                                visualTransformation = if (manualShowPassword) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                trailingIcon = { TextButton(onClick = { manualShowPassword = !manualShowPassword }, modifier = Modifier.heightIn(min = 48.dp).testTag("manual-password-toggle")) { Text(if (manualShowPassword) "Скрыть" else "Показать") } },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-password"),
+                            )
+                            if (protocol == ManualProtocol.HTTPS) {
+                                OutlinedTextField(value = manualSni, onValueChange = { manualSni = it }, label = { Text("Имя сервера для TLS (SNI)") }, placeholder = { Text("по умолчанию — адрес сервера") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-sni"))
+                            }
+                            val shownError = manualError ?: notice?.takeIf { it != manualNoticeBaseline && !importing }
+                            if (importing) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("manual-progress"))
+                                Text("Проверяем настройки сервера…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                            } else shownError?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp).testTag("manual-error")) }
+                            QuietButton("Добавить сервер", {
+                                val form = ManualConnection(protocol, manualHost, manualPort, manualUser, manualPassword, manualSni, manualName)
+                                val problem = ManualConnectionPolicy.validate(form)
+                                manualError = problem
+                                if (problem == null) onTextImport(ManualConnectionPolicy.toUri(form))
+                            }, Modifier.fillMaxWidth().padding(top = 16.dp).testTag("manual-submit"), enabled = !importing && manualHost.isNotBlank())
+                            Text("Поддерживаются прокси HTTPS (Naive), SOCKS5 и HTTP. OpenVPN, WireGuard и IPsec приложение не поддерживает.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
                         }
                         "Внешний вид" -> {
                             PageHeading("Внешний вид", subtitle = "Тема оформления")
@@ -1328,6 +1408,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                 QuietRow("Камера: QR-код", subtitle = "Сканирование камерой телефона", onClick = onScanQr, enabled = !importing, leading = { QuietBadge(size = 40.dp) { ScanGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-qr"))
                 QuietDivider()
                 QuietRow("QR-код из изображения", subtitle = "Выбрать картинку из галереи", onClick = onImportQrImage, enabled = !importing, leading = { QuietBadge(size = 40.dp) { ScanGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-qr-image"))
+                QuietDivider()
+                QuietRow("Ввести вручную", subtitle = "Адрес, порт, логин и пароль", onClick = { openManualForm() }, enabled = !importing, leading = { QuietBadge(size = 40.dp) { SlidersGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-manual"))
                 QuietDivider()
                 QuietRow("Файл", subtitle = "Конфигурация .json или .txt", onClick = onImportFile, enabled = !importing, leading = { QuietBadge(size = 40.dp) { FileGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-file"))
                 QuietDivider()
@@ -1745,7 +1827,7 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
     }
 }
 
-@Composable private fun NodeRow(node: ProxyNode, selected: Boolean, onClick: () -> Unit, measurement: NodeMeasurement? = null, onCheck: (() -> Unit)? = null, modifier: Modifier = Modifier, autoEnabled: Boolean? = null, onAutoToggle: ((Boolean) -> Unit)? = null, autoSwitchTag: String = "", excludedLabel: String? = null) {
+@Composable private fun NodeRow(node: ProxyNode, selected: Boolean, onClick: () -> Unit, measurement: NodeMeasurement? = null, onCheck: (() -> Unit)? = null, modifier: Modifier = Modifier, autoEnabled: Boolean? = null, onAutoToggle: ((Boolean) -> Unit)? = null, autoSwitchTag: String = "", excludedLabel: String? = null, onRemove: (() -> Unit)? = null, removeTag: String = "") {
     val colors = MaterialTheme.colorScheme
     val subColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
     Surface(
@@ -1760,13 +1842,16 @@ private fun RouteAssignmentRow(title: String, nodes: List<ProxyNode>, selectedRa
                 Text(NodePresentation.withoutFlag(NodePresentation.displayName(node.name)), color = colors.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(node.type.uppercase() + " · " + NodeMetricsPolicy.summary(measurement), color = subColor, style = MaterialTheme.typography.bodySmall)
                 excludedLabel?.let { Text(it, color = colors.error, style = MaterialTheme.typography.labelSmall) }
+                if (onCheck != null || onRemove != null) Row {
+                    if (onCheck != null) TextButton(onClick = onCheck, contentPadding = PaddingValues(end = 12.dp), modifier = Modifier.heightIn(min = 48.dp)) { Text(if (measurement?.testing == true) "Отмена" else "Скорость") }
+                    if (onRemove != null) TextButton(onClick = onRemove, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.heightIn(min = 48.dp).let { if (removeTag.isNotEmpty()) it.testTag(removeTag) else it }) { Text("Удалить", color = colors.error) }
+                }
             }
             if (onAutoToggle != null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Авто", style = MaterialTheme.typography.labelSmall, color = subColor)
                 Switch(checked = autoEnabled == true, onCheckedChange = onAutoToggle, modifier = if (autoSwitchTag.isNotEmpty()) Modifier.testTag(autoSwitchTag) else Modifier)
             }
-            if (onCheck != null) TextButton(onClick = onCheck, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (measurement?.testing == true) "Отмена" else "Скорость") }
-            else if (selected) Text("Выбран", color = colors.onPrimaryContainer, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp))
+            if (onCheck == null && selected) Text("Выбран", color = colors.onPrimaryContainer, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp))
         }
     }
 }
