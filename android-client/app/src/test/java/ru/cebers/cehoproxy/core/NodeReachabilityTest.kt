@@ -25,7 +25,7 @@ class NodeReachabilityTest {
         val result = NodeReachability.check(node("vless", port), nowMillis = 5_000L)
         assertNull(result.latencyMs)
         assertTrue(result.failed)
-        assertEquals("Нет ответа", result.failureReason)
+        assertEquals("Нет ответа: порт закрыт", result.failureReason)
     }
 
     @Test fun udpNodeIsNotMeasuredWithoutTunnel() {

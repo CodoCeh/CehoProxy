@@ -55,6 +55,12 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/ceho_widget_info" />
         </receiver>
         <activity android:name=".vpn.ToggleVpnActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <receiver android:name=".vpn.VpnResumeReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <receiver android:name=".ExpiryReminderScheduler$ReminderReceiver" android:exported="false" />
         <receiver android:name=".ExpiryReminderScheduler$BootReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>

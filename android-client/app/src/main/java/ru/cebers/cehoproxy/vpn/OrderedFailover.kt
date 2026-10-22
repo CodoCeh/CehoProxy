@@ -10,6 +10,13 @@ internal object OrderedFailover {
         return null
     }
 
+    /** Which candidates to probe after the current node failed: those that answered the parallel test, or one for a sanity check. */
+    fun afterScout(rest: List<String>, alive: Set<String>?): List<String> {
+        if (alive == null) return rest
+        val answering = rest.filter { it in alive }
+        return answering.ifEmpty { rest.take(1) }
+    }
+
     /**
      * Picks a node that answers now. Nodes that failed recently are tried last, and nodes that answer slower
      * than [slowMillis] are used only when no quicker node answers.

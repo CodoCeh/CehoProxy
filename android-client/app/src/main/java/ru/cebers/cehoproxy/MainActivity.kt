@@ -128,7 +128,7 @@ class MainActivity : ComponentActivity() {
     private var reachabilityJob: kotlinx.coroutines.Job? = null
 
     private fun checkNodes(routeIds: List<String>) {
-        if (measurements.connected) { metrics.checkLatency(routeIds); return }
+        if (connected || measurements.connected) { metrics.checkLatency(routeIds); return }
         val nodes = profile.nodes.filter { it.routeId in routeIds }
         reachabilityJob?.cancel()
         measurements = measurements.copy(nodes = measurements.nodes + nodes.associate { it.routeId to NodeMetricsPolicy.beginCheck(measurements.nodes[it.routeId]) })
@@ -269,7 +269,7 @@ class MainActivity : ComponentActivity() {
                                 val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, listOf(url)) }
                                 if (fetched.isEmpty()) notice = "Подписка не ответила, узлы сохранены"
                                 else {
-                                    update(SubscriptionRefreshPolicy.applyFetchedSources(profile, fetched, System.currentTimeMillis()))
+                                    applyFetched(fetched)
                                     notice = "Подписка обновлена: узлов ${fetched.values.sumOf { it.size }}"
                                 }
                             } finally {
@@ -287,7 +287,7 @@ class MainActivity : ComponentActivity() {
                                 val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, urls) }
                                 if (fetched.isEmpty()) notice = "Подписки не ответили, узлы сохранены"
                                 else {
-                                    update(SubscriptionRefreshPolicy.applyFetchedSources(profile, fetched, System.currentTimeMillis()))
+                                    applyFetched(fetched)
                                     notice = "Обновлено подписок: ${fetched.size} из ${urls.size}, узлов ${fetched.values.sumOf { it.size }}"
                                 }
                             } finally {
@@ -364,7 +364,7 @@ class MainActivity : ComponentActivity() {
     private fun refreshVpnStatus(status: String? = null, message: String? = null) {
         val prefs = getSharedPreferences("vpn_status", MODE_PRIVATE)
         val current = status ?: prefs.getString("status", "stopped")
-        if (::store.isInitialized) profile = ActiveNodeSelection.sync(profile, store.read())
+        if (::store.isInitialized) profile = store.read().let { stored -> if (stored.nodes.map { it.raw } != profile.nodes.map { it.raw }) stored else ActiveNodeSelection.sync(profile, stored) }
         serviceRunning = current != "stopped" && VpnHomeAction.shouldStop(VpnStatusPolicy.isConnected(current, CehoVpnService.hasLiveTunnel()), CehoVpnService.hasLiveServiceInstance())
         blocked = VpnHomeAction.isBlocked(current, CehoVpnService.hasLiveServiceInstance())
         notificationsBlocked = !androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()
@@ -403,7 +403,7 @@ class MainActivity : ComponentActivity() {
                     if (kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION) {
                         SubscriptionTunnelFetch.fetch(applicationContext, input, requestOptions).also { metadata = it.metadata }.body
                     } else input
-                    val sourceNodes = NodeShareParser.parse(text).let { if (kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION) SubscriptionNames.resolve(input, it) else it }
+                    val sourceNodes = NodeShareParser.parse(text).let { if (kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION) SubscriptionNames.resolve(input, it) { u, o -> SubscriptionTunnelFetch.fetch(applicationContext, u, o).body } else it }
                     val (parsedNodes, rejected) = validateNodes(sourceNodes)
                     val fetchedMetadata = if (kind == SubscriptionInputKind.REMOTE_SUBSCRIPTION) metadata else SubscriptionMetadata.fromBody(text)
                     val validNodes = fetchedMetadata.attachTo(parsedNodes)
@@ -541,6 +541,13 @@ class MainActivity : ComponentActivity() {
         SubscriptionAutoRefresh.reconcile(this, resolved)
     }
 
+    private fun applyFetched(fetched: Map<String, List<ProxyNode>>) {
+        val resolved = SubscriptionAutoRefresh.apply(applicationContext, store, fetched)
+        profile = resolved
+        ExpiryReminderScheduler.reconcile(this, resolved)
+        SubscriptionAutoRefresh.reconcile(this, resolved)
+    }
+
     private fun openSubscriptionLink(value: String) {
         val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return
         val allowed = when (uri.scheme?.lowercase()) {
@@ -560,13 +567,14 @@ class MainActivity : ComponentActivity() {
 
     private fun connect() {
         val current = profile
-        if (importing || current.importedConfig != null || !SubscriptionRefreshPolicy.isStale(current.subscriptionUrl, current.subscriptionFetchedAt, System.currentTimeMillis(), current.subscriptionRefreshHours)) {
+        val stale = if (importing || current.importedConfig != null) emptyList() else SubscriptionRefreshPolicy.staleUrls(current, System.currentTimeMillis())
+        if (stale.isEmpty()) {
             startVpnService()
             return
         }
         notice = "Обновляем подписку…"
         lifecycleScope.launch {
-            refreshSubscriptionNodes(current)
+            refreshSubscriptionNodes(current, stale)
             startVpnService()
         }
     }
@@ -579,11 +587,11 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Keeps the saved nodes when the provider is unreachable, so the tunnel still starts. */
-    private suspend fun refreshSubscriptionNodes(current: ClientProfile) {
-        if (current.subscriptionUrls.isEmpty()) return
-        val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, current.subscriptionUrls) }
+    private suspend fun refreshSubscriptionNodes(current: ClientProfile, urls: List<String>) {
+        if (urls.isEmpty()) return
+        val fetched = withContext(Dispatchers.IO) { SubscriptionAutoRefresh.fetchAll(applicationContext, urls) }
         if (fetched.isEmpty()) return
-        update(SubscriptionRefreshPolicy.applyFetchedSources(profile, fetched, System.currentTimeMillis()))
+        applyFetched(fetched)
     }
 
     private fun openVpnSettings() {
@@ -963,7 +971,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 SettingsGroup {
                                     Column(Modifier.padding(16.dp)) {
                                         Text("Обновлять каждые", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                        Text("Новые узлы подтягиваются сами.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                                        Text("Новые узлы подтягиваются сами. Если провайдер указал свой интервал, используется он.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
                                         Row(Modifier.fillMaxWidth().padding(top = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                             SubscriptionRefreshPolicy.INTERVAL_OPTIONS_HOURS.forEach { hours ->
                                                 FilterChip(selected = profile.subscriptionRefreshHours == hours, onClick = { onSubscriptionRefreshHours(hours) }, label = { Text(if (hours == 0) "Выкл" else "$hours ч") }, modifier = Modifier.testTag("subscription-refresh-$hours").focusable())
@@ -1191,7 +1199,10 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 SettingsGroup {
                                     SettingsRow(
                                         title = "Автообновление",
-                                        value = if (profile.subscriptionRefreshHours == 0) "Выкл" else "каждые ${profile.subscriptionRefreshHours} ч",
+                                        value = when {
+                                            profile.subscriptionRefreshHours == 0 -> "Выкл"
+                                            else -> SubscriptionRefreshPolicy.providerHours(profile, url)?.let { "каждые $it ч · от провайдера" } ?: "каждые ${profile.subscriptionRefreshHours} ч"
+                                        },
                                         onClick = {
                                             val options = SubscriptionRefreshPolicy.INTERVAL_OPTIONS_HOURS
                                             onSubscriptionRefreshHours(options[(options.indexOf(profile.subscriptionRefreshHours) + 1) % options.size])

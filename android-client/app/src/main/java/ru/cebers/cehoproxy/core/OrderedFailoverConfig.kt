@@ -9,6 +9,8 @@ object OrderedFailoverConfig {
     const val LATENCY_TAG = "ceho-latency"
     const val LATENCY_URL = "https://www.gstatic.com/generate_204"
     const val INBOUND_TAG = "ceho-probe-in"
+    const val CHECK_TAG = "ceho-check"
+    const val CHECK_INBOUND_TAG = "ceho-check-in"
 
     fun selector(tag: String, candidates: List<String>): JSONObject = JSONObject()
         .put("type", "selector").put("tag", tag)
@@ -32,7 +34,8 @@ object OrderedFailoverConfig {
             .map { it.optString("tag") }.filter(String::isNotBlank)
     }
 
-    fun withProbe(config: String, port: Int): String {
+    /** [checkPort] opens a second probe path that only the UI uses to re-check silent nodes one by one without disturbing the failover loop. */
+    fun withProbe(config: String, port: Int, checkPort: Int = 0): String {
         require(port in 1..65535)
         val root = JSONObject(config)
         val candidates = proxyTags(config)
@@ -51,9 +54,14 @@ object OrderedFailoverConfig {
             outbounds.put(JSONObject().put("type", "block").put("tag", "block"))
         }
         outbounds.put(selector(PROBE_TAG, candidates))
+        if (checkPort in 1..65535) {
+            inbounds.put(JSONObject().put("type", "mixed").put("tag", CHECK_INBOUND_TAG).put("listen", "127.0.0.1").put("listen_port", checkPort))
+            outbounds.put(selector(CHECK_TAG, candidates))
+        }
         val route = root.getJSONObject("route")
         val oldRules = route.optJSONArray("rules") ?: JSONArray()
         val rules = JSONArray().put(JSONObject().put("inbound", JSONArray().put(INBOUND_TAG)).put("outbound", PROBE_TAG))
+        if (checkPort in 1..65535) rules.put(JSONObject().put("inbound", JSONArray().put(CHECK_INBOUND_TAG)).put("outbound", CHECK_TAG))
         for (index in 0 until oldRules.length()) rules.put(oldRules.get(index))
         route.put("rules", rules)
         return root.toString(2)

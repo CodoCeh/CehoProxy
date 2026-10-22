@@ -49,7 +49,7 @@ object ProfileCodec {
                 .put("subscriptionMetadata", JSONObject().put("upload", metadata.uploadBytes ?: -1L).put("download", metadata.downloadBytes ?: -1L).put("total", metadata.totalBytes ?: -1L)
                     .put("title", metadata.title ?: "").put("infoText", metadata.infoText ?: "").put("announcement", metadata.announcement ?: "")
                     .put("supportUrl", metadata.supportUrl ?: "").put("webPageUrl", metadata.webPageUrl ?: "").put("infoButtonText", metadata.infoButtonText ?: "")
-                    .put("infoButtonUrl", metadata.infoButtonUrl ?: "").put("renewUrl", metadata.renewUrl ?: "").put("notifyOnExpiry", metadata.notifyOnExpiry).put("sourceHost", metadata.sourceHost ?: "").put("sourceUrl", metadata.sourceUrl ?: "")))
+                    .put("infoButtonUrl", metadata.infoButtonUrl ?: "").put("renewUrl", metadata.renewUrl ?: "").put("notifyOnExpiry", metadata.notifyOnExpiry).put("sourceHost", metadata.sourceHost ?: "").put("sourceUrl", metadata.sourceUrl ?: "").put("updateIntervalHours", metadata.updateIntervalHours ?: 0)))
         }
         return JSONObject().put("nodes", nodes)
             .put("subscription", profile.nodes.joinToString("\n") { it.raw })
@@ -83,7 +83,7 @@ object ProfileCodec {
                         val metadata = SubscriptionMetadata(expires, m.optLong("upload", -1).takeIf { it >= 0 }, m.optLong("download", -1).takeIf { it >= 0 }, m.optLong("total", -1).takeIf { it >= 0 },
                             m.optString("title").takeIf(String::isNotBlank), m.optString("infoText").takeIf(String::isNotBlank), m.optString("announcement").takeIf(String::isNotBlank),
                             m.optString("supportUrl").takeIf(String::isNotBlank), m.optString("webPageUrl").takeIf(String::isNotBlank), m.optString("infoButtonText").takeIf(String::isNotBlank),
-                            m.optString("infoButtonUrl").takeIf(String::isNotBlank), m.optString("renewUrl").takeIf(String::isNotBlank), m.optBoolean("notifyOnExpiry"), m.optString("sourceHost").takeIf(String::isNotBlank), m.optString("sourceUrl").takeIf(String::isNotBlank))
+                            m.optString("infoButtonUrl").takeIf(String::isNotBlank), m.optString("renewUrl").takeIf(String::isNotBlank), m.optBoolean("notifyOnExpiry"), m.optString("sourceHost").takeIf(String::isNotBlank), m.optString("sourceUrl").takeIf(String::isNotBlank), m.optInt("updateIntervalHours").takeIf { it > 0 })
                         ProxyNode(node.optString("name", server), node.optString("type", ""), server, port, raw, expires, metadata)
                     }
                 }

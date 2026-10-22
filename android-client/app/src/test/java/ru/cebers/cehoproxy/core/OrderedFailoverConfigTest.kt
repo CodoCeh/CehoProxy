@@ -25,4 +25,18 @@ class OrderedFailoverConfigTest {
         val probe = config.getJSONArray("inbounds").getJSONObject(1)
         assertEquals("127.0.0.1", probe.getString("listen"))
     }
+
+    @Test fun checkPathHasItsOwnInboundSelectorAndRule() {
+        val nodes = listOf("a", "b").map { ProxyNode(it, "socks", "localhost", 1080, "socks://localhost:1080#$it") }
+        val config = JSONObject(OrderedFailoverConfig.withProbe(RoutingConfig.build(nodes, 0, RoutePolicy()), 19001, 19002))
+        val inbounds = config.getJSONArray("inbounds")
+        val tags = (0 until inbounds.length()).map { inbounds.getJSONObject(it).getString("tag") }
+        assertTrue(OrderedFailoverConfig.CHECK_INBOUND_TAG in tags && OrderedFailoverConfig.INBOUND_TAG in tags)
+        val outbounds = config.getJSONArray("outbounds")
+        assertTrue((0 until outbounds.length()).any { outbounds.getJSONObject(it).optString("tag") == OrderedFailoverConfig.CHECK_TAG })
+        val rules = config.getJSONObject("route").getJSONArray("rules")
+        val first = (0 until 2).map { rules.getJSONObject(it) }
+        assertEquals(OrderedFailoverConfig.PROBE_TAG, first[0].getString("outbound"))
+        assertEquals(OrderedFailoverConfig.CHECK_TAG, first[1].getString("outbound"))
+    }
 }

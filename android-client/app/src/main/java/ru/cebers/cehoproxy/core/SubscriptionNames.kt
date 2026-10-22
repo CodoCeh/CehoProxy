@@ -42,10 +42,12 @@ object SubscriptionNames {
     /**
      * Nodes for the native client, with readable names when the provider gave generic ones.
      * If the named format lists more nodes, they are added to the native ones (the native body may carry only one).
+     * With [required] a failed second request throws, so a refresh keeps the saved list instead of shrinking it to the native nodes.
      */
-    fun resolve(url: String, nodes: List<ProxyNode>): List<ProxyNode> {
+    fun resolve(url: String, nodes: List<ProxyNode>, required: Boolean = false, fetch: (String, SubscriptionRequestOptions) -> String = SubscriptionFetcher::fetch): List<ProxyNode> {
         if (nodes.none { isGeneric(NodePresentation.displayName(it.name)) }) return nodes
-        val body = runCatching { SubscriptionFetcher.fetch(url, SubscriptionRequestOptions(NAMES_USER_AGENT)) }.getOrNull() ?: return nodes
+        val body = if (required) fetch(url, SubscriptionRequestOptions(NAMES_USER_AGENT))
+        else runCatching { fetch(url, SubscriptionRequestOptions(NAMES_USER_AGENT)) }.getOrNull() ?: return nodes
         val renamed = apply(nodes, fromBody(body))
         val named = runCatching { NodeShareParser.parse(body) }.getOrDefault(emptyList())
         if (named.size <= nodes.size) return renamed

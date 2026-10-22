@@ -10,7 +10,7 @@ import java.util.Base64
 import java.util.zip.GZIPInputStream
 import java.util.zip.InflaterInputStream
 
-data class SubscriptionRequestOptions(val userAgent: String = DEFAULT_USER_AGENT, val headers: Map<String, String> = emptyMap(), val proxy: Proxy? = null) {
+data class SubscriptionRequestOptions(val userAgent: String = DEFAULT_USER_AGENT, val headers: Map<String, String> = emptyMap(), val proxy: Proxy? = null, val connectTimeoutMillis: Int = 12_000, val readTimeoutMillis: Int = 20_000) {
     companion object {
         const val DEFAULT_USER_AGENT = "CehoProxyAndroid/0.1 sing-box/1.14.0"
     }
@@ -41,8 +41,8 @@ object SubscriptionFetcher {
         while (true) {
             val connection = current.openConnection(options.proxy ?: Proxy.NO_PROXY) as HttpURLConnection
             connection.instanceFollowRedirects = false
-            connection.connectTimeout = 12_000
-            connection.readTimeout = 20_000
+            connection.connectTimeout = options.connectTimeoutMillis
+            connection.readTimeout = options.readTimeoutMillis
             connection.requestMethod = "GET"
             connection.setRequestProperty("User-Agent", options.userAgent)
             connection.setRequestProperty("Accept", "*/*")

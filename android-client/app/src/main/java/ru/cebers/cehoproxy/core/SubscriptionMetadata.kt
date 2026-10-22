@@ -19,6 +19,7 @@ data class SubscriptionMetadata(
     val notifyOnExpiry: Boolean = false,
     val sourceHost: String? = null,
     val sourceUrl: String? = null,
+    val updateIntervalHours: Int? = null,
 ) {
     val usedBytes: Long? get() = if (uploadBytes != null && downloadBytes != null) safeSum(uploadBytes, downloadBytes) else uploadBytes ?: downloadBytes
 
@@ -43,13 +44,14 @@ data class SubscriptionMetadata(
         notifyOnExpiry = notifyOnExpiry || other.notifyOnExpiry,
         sourceHost = sourceHost ?: other.sourceHost,
         sourceUrl = sourceUrl ?: other.sourceUrl,
+        updateIntervalHours = updateIntervalHours ?: other.updateIntervalHours,
     )
 
     companion object {
         private val supportedKeys = setOf(
             "subscription-userinfo", "profile-userinfo", "profile-title", "sub-info-text", "announce",
             "support-url", "profile-web-page-url", "sub-info-button-text", "sub-info-button-link",
-            "sub-expire-button-link", "notification-subs-expire", "sub-expire",
+            "sub-expire-button-link", "notification-subs-expire", "sub-expire", "profile-update-interval",
         )
 
         fun from(connection: HttpURLConnection, body: String): SubscriptionMetadata {
@@ -101,8 +103,17 @@ data class SubscriptionMetadata(
                 infoButtonText = text("sub-info-button-text", 25), infoButtonUrl = link("sub-info-button-link"),
                 renewUrl = link("sub-expire-button-link"),
                 notifyOnExpiry = enabled("notification-subs-expire") || enabled("sub-expire"),
+                updateIntervalHours = updateInterval(normalized["profile-update-interval"]),
             )
         }
+
+        // Providers send the refresh interval in hours (Happ, v2rayN); fractions round up, nonsense is ignored.
+        internal fun updateInterval(value: String?): Int? {
+            val hours = value?.trim()?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 && it.isFinite() } ?: return null
+            return kotlin.math.ceil(hours).toInt().coerceIn(1, MAX_UPDATE_INTERVAL_HOURS)
+        }
+
+        const val MAX_UPDATE_INTERVAL_HOURS = 24 * 30
 
         private fun isSafeLink(value: String): Boolean = runCatching {
             val uri = URI(value)

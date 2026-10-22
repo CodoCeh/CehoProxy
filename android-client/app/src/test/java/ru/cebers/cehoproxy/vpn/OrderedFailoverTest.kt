@@ -80,4 +80,16 @@ class OrderedFailoverTest {
     @Test fun noWorkingNodeReturnsNullWithoutDirectFallback() {
         assertNull(OrderedFailover.firstWorking(listOf("one", "two"), { true }, NodeHealthMemory(), 3_000) { null })
     }
+
+    @Test fun afterScoutOnlyAnsweringNodesAreProbed() {
+        assertEquals(listOf("b", "d"), OrderedFailover.afterScout(listOf("a", "b", "c", "d"), setOf("d", "b")))
+    }
+
+    @Test fun afterScoutNoAnswerLeavesOneSanityProbe() {
+        assertEquals(listOf("a"), OrderedFailover.afterScout(listOf("a", "b", "c"), emptySet()))
+    }
+
+    @Test fun afterScoutWithoutResultKeepsTheWholeList() {
+        assertEquals(listOf("a", "b"), OrderedFailover.afterScout(listOf("a", "b"), null))
+    }
 }

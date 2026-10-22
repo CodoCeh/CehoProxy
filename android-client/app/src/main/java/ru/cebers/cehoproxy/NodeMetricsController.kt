@@ -10,10 +10,12 @@ import java.util.concurrent.atomic.AtomicLong
 
 private const val COUNTRY_TIMEOUT_MS = 15_000L
 private const val LATENCY_ATTEMPTS = 2
+private const val ENGINE_WAIT_MS = 10_000L
 private const val LATENCY_ATTEMPT_WAIT_MS = 6_000L
 
 /** Uses the running engine's named outbound; never selects it or changes VPN app scope. */
 internal class NodeMetricsController(context: android.content.Context, private val publish: (VpnMeasurements) -> Unit) {
+    private val appContext = context.applicationContext
     private val countryCache = NodeCountryCache(context)
     private val main = Handler(Looper.getMainLooper())
     private val generation = AtomicLong()
@@ -25,11 +27,14 @@ internal class NodeMetricsController(context: android.content.Context, private v
     private val reconnect = MetricsReconnectPolicy()
     private var tags: Map<String, String> = emptyMap()
     private var nodeRaws: Map<String, String> = emptyMap()
+    private var nodesById: Map<String, ProxyNode> = emptyMap()
     private var fingerprint: List<String>? = null
     private var measurement = VpnMeasurements()
     private var previousTotals: Triple<Long, Long, Long>? = null
     private var probeId = 0L
     private var latencyJob: Job? = null
+    private var recheckJob: Job? = null
+    private var waitingForEngine: List<String>? = null
     private var latencyStartedAt = 0L
     private var selectedRouteId: String? = null
     private val countryInFlight = mutableSetOf<String>()
@@ -60,6 +65,7 @@ internal class NodeMetricsController(context: android.content.Context, private v
         selectedRouteId = profile.selectedNode?.routeId
         tags = nextTags
         nodeRaws = profile.nodes.associate { it.routeId to it.raw }
+        nodesById = profile.nodes.associateBy { it.routeId }
         measurement = measurement.copy(nodes = measurement.nodes.filterKeys { it in nextTags })
         fingerprint = nextFingerprint
         reconnect.start()
@@ -75,7 +81,10 @@ internal class NodeMetricsController(context: android.content.Context, private v
             addCommand(Libbox.CommandOutbounds)
         }
         val native = CommandClient(object : CommandClientHandler {
-            override fun connected() = post(token) { measurement = measurement.copy(connected = true); emit(); queueFlags() }
+            override fun connected() = post(token) {
+                measurement = measurement.copy(connected = true); emit(); queueFlags()
+                waitingForEngine?.let { ids -> waitingForEngine = null; checkLatency(ids) }
+            }
             override fun disconnected(message: String?) = post(token) { connectionLost() }
             override fun writeStatus(status: StatusMessage) {
                 val down = status.downlinkTotal
@@ -104,7 +113,8 @@ internal class NodeMetricsController(context: android.content.Context, private v
                     val updates = tags.mapNotNull { (id, tag) ->
                         val (delay, at) = results[tag] ?: return@mapNotNull null
                         val current = measurement.nodes[id] ?: NodeMeasurement()
-                        if (current.testing && at < latencyStartedAt) return@mapNotNull null
+                        // The engine stores whole seconds, so a fast answer in the second the test began must still count.
+                        if (current.testing && at + 1000 <= latencyStartedAt) return@mapNotNull null
                         NodeMetricsPolicy.applyUrlTest(current, delay, at)?.let { id to it }
                     }.toMap()
                     measurement = measurement.copy(nodes = measurement.nodes + updates)
@@ -163,11 +173,30 @@ internal class NodeMetricsController(context: android.content.Context, private v
 
     /** Parallel URL test of the whole group, repeated once for nodes that did not answer; a node still silent after that is marked failed. */
     fun checkLatency(routeIds: List<String>) {
-        val native = client ?: return
         val ids = routeIds.filter { it in tags }
-        if (ids.isEmpty() || !measurement.connected) return
+        if (ids.isEmpty()) return
+        val native = client
+        if (native == null || !measurement.connected) {
+            // The VPN is up but this app has not attached to the engine yet: run the test as soon as it does instead of reporting silence.
+            waitingForEngine = ids
+            measurement = measurement.copy(nodes = measurement.nodes + ids.associateWith { NodeMetricsPolicy.beginCheck(measurement.nodes[it]) })
+            emit()
+            val token = generation.get()
+            scope.launch {
+                delay(ENGINE_WAIT_MS)
+                post(token) {
+                    if (waitingForEngine == ids) {
+                        waitingForEngine = null
+                        measurement = measurement.copy(nodes = measurement.nodes.mapValues { (id, item) -> if (id in ids && item.testing) NodeMeasurement(failed = true, failureReason = "Движок измерения недоступен", measuredAt = System.currentTimeMillis(), verifiedCountry = item.verifiedCountry) else item })
+                        emit()
+                    }
+                }
+            }
+            return
+        }
         stopProbe()
         latencyJob?.cancel()
+        recheckJob?.cancel()
         val token = generation.get()
         latencyStartedAt = System.currentTimeMillis()
         measurement = measurement.copy(nodes = measurement.nodes + ids.associateWith { NodeMetricsPolicy.beginCheck(measurement.nodes[it]) })
@@ -179,10 +208,72 @@ internal class NodeMetricsController(context: android.content.Context, private v
                 delay(LATENCY_ATTEMPT_WAIT_MS)
             }
             post(token) {
+                val silent = ids.filter { measurement.nodes[it]?.testing == true }
                 measurement = measurement.copy(nodes = measurement.nodes.mapValues { (id, item) ->
-                    if (id in ids && item.testing) NodeMeasurement(failed = true, failureReason = "Нет ответа", measuredAt = System.currentTimeMillis(), verifiedCountry = item.verifiedCountry) else item
+                    if (id in silent) NodeMeasurement(failed = true, failureReason = "Нет ответа", measuredAt = System.currentTimeMillis(), verifiedCountry = item.verifiedCountry) else item
                 })
                 emit()
+                recheckOneByOne(silent, token)
+            }
+        }
+    }
+
+    /**
+     * Many simultaneous handshakes to one provider can be throttled, so every node that stayed silent in the burst gets its own
+     * request through a dedicated path before it is called dead.
+     */
+    private fun recheckOneByOne(ids: List<String>, token: Long) {
+        val port = appContext.getSharedPreferences("vpn_status", android.content.Context.MODE_PRIVATE).getInt("check_port", 0)
+        val native = client
+        if (ids.isEmpty() || port <= 0 || native == null) { explainSilence(ids, token); return }
+        post(token) { measurement = measurement.copy(nodes = measurement.nodes + ids.associateWith { NodeMetricsPolicy.beginCheck(measurement.nodes[it]) }); emit() }
+        recheckJob?.cancel()
+        recheckJob = scope.launch {
+            val stillSilent = mutableListOf<String>()
+            for (id in ids) {
+                if (generation.get() != token) return@launch
+                val tag = tags[id] ?: continue
+                val answeredIn = runCatching { native.selectOutbound(OrderedFailoverConfig.CHECK_TAG, tag) }.map { httpProbe(port) }.getOrNull()
+                post(token) {
+                    val current = measurement.nodes[id] ?: NodeMeasurement()
+                    measurement = measurement.copy(nodes = measurement.nodes + (id to
+                        if (answeredIn != null) current.copy(latencyMs = answeredIn, failed = false, failureReason = null, testing = false, measuredAt = System.currentTimeMillis())
+                        else NodeMeasurement(failed = true, failureReason = "Нет ответа", measuredAt = System.currentTimeMillis(), verifiedCountry = current.verifiedCountry)))
+                    emit()
+                }
+                if (answeredIn == null) stillSilent += id
+            }
+            post(token) { explainSilence(stillSilent, token) }
+        }
+    }
+
+    private fun httpProbe(port: Int): Int? {
+        val started = System.nanoTime()
+        val connection = java.net.URL(OrderedFailoverConfig.LATENCY_URL).openConnection(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress("127.0.0.1", port))) as java.net.HttpURLConnection
+        connection.connectTimeout = 4000
+        connection.readTimeout = 4000
+        connection.instanceFollowRedirects = false
+        connection.useCaches = false
+        return try {
+            if (connection.responseCode in 200..399) ((System.nanoTime() - started) / 1_000_000).toInt().coerceAtLeast(1) else null
+        } catch (_: java.io.IOException) { null } finally { connection.disconnect() }
+    }
+
+    /** Tells apart a server that is down from one whose port is open but passes no traffic. */
+    private fun explainSilence(ids: List<String>, token: Long) {
+        ids.forEach { id ->
+            val node = nodesById[id] ?: return@forEach
+            if (NodeReachability.isUdp(node)) return@forEach
+            scope.launch {
+                val tcp = NodeReachability.check(node, System.currentTimeMillis())
+                val reason = if (!tcp.failed) "Порт открыт, но трафик не проходит" else tcp.failureReason
+                post(token) {
+                    val current = measurement.nodes[id] ?: return@post
+                    if (current.failed && current.failureReason == "Нет ответа") {
+                        measurement = measurement.copy(nodes = measurement.nodes + (id to current.copy(failureReason = reason)))
+                        emit()
+                    }
+                }
             }
         }
     }
@@ -249,7 +340,9 @@ internal class NodeMetricsController(context: android.content.Context, private v
     }
 
     fun cancelProbe() {
+        waitingForEngine = null
         latencyJob?.cancel()
+        recheckJob?.cancel()
         stopProbe()
     }
 

@@ -11,6 +11,32 @@ internal object SubscriptionRefreshPolicy {
     fun isStale(url: String?, fetchedAtMillis: Long, nowMillis: Long, intervalHours: Int): Boolean =
         !url.isNullOrBlank() && nowMillis - fetchedAtMillis > maxAgeMillis(intervalHours)
 
+    private const val EARLY_RUN_TOLERANCE_MILLIS = 10 * 60 * 1000L
+
+    /** The interval the provider asked for in the subscription response, if any. */
+    fun providerHours(profile: ClientProfile, url: String): Int? =
+        profile.nodes.firstOrNull { SubscriptionMembership.belongs(it, url, profile.subscriptionUrls) }?.subscriptionMetadata?.updateIntervalHours
+
+    /** Turning refresh off in the settings wins; otherwise the provider's interval beats the app default. */
+    fun intervalHoursFor(profile: ClientProfile, url: String): Int =
+        if (profile.subscriptionRefreshHours == 0) 0 else providerHours(profile, url) ?: profile.subscriptionRefreshHours
+
+    fun fetchedAt(profile: ClientProfile, url: String): Long = profile.subscriptionFetchedAtByUrl[url] ?: profile.subscriptionFetchedAt
+
+    /** Subscriptions whose own interval has passed; the background job runs at the shortest interval and updates only these. */
+    fun dueUrls(profile: ClientProfile, nowMillis: Long): List<String> = profile.subscriptionUrls.filter { url ->
+        val hours = intervalHoursFor(profile, url)
+        hours > 0 && nowMillis - fetchedAt(profile, url) >= hours * HOUR_MILLIS - EARLY_RUN_TOLERANCE_MILLIS
+    }
+
+    /** Subscriptions to refresh before connecting. */
+    fun staleUrls(profile: ClientProfile, nowMillis: Long): List<String> = profile.subscriptionUrls.filter { url ->
+        isStale(url, fetchedAt(profile, url), nowMillis, intervalHoursFor(profile, url))
+    }
+
+    fun backgroundHours(profile: ClientProfile): Int =
+        profile.subscriptionUrls.map { intervalHoursFor(profile, it) }.filter { it > 0 }.minOrNull() ?: 0
+
     fun maxAgeMillis(intervalHours: Int): Long = (if (intervalHours > 0) intervalHours else CONNECT_FALLBACK_HOURS) * HOUR_MILLIS
 
     fun applyFetchedSources(profile: ClientProfile, fetched: Map<String, List<ProxyNode>>, nowMillis: Long): ClientProfile {
@@ -25,7 +51,7 @@ internal object SubscriptionRefreshPolicy {
         }
         val nodes = kept + fresh
         return profile.copy(nodes = nodes, selected = reselect(profile.selectedNode, nodes), subscriptionFetchedAt = nowMillis,
-            subscriptionFetchedAtByUrl = profile.subscriptionFetchedAtByUrl + urls.associateWith { nowMillis })
+            subscriptionFetchedAtByUrl = (profile.subscriptionFetchedAtByUrl + urls.associateWith { nowMillis }).filterKeys { it in profile.subscriptionUrls })
     }
 
     fun fetchedLabel(atMillis: Long, nowMillis: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String {

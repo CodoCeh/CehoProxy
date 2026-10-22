@@ -34,4 +34,22 @@ class SubscriptionNamesTest {
         assertTrue(SubscriptionNames.isGeneric(" Proxy "))
         assertFalse(SubscriptionNames.isGeneric("Германия-4"))
     }
+
+    private val native = """{"outbounds":[{"type":"hysteria2","tag":"proxy","server":"o.example","server_port":8443,"password":"own"},{"type":"direct","tag":"direct"}]}"""
+    private val named = """[{"outbounds":[{"tag":"Германия","protocol":"hysteria","settings":{"version":2,"address":"o.example","port":8443,"password":"a"}}]},{"outbounds":[{"tag":"Швеция","protocol":"hysteria","settings":{"version":2,"address":"o.example","port":8443,"password":"b"}}]}]"""
+
+    @Test fun namedListKeepsTheNativeNodeWithItsOwnAccount() {
+        val result = SubscriptionNames.resolve("https://sub.example/", NodeShareParser.parse(native)) { _, _ -> named }
+        assertEquals(listOf("Германия", "Швеция", "proxy"), result.map { it.name })
+    }
+
+    @Test fun failedNamesRequestKeepsNativeNodesOnFirstImport() {
+        val result = SubscriptionNames.resolve("https://sub.example/", NodeShareParser.parse(native)) { _, _ -> throw java.io.IOException("timeout") }
+        assertEquals(listOf("proxy"), result.map { it.name })
+    }
+
+    @Test fun failedNamesRequestFailsTheRefreshSoSavedNodesStay() {
+        val failure = runCatching { SubscriptionNames.resolve("https://sub.example/", NodeShareParser.parse(native), required = true) { _, _ -> throw java.io.IOException("timeout") } }
+        assertTrue(failure.exceptionOrNull() is java.io.IOException)
+    }
 }
