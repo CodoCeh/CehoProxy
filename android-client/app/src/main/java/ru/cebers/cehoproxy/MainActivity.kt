@@ -398,8 +398,9 @@ class MainActivity : ComponentActivity() {
         }.filter { it.packageName != packageName }.distinctBy { it.packageName }.sortedBy { it.label.lowercase() }
     }
 
-    private fun importSubscription(input: String, requestOptions: SubscriptionRequestOptions = SubscriptionRequestOptions()) {
+    private fun importSubscription(rawInput: String, requestOptions: SubscriptionRequestOptions = SubscriptionRequestOptions()) {
         if (importing) return
+        val input = SubscriptionInput.unwrap(rawInput)
         val kind = SubscriptionInput.classify(input)
         importing = true
         notice = null
@@ -770,13 +771,16 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     var manualPort by rememberSaveable { mutableStateOf("") }
     var manualUser by rememberSaveable { mutableStateOf("") }
     var manualSni by rememberSaveable { mutableStateOf("") }
+    var manualTls by rememberSaveable { mutableStateOf(true) }
+    var manualInsecure by rememberSaveable { mutableStateOf(false) }
+    var manualMethod by rememberSaveable { mutableStateOf(shadowsocksMethods.first()) }
     var manualPassword by remember { mutableStateOf("") }
     var manualShowPassword by remember { mutableStateOf(false) }
     var manualError by remember { mutableStateOf<String?>(null) }
     var manualResultBaseline by remember { mutableStateOf<Int?>(null) }
     fun openManualForm() {
         manualProtocol = ManualProtocol.HTTPS.name; manualName = ""; manualHost = ""; manualPort = ""; manualUser = ""; manualSni = ""
-        manualPassword = ""; manualShowPassword = false; manualError = null; manualResultBaseline = result?.id
+        manualTls = true; manualInsecure = false; manualMethod = shadowsocksMethods.first(); manualPassword = ""; manualShowPassword = false; manualError = null; manualResultBaseline = result?.id
         showAddSheet = false
         openPage("Вручную")
     }
@@ -1257,39 +1261,65 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             val protocol = ManualProtocol.valueOf(manualProtocol)
                             val fieldShape = MaterialTheme.shapes.large
                             PageHeading("Ручное подключение", subtitle = "Свой сервер или корпоративный прокси")
-                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(4.dp)) {
+                            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                            androidx.compose.foundation.layout.FlowRow(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
                                 ManualProtocol.entries.forEach { option ->
                                     val chosen = option == protocol
                                     Box(
-                                        Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+                                        Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
                                             .background(if (chosen) MaterialTheme.colorScheme.surface else Color.Transparent)
                                             .selectable(selected = chosen, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = { manualProtocol = option.name; manualError = null })
+                                            .padding(horizontal = 14.dp)
                                             .testTag("manual-protocol:${option.name}"),
                                         contentAlignment = Alignment.Center,
                                     ) { Text(option.label, style = MaterialTheme.typography.labelLarge, color = if (chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
                                 }
                             }
                             Text(
-                                when (protocol) {
-                                    ManualProtocol.HTTPS -> "Прокси по HTTPS с логином и паролем (NaiveProxy, Caddy). Порт обычно 443 или 8443."
-                                    ManualProtocol.SOCKS5 -> "Обычный SOCKS5-прокси. Логин и пароль нужны, только если их требует сервер."
-                                    ManualProtocol.HTTP -> "HTTP-прокси: до сервера данные не шифруются. Подходит для доверенной сети."
-                                },
+                                protocol.hint,
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp),
                             )
                             OutlinedTextField(value = manualName, onValueChange = { manualName = it }, label = { Text("Название (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-name"))
                             OutlinedTextField(value = manualHost, onValueChange = { manualHost = it; manualError = null }, label = { Text("Адрес сервера") }, placeholder = { Text("proxy.example.com или 203.0.113.5") }, singleLine = true, shape = fieldShape, enabled = !importing, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-host"))
                             OutlinedTextField(value = manualPort, onValueChange = { v -> manualPort = v.filter(Char::isDigit).take(5); manualError = null }, label = { Text("Порт") }, placeholder = { Text(protocol.defaultPort.toString()) }, singleLine = true, shape = fieldShape, enabled = !importing, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-port"))
-                            OutlinedTextField(value = manualUser, onValueChange = { manualUser = it; manualError = null }, label = { Text(if (protocol.loginRequired) "Логин" else "Логин (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-user"))
-                            OutlinedTextField(
-                                value = manualPassword, onValueChange = { manualPassword = it; manualError = null }, label = { Text(if (protocol.loginRequired) "Пароль" else "Пароль (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing,
+                            protocol.userLabel?.let { userLabel -> OutlinedTextField(value = manualUser, onValueChange = { manualUser = it; manualError = null }, label = { Text(if (protocol.userRequired) userLabel else "$userLabel (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-user")) }
+                            protocol.passwordLabel?.let { passwordLabel -> OutlinedTextField(
+                                value = manualPassword, onValueChange = { manualPassword = it; manualError = null }, label = { Text(if (protocol.passwordRequired) passwordLabel else "$passwordLabel (необязательно)") }, singleLine = true, shape = fieldShape, enabled = !importing,
                                 visualTransformation = if (manualShowPassword) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 trailingIcon = { QuietTextButton(onClick = { manualShowPassword = !manualShowPassword }, modifier = Modifier.heightIn(min = 48.dp).testTag("manual-password-toggle")) { Text(if (manualShowPassword) "Скрыть" else "Показать") } },
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("manual-password"),
-                            )
-                            if (protocol == ManualProtocol.HTTPS) {
+                            ) }
+                            if (protocol == ManualProtocol.SHADOWSOCKS) {
+                                CaptionLabel("Шифрование")
+                                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    shadowsocksMethods.forEach { method ->
+                                        FilterChip(selected = manualMethod == method, onClick = { manualMethod = method; manualError = null }, label = { Text(method) }, modifier = Modifier.heightIn(min = 48.dp).testTag("manual-method:$method").focusable())
+                                    }
+                                }
+                            }
+                            if (protocol.tls == TlsMode.SWITCH) {
+                                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Шифровать TLS", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                    Switch(checked = manualTls, onCheckedChange = { manualTls = it; manualError = null }, enabled = !importing, modifier = Modifier.testTag("manual-tls"))
+                                }
+                            }
+                            val tlsShown = protocol.tls == TlsMode.FIXED || (protocol.tls == TlsMode.SWITCH && manualTls)
+                            if (tlsShown) {
                                 OutlinedTextField(value = manualSni, onValueChange = { manualSni = it }, label = { Text("Имя сервера для TLS (SNI)") }, placeholder = { Text("по умолчанию — адрес сервера") }, singleLine = true, shape = fieldShape, enabled = !importing, modifier = Modifier.fillMaxWidth().dpadLeavesField().padding(top = 8.dp).testTag("manual-sni"))
+                                if (protocol.certificateCheckCanBeOff) {
+                                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Не проверять сертификат", style = MaterialTheme.typography.bodyLarge)
+                                            Text("Только для своего сервера с самоподписанным сертификатом.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Switch(checked = manualInsecure, onCheckedChange = { manualInsecure = it }, enabled = !importing, modifier = Modifier.testTag("manual-insecure"))
+                                    }
+                                }
                             }
                             val shownError = manualError ?: result?.takeIf { it.error && it.id != manualResultBaseline && !importing }?.message
                             if (importing) {
@@ -1297,12 +1327,12 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 Text("Проверяем настройки сервера…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                             } else shownError?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp).testTag("manual-error")) }
                             QuietButton("Добавить сервер", {
-                                val form = ManualConnection(protocol, manualHost, manualPort, manualUser, manualPassword, manualSni, manualName)
+                                val form = ManualConnection(protocol, manualHost, manualPort, manualUser, manualPassword, manualSni, manualName, manualTls, manualInsecure, manualMethod)
                                 val problem = ManualConnectionPolicy.validate(form)
                                 manualError = problem
                                 if (problem == null) onTextImport(ManualConnectionPolicy.toUri(form))
                             }, Modifier.fillMaxWidth().padding(top = 16.dp).testTag("manual-submit"), enabled = !importing && manualHost.isNotBlank())
-                            Text("Поддерживаются прокси HTTPS (Naive), SOCKS5 и HTTP. OpenVPN, WireGuard и IPsec приложение не поддерживает.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+                            Text("Для WireGuard вставьте ссылку или файл .conf через «Вставить». OpenVPN и IPsec приложение не поддерживает.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
                         }
                         "Внешний вид" -> {
                             PageHeading("Внешний вид", subtitle = "Тема оформления")
@@ -1424,7 +1454,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                 QuietDivider()
                 QuietRow("QR-код из изображения", subtitle = "Выбрать картинку из галереи", onClick = onImportQrImage, enabled = !importing, leading = { QuietBadge(size = 40.dp) { ScanGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-qr-image"))
                 QuietDivider()
-                QuietRow("Ввести вручную", subtitle = "Адрес, порт, логин и пароль", onClick = { openManualForm() }, enabled = !importing, leading = { QuietBadge(size = 40.dp) { SlidersGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-manual"))
+                QuietRow("Ввести вручную", subtitle = "VLESS, Trojan, Shadowsocks, SOCKS5 и другие", onClick = { openManualForm() }, enabled = !importing, leading = { QuietBadge(size = 40.dp) { SlidersGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-manual"))
                 QuietDivider()
                 QuietRow("Файл", subtitle = "Конфигурация .json или .txt", onClick = onImportFile, enabled = !importing, leading = { QuietBadge(size = 40.dp) { FileGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-file"))
                 QuietDivider()

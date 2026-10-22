@@ -17,21 +17,26 @@ object OrderedFailoverConfig {
         .put("outbounds", JSONArray(candidates + "block")).put("default", "block")
         .put("interrupt_exist_connections", true)
 
+    private fun endpointTags(root: JSONObject): List<String> = root.optJSONArray("endpoints")?.let { array ->
+        (0 until array.length()).mapNotNull { array.optJSONObject(it)?.optString("tag")?.takeIf(String::isNotBlank) }
+    } ?: emptyList()
+
     fun candidates(config: String): List<String> {
         val outbounds = JSONObject(config).getJSONArray("outbounds")
         val selector = (0 until outbounds.length()).map { outbounds.getJSONObject(it) }
             .firstOrNull { it.optString("tag") == GLOBAL_TAG } ?: return (0 until outbounds.length()).map { outbounds.getJSONObject(it) }
                 .filter { it.optString("type") !in setOf("direct", "block", "dns", "selector", "urltest", "loadbalance") }
-                .map { it.optString("tag") }.filter(String::isNotBlank)
+                .map { it.optString("tag") }.filter(String::isNotBlank) + endpointTags(JSONObject(config))
         val tags = selector.getJSONArray("outbounds")
         return (0 until tags.length()).map(tags::getString).filter { it != "block" }
     }
 
     fun proxyTags(config: String): List<String> {
-        val outbounds = JSONObject(config).getJSONArray("outbounds")
+        val root = JSONObject(config)
+        val outbounds = root.getJSONArray("outbounds")
         return (0 until outbounds.length()).map { outbounds.getJSONObject(it) }
             .filter { it.optString("type") !in setOf("direct", "block", "dns", "selector", "urltest", "loadbalance") }
-            .map { it.optString("tag") }.filter(String::isNotBlank)
+            .map { it.optString("tag") }.filter(String::isNotBlank) + endpointTags(root)
     }
 
     /** [checkPort] opens a second probe path that only the UI uses to re-check silent nodes one by one without disturbing the failover loop. */

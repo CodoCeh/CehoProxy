@@ -6,7 +6,7 @@ import java.net.Socket
 
 internal object NodeReachability {
     const val CONNECT_TIMEOUT_MILLIS = 3_000
-    private val udpTypes = setOf("hysteria2", "tuic")
+    private val udpTypes = setOf("hysteria2", "hysteria", "tuic", "wireguard")
 
     fun describe(error: IOException): String = when (error) {
         is java.net.SocketTimeoutException -> "Нет ответа: таймаут"

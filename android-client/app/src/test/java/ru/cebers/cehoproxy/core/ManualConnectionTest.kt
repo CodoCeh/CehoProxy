@@ -93,4 +93,53 @@ class ManualConnectionTest {
         assertTrue(NodeRemovalPolicy.removable(profile, manual))
         assertTrue(!NodeRemovalPolicy.removable(profile, fromSubscription))
     }
+
+    private val uuid = "11111111-2222-3333-4444-555555555555"
+
+    @Test fun everyNewProtocolBuildsALinkTheImporterTurnsIntoTheRightNode() {
+        val cases = listOf(
+            ManualConnection(ManualProtocol.VLESS, host = "v.example", username = uuid) to "vless",
+            ManualConnection(ManualProtocol.VMESS, host = "m.example", username = uuid) to "vmess",
+            ManualConnection(ManualProtocol.TROJAN, host = "t.example", password = "pw") to "trojan",
+            ManualConnection(ManualProtocol.SHADOWSOCKS, host = "s.example", password = "pw") to "ss",
+            ManualConnection(ManualProtocol.HYSTERIA2, host = "h.example", password = "pw") to "hysteria2",
+            ManualConnection(ManualProtocol.TUIC, host = "u.example", username = uuid, password = "pw") to "tuic",
+            ManualConnection(ManualProtocol.ANYTLS, host = "a.example", password = "pw") to "anytls",
+            ManualConnection(ManualProtocol.SSH, host = "x.example", username = "root", password = "pw") to "ssh",
+        )
+        cases.forEach { (form, type) ->
+            assertNull(type, ManualConnectionPolicy.validate(form))
+            val node = parsed(form)
+            assertEquals(type, node.type)
+            assertEquals(form.host, node.server)
+            assertEquals(form.protocol.defaultPort, node.port)
+        }
+    }
+
+    @Test fun tlsAndCertificateOptionsReachTheEngineConfig() {
+        fun outbound(form: ManualConnection) = org.json.JSONObject(RoutingConfig.build(parsed(form), RoutePolicy())).getJSONArray("outbounds").getJSONObject(0)
+        val trojan = outbound(ManualConnection(ManualProtocol.TROJAN, host = "t.example", password = "pw", serverName = "front.example", insecure = true))
+        assertEquals("front.example", trojan.getJSONObject("tls").getString("server_name"))
+        assertTrue(trojan.getJSONObject("tls").getBoolean("insecure"))
+        assertTrue(!outbound(ManualConnection(ManualProtocol.HYSTERIA2, host = "h.example", password = "pw")).getJSONObject("tls").has("insecure"))
+        assertTrue(!outbound(ManualConnection(ManualProtocol.VLESS, host = "v.example", username = uuid, tls = false)).has("tls"))
+        assertTrue(outbound(ManualConnection(ManualProtocol.VLESS, host = "v.example", username = uuid, tls = true)).has("tls"))
+        assertTrue(outbound(ManualConnection(ManualProtocol.VMESS, host = "m.example", username = uuid, insecure = true)).getJSONObject("tls").getBoolean("insecure"))
+        val ss = outbound(ManualConnection(ManualProtocol.SHADOWSOCKS, host = "s.example", password = "p:w@rd", method = "chacha20-ietf-poly1305"))
+        assertEquals("chacha20-ietf-poly1305", ss.getString("method"))
+        assertEquals("p:w@rd", ss.getString("password"))
+        assertEquals("tunnel", outbound(ManualConnection(ManualProtocol.SSH, host = "x.example", username = "tunnel", password = "pw")).getString("user"))
+        val tuic = outbound(ManualConnection(ManualProtocol.TUIC, host = "u.example", username = uuid, password = "pw"))
+        assertEquals(uuid, tuic.getString("uuid"))
+        assertEquals("pw", tuic.getString("password"))
+    }
+
+    @Test fun newProtocolsCheckTheirOwnRequiredFields() {
+        assertNotNull(ManualConnectionPolicy.validate(ManualConnection(ManualProtocol.VLESS, host = "v.example", username = "")))
+        assertNotNull(ManualConnectionPolicy.validate(ManualConnection(ManualProtocol.VLESS, host = "v.example", username = "not-a-uuid")))
+        assertNotNull(ManualConnectionPolicy.validate(ManualConnection(ManualProtocol.TROJAN, host = "t.example")))
+        assertNotNull(ManualConnectionPolicy.validate(ManualConnection(ManualProtocol.TUIC, host = "u.example", username = uuid)))
+        assertNotNull(ManualConnectionPolicy.validate(ManualConnection(ManualProtocol.SSH, host = "x.example", password = "pw")))
+        assertNotNull(ManualConnectionPolicy.validate(ManualConnection(ManualProtocol.SHADOWSOCKS, host = "s.example", password = "pw", method = "rc4")))
+    }
 }

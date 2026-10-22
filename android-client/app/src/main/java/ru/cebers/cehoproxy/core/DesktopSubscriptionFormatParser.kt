@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 /** Imports common desktop subscription containers into sing-box outbounds understood by Android. */
 object DesktopSubscriptionFormatParser {
-    private val knownTypes = setOf("vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "naive", "http", "socks")
+    private val knownTypes = setOf("vless", "vmess", "trojan", "shadowsocks", "hysteria2", "hysteria", "anytls", "ssh", "tuic", "naive", "http", "socks")
 
     fun parse(text: String): List<ProxyNode> {
         val source = text.trimStart('\uFEFF', ' ', '\t', '\r', '\n')
@@ -36,6 +36,9 @@ object DesktopSubscriptionFormatParser {
             val containerName = if (proxyCount == 1) remarks else ""
             for (i in 0 until outbounds.length()) outbounds.optJSONObject(i)?.let { appendOutbound(it, result, containerName) }
         }
+        val endpoints = obj.optJSONArray("endpoints")
+        if (endpoints != null) for (i in 0 until endpoints.length()) endpoints.optJSONObject(i)?.takeIf { it.string("type") == "wireguard" }
+            ?.let { ExtraProtocols.wireguardEndpoint(it) }?.let { result += ExtraProtocols.nodeOf(it) }
         val servers = obj.optJSONArray("servers")
         if (servers != null) for (i in 0 until servers.length()) servers.optJSONObject(i)?.let { server ->
             val host = server.string("server") ?: return@let
@@ -49,6 +52,11 @@ object DesktopSubscriptionFormatParser {
 
     private fun appendOutbound(obj: JSONObject, into: MutableList<ProxyNode>, containerName: String = ""): Boolean {
         val existingType = obj.string("type")?.lowercase()
+        if (existingType == "wireguard") {
+            val endpoint = ExtraProtocols.wireguardEndpoint(obj) ?: return false
+            into += ExtraProtocols.nodeOf(endpoint, containerName.ifBlank { null })
+            return true
+        }
         if (existingType != null) {
             if (existingType !in knownTypes) return false
             val host = obj.string("server") ?: return false
@@ -61,6 +69,7 @@ object DesktopSubscriptionFormatParser {
         }
         val protocol = obj.string("protocol")?.lowercase() ?: return false
         val settings = obj.optJSONObject("settings") ?: return false
+        if (protocol == "wireguard") return xrayWireguard(obj, settings, into, containerName)
         if (protocol == "hysteria" && settings.optInt("version") == 1) return false
         val type = when (protocol) {
             "ss", "shadowsocks" -> "shadowsocks"
@@ -151,6 +160,25 @@ object DesktopSubscriptionFormatParser {
         return true
     }
 
+    private fun xrayWireguard(obj: JSONObject, settings: JSONObject, into: MutableList<ProxyNode>, containerName: String): Boolean {
+        val peer = settings.optJSONArray("peers")?.optJSONObject(0) ?: return false
+        val endpoint = peer.string("endpoint") ?: return false
+        val host = endpoint.substringBeforeLast(':').removeSurrounding("[", "]")
+        val port = endpoint.substringAfterLast(':').toIntOrNull()?.takeIf { it in 1..65535 } ?: return false
+        val addresses = settings.optJSONArray("address")?.let { array -> (0 until array.length()).map(array::getString) }
+            ?: settings.string("address")?.let { listOf(it) } ?: return false
+        val source = JSONObject().put("private_key", settings.string("secretKey") ?: return false).put("address", JSONArray(addresses))
+            .put("peers", JSONArray().put(JSONObject().put("address", host).put("port", port).put("public_key", peer.string("publicKey") ?: return false).apply {
+                peer.string("preSharedKey")?.let { put("pre_shared_key", it) }
+                peer.optJSONArray("allowedIPs")?.let { put("allowed_ips", it) }
+            }))
+        settings.integer("mtu")?.let { source.put("mtu", it) }
+        settings.optJSONArray("reserved")?.let { source.put("reserved", it) }
+        val endpointJson = ExtraProtocols.wireguardEndpoint(source) ?: return false
+        into += ExtraProtocols.nodeOf(endpointJson, containerName.ifBlank { obj.string("tag") })
+        return true
+    }
+
     private fun parseClash(text: String): List<ProxyNode> {
         val lines = text.lineSequence().toList()
         val start = lines.indexOfFirst { it.trim() == "proxies:" }
@@ -189,6 +217,7 @@ object DesktopSubscriptionFormatParser {
     private fun clashNode(map: Map<String, String>): ProxyNode? {
         val sourceType = map["type"]?.lowercase() ?: return null
         val type = when (sourceType) { "ss" -> "shadowsocks"; "hy2" -> "hysteria2"; else -> sourceType }
+        if (type == "wireguard") return clashWireguard(map)
         if (type !in knownTypes) return null
         if (!map["plugin"].isNullOrBlank()) return null
         val host = map["server"] ?: return null
@@ -196,18 +225,34 @@ object DesktopSubscriptionFormatParser {
         val tag = map["name"] ?: "$type • $host"
         val out = JSONObject().put("type", type).put("tag", tag).put("server", host).put("server_port", port)
         when (type) {
-            "vless", "vmess", "tuic" -> map["uuid"]?.let { out.put("uuid", it) }
-            "trojan", "hysteria2", "shadowsocks" -> map["password"]?.let { out.put("password", it) }
+            "vless", "vmess" -> map["uuid"]?.let { out.put("uuid", it) }
+            "tuic" -> { map["uuid"]?.let { out.put("uuid", it) }; map["password"]?.let { out.put("password", it) } }
+            "trojan", "hysteria2", "shadowsocks", "anytls" -> map["password"]?.let { out.put("password", it) }
+            "hysteria" -> {
+                (map["auth-str"] ?: map["auth_str"] ?: map["auth"])?.let { out.put("auth_str", it) }
+                out.put("up_mbps", mbps(map["up"]) ?: 50).put("down_mbps", mbps(map["down"]) ?: 100)
+                map["obfs"]?.takeIf(String::isNotBlank)?.let { out.put("obfs", it) }
+            }
+            "ssh" -> {
+                map["username"]?.let { out.put("user", it) }
+                map["password"]?.let { out.put("password", it) }
+                map["private-key"]?.let { out.put("private_key", it) }
+                map["private-key-passphrase"]?.let { out.put("private_key_passphrase", it) }
+            }
             "naive" -> { map["username"]?.let { out.put("username", it) }; map["password"]?.let { out.put("password", it) } }
             "http", "socks" -> { map["username"]?.let { out.put("username", it) }; map["password"]?.let { out.put("password", it) } }
         }
         if (type == "shadowsocks") out.put("method", map["cipher"] ?: map["method"] ?: "")
         if (type == "vmess") { out.put("alter_id", map["alterId"]?.toIntOrNull() ?: 0); out.put("security", map["cipher"] ?: "auto") }
         if (type == "vless") map["flow"]?.let { out.put("flow", it) }
-        if (type in setOf("trojan", "hysteria2", "tuic", "naive") || map["tls"] == "true") {
+        if (type in setOf("trojan", "hysteria2", "hysteria", "anytls", "tuic", "naive") || map["tls"] == "true") {
             val tls = JSONObject().put("enabled", true)
             (map["servername"] ?: map["sni"])?.let { tls.put("server_name", it) }
             if (map["skip-cert-verify"] == "true") tls.put("insecure", true)
+            (map["alpn"] ?: map["alpn.0"])?.let { value ->
+                val list = (map.filterKeys { it.startsWith("alpn.") }.values + value.removeSurrounding("[", "]").split(',').map { it.trim().trim('"', '\'') }).filter(String::isNotBlank).distinct()
+                if (list.isNotEmpty()) tls.put("alpn", JSONArray(list))
+            }
             map["client-fingerprint"]?.let { tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", it)) }
             if (type == "vless" && (map["reality-opts.public-key"] != null || map["reality-opts"] != null)) {
                 val realityOpts = parseInlineMap(map["reality-opts"].orEmpty().removeSurrounding("{", "}")) + map.filterKeys { it.startsWith("reality-opts.") }.mapKeys { it.key.removePrefix("reality-opts.") }
@@ -239,6 +284,23 @@ object DesktopSubscriptionFormatParser {
         if (type == "hysteria2") map["obfs-password"]?.let { out.put("obfs", JSONObject().put("type", map["obfs"] ?: "salamander").put("password", it)) }
         return ProxyNode(tag, type, host, port, out.toString())
     }
+
+    private fun clashWireguard(map: Map<String, String>): ProxyNode? {
+        val host = map["server"] ?: return null
+        val port = map["port"]?.toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
+        val addresses = listOfNotNull(map["ip"], map["ipv6"]).flatMap { it.split(',') }.map(String::trim).filter(String::isNotBlank)
+        val reserved = map["reserved"]?.removeSurrounding("[", "]")?.split(',')?.mapNotNull { it.trim().toIntOrNull() }?.takeIf { it.size == 3 }
+        val source = JSONObject().put("private_key", map["private-key"] ?: return null).put("address", JSONArray(addresses))
+            .put("peers", JSONArray().put(JSONObject().put("address", host).put("port", port).put("public_key", map["public-key"] ?: return null).apply {
+                map["pre-shared-key"]?.let { put("pre_shared_key", it) }
+                reserved?.let { put("reserved", JSONArray(it)) }
+            }))
+        map["mtu"]?.toIntOrNull()?.let { source.put("mtu", it) }
+        val endpoint = ExtraProtocols.wireguardEndpoint(source) ?: return null
+        return ExtraProtocols.nodeOf(endpoint, map["name"])
+    }
+
+    private fun mbps(value: String?): Int? = value?.filter(Char::isDigit)?.toIntOrNull()?.takeIf { it > 0 }
 
     private fun parsePair(value: String): Pair<String, String>? {
         val separator = value.indexOf(':')

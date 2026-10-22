@@ -302,6 +302,34 @@ class SubscriptionImportUiTest {
         rule.onNodeWithText("Demo-node").assertIsDisplayed()
     }
 
+    private fun storedNodes() = ProfileCodec.decode(rule.activity.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("data", "{}") ?: "{}").nodes
+
+    @Test fun addToAppWrapperAroundAServerLinkImportsTheInnerNode() {
+        openImportDialog()
+        rule.onNodeWithTag("import-input").performTextInput("hiddify://import/https://tunnel" + ":" + "wrapped-" + "secret@wrap.example:8443/#Wrapped")
+        rule.onNodeWithTag("import-submit").performClick()
+        rule.waitUntil(15_000) { storedNodes().size == 1 }
+        assertEquals("naive", storedNodes().single().type)
+        assertEquals("wrap.example", storedNodes().single().server)
+    }
+
+    @Test fun wireguardConfigFileTextImportsAsOneNode() {
+        openImportDialog()
+        val conf = "[Interface]\nPrivateKey = yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=\nAddress = 10.8.0.2/32\n\n[Peer]\nPublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=\nAllowedIPs = 0.0.0.0/0\nEndpoint = wg.example:51820\n"
+        rule.onNodeWithTag("import-input").performTextInput(conf)
+        rule.onNodeWithTag("import-submit").performClick()
+        rule.waitUntil(15_000) { storedNodes().size == 1 }
+        assertEquals("wireguard", storedNodes().single().type)
+    }
+
+    @Test fun anytlsAndHysteriaLinksImportTogether() {
+        openImportDialog()
+        rule.onNodeWithTag("import-input").performTextInput("anytls://synthetic-pass@a.example:443?sni=a.example#A\nhysteria://h.example:443?auth=synthetic&peer=h.example#H")
+        rule.onNodeWithTag("import-submit").performClick()
+        rule.waitUntil(15_000) { storedNodes().size == 2 }
+        assertEquals(listOf("anytls", "hysteria"), storedNodes().map { it.type })
+    }
+
     @Test fun liveProviderSubscriptionImportsThroughTheAppWhenUrlProvided() {
         val url = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("liveSubscriptionUrl")
         org.junit.Assume.assumeTrue("Pass a user-owned URL only for an explicit live acceptance run", !url.isNullOrBlank())

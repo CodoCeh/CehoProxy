@@ -20,8 +20,9 @@ data class ProxyNode(
 }
 
 object NodeShareParser {
-    private val supported = setOf("vless", "vmess", "trojan", "ss", "hysteria2", "hy2", "tuic", "naive", "socks", "socks5", "socks5h", "http")
-    private val supportedOutbounds = supported + setOf("shadowsocks", "naiveproxy")
+    private val supported = setOf("vless", "vmess", "trojan", "ss", "hysteria2", "hy2", "tuic", "naive", "socks", "socks4", "socks4a", "socks5", "socks5h", "http")
+    private val supportedOutbounds = supported + setOf("shadowsocks", "naiveproxy", "anytls", "hysteria", "ssh", "wireguard")
+    private val unsupportedLinkSchemes = setOf("ssr", "juicity", "mieru", "brook", "snell", "trojan-go", "mtproto", "tg")
     private val nonProxyOutbounds = setOf("direct", "block", "dns", "selector", "urltest", "loadbalance")
 
     fun parse(input: String): List<ProxyNode> {
@@ -30,6 +31,8 @@ object NodeShareParser {
         if (formatted.isNotEmpty()) return formatted
         val jsonNodes = parseJsonNodes(decoded)
         if (jsonNodes.isNotEmpty()) return jsonNodes
+        val wireguardNodes = ExtraProtocols.parseWireguardConfig(decoded)
+        if (wireguardNodes.isNotEmpty()) return wireguardNodes
         return decoded.lineSequence().mapNotNullIndexed { index, line -> parseLine(line.trim(), index) }.toList()
     }
 
@@ -55,6 +58,7 @@ object NodeShareParser {
             candidates.mapNotNull { it.optString("type").ifBlank { it.optString("protocol") }.lowercase().takeIf(String::isNotBlank) }
                 .filterNot { it in supportedOutbounds || it in nonProxyOutbounds }.forEach(found::add)
         }
+        text.lineSequence().map { it.trim().substringBefore("://", "").lowercase() }.filter { it in unsupportedLinkSchemes }.forEach(found::add)
         if (text.contains("proxies:")) {
             var inProxies = false
             text.lineSequence().forEach { line ->
@@ -69,12 +73,18 @@ object NodeShareParser {
 
     private fun parseJsonNodes(text: String): List<ProxyNode> = runCatching {
         val json = JSONObject(text)
-        val outbounds = json.optJSONArray("outbounds") ?: return@runCatching emptyList()
+        val outbounds = json.optJSONArray("outbounds") ?: JSONArray()
         val result = mutableListOf<ProxyNode>()
+        val endpoints = json.optJSONArray("endpoints")
+        if (endpoints != null) for (index in 0 until endpoints.length()) {
+            val endpoint = endpoints.optJSONObject(index)?.takeIf { it.optString("type") == "wireguard" } ?: continue
+            ExtraProtocols.wireguardEndpoint(endpoint)?.let { result += ExtraProtocols.nodeOf(it) }
+        }
         for (index in 0 until outbounds.length()) {
             val outbound = outbounds.optJSONObject(index) ?: continue
             val type = outbound.optString("type")
-            if (type !in setOf("vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "naive", "http", "socks")) continue
+            if (type == "wireguard") { ExtraProtocols.wireguardEndpoint(outbound)?.let { result += ExtraProtocols.nodeOf(it) }; continue }
+            if (type !in setOf("vless", "vmess", "trojan", "shadowsocks", "hysteria2", "hysteria", "anytls", "ssh", "tuic", "naive", "http", "socks")) continue
             val host = outbound.optString("server").takeIf(String::isNotBlank) ?: continue
             val port = outbound.optInt("server_port").takeIf { it in 1..65535 } ?: continue
             result += ProxyNode(outbound.optString("tag", "$type $host"), type, host, port, outbound.toString())
@@ -90,6 +100,7 @@ object NodeShareParser {
 
     private fun parseLine(line: String, index: Int): ProxyNode? {
         if (line.isBlank() || line.startsWith("{")) return null
+        if (line.substringBefore("://", "").lowercase() in ExtraProtocols.linkSchemes) return ExtraProtocols.parseLink(line)
         val normalizedNaive = normalizeNaiveUri(line) ?: line
         val uri = runCatching { URI(normalizedNaive) }.getOrNull() ?: return null
         val type = uri.scheme?.lowercase() ?: return null

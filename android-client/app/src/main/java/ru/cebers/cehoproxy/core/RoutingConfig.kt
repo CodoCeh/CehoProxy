@@ -54,7 +54,11 @@ object RoutingConfig {
         val tagByRouteId = uniqueNodes.mapIndexed { index, node -> node.routeId to nodeTags[index] }.toMap()
         val fallbackTag = if (policy.autoRotationEnabled && uniqueNodes.isNotEmpty()) OrderedFailoverConfig.GLOBAL_TAG else tagByRouteId[allowedNodes.getOrNull(safeDefaultIndex)?.routeId] ?: nodeTags.firstOrNull() ?: "block"
         val outbounds = JSONArray()
-        uniqueNodes.forEachIndexed { index, node -> outbounds.put(outbound(node, nodeTags[index], policy.xrayPorts)) }
+        val endpoints = JSONArray()
+        uniqueNodes.forEachIndexed { index, node ->
+            val built = outbound(node, nodeTags[index], policy.xrayPorts)
+            if (built.optString("type") == "wireguard") endpoints.put(built) else outbounds.put(built)
+        }
         if (policy.autoRotationEnabled && uniqueNodes.isNotEmpty()) {
             val autoTags = uniqueNodes.indices.filter { index ->
                 val node = uniqueNodes[index]
@@ -90,7 +94,7 @@ object RoutingConfig {
                 if (!policy.excludeSelectedApps && includedPackages.isNotEmpty()) put("include_package", JSONArray(includedPackages))
                 else if (policy.excludeSelectedApps && policy.apps.isNotEmpty()) put("exclude_package", JSONArray(policy.apps))
             }))
-            .put("outbounds", outbounds).put("route", JSONObject().put("auto_detect_interface", true).put("default_domain_resolver", "dns-direct").put("rules", rules).apply {
+            .put("outbounds", outbounds).apply { if (endpoints.length() > 0) put("endpoints", endpoints) }.put("route", JSONObject().put("auto_detect_interface", true).put("default_domain_resolver", "dns-direct").put("rules", rules).apply {
                 if (policy.countryRuleSets.isNotEmpty()) put("rule_set", JSONArray(policy.countryRuleSets.map { set ->
                     JSONObject().put("type", "local").put("tag", set.tag).put("format", "binary").put("path", set.path)
                 }))
@@ -255,7 +259,7 @@ object RoutingConfig {
                 .put("server_port", xrayPorts[node.routeId] ?: 0).put("version", "5")
         }
         val uri = runCatching { java.net.URI(node.raw) }.getOrNull()
-        val type = when (node.type) { "ss" -> "shadowsocks"; "socks5", "socks5h" -> "socks"; else -> node.type }
+        val type = when (node.type) { "ss" -> "shadowsocks"; "socks4", "socks4a", "socks5", "socks5h" -> "socks"; else -> node.type }
         val result = JSONObject().put("type", type).put("tag", tag).put("server", node.server).put("server_port", node.port)
         val userInfo = uri?.rawUserInfo
         val query = uri?.rawQuery.orEmpty().split('&').mapNotNull { entry ->
@@ -298,7 +302,7 @@ object RoutingConfig {
         }
         if (type == "vmess") appendVmess(result, node)
         if (type == "socks" || type == "http") {
-            if (type == "socks") result.put("version", if (uri?.scheme.equals("socks4", true)) "4" else "5")
+            if (type == "socks") result.put("version", when (uri?.scheme?.lowercase()) { "socks4" -> "4"; "socks4a" -> "4a"; else -> "5" })
             val auth = userInfo.orEmpty()
             if (auth.isNotEmpty()) {
                 result.put("username", decodeUriPart(auth.substringBefore(':')))
@@ -409,6 +413,7 @@ object RoutingConfig {
             obj.optString("alpn").takeIf(String::isNotBlank)?.let { put("alpn", it) }
             obj.optString("fp").takeIf(String::isNotBlank)?.let { put("fp", it) }
             obj.optString("tls").takeIf(String::isNotBlank)?.let { put("tls", it) }
+            (obj.optString("allowInsecure").ifBlank { obj.optString("insecure") }).takeIf(String::isNotBlank)?.let { put("allowInsecure", it) }
         }
         if (obj.optString("tls").equals("tls", true)) appendTls(result, node.copy(server = obj.optString("sni", node.server)), query, forceEnabled = true)
         appendTransport(result, query)

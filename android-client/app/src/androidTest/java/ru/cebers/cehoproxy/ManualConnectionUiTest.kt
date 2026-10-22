@@ -116,6 +116,53 @@ class ManualConnectionUiTest {
         }
     }
 
+    @Test fun formAddsTrojanServerWithCertificateOptionAndEngineAcceptsIt() {
+        assumeTouchDevice()
+        install(ClientProfile(apps = listOf("a.b")))
+        openManualForm()
+        rule.onNodeWithTag("manual-protocol:TROJAN").performScrollTo().performClick()
+        rule.onNodeWithTag("manual-host").performTextInput("trojan.example")
+        rule.onNodeWithTag("manual-password").performTextInput("tr0jan-secret")
+        rule.onNodeWithTag("manual-sni").performScrollTo().performTextInput("front.example")
+        rule.onNodeWithTag("manual-insecure").performScrollTo().performClick()
+        rule.onNodeWithTag("manual-submit").performScrollTo().performClick()
+        rule.waitUntil(15_000) { stored().nodes.size == 1 }
+        val node = stored().nodes.single()
+        assertEquals("trojan", node.type)
+        val config = RoutingConfig.build(node, RoutePolicy(apps = listOf("a.b")))
+        Libbox.checkConfig(config)
+        val tls = outboundFor(node.server, config).getJSONObject("tls")
+        assertEquals("front.example", tls.getString("server_name"))
+        assertTrue(tls.getBoolean("insecure"))
+    }
+
+    @Test fun formAddsShadowsocksWithChosenCipher() {
+        assumeTouchDevice()
+        install(ClientProfile(apps = listOf("a.b")))
+        openManualForm()
+        rule.onNodeWithTag("manual-protocol:SHADOWSOCKS").performScrollTo().performClick()
+        rule.onNodeWithTag("manual-host").performTextInput("ss.example")
+        rule.onNodeWithTag("manual-password").performTextInput("ss-secret")
+        rule.onNodeWithTag("manual-method:chacha20-ietf-poly1305").performScrollTo().performClick()
+        rule.onNodeWithTag("manual-submit").performScrollTo().performClick()
+        rule.waitUntil(15_000) { stored().nodes.size == 1 }
+        val node = stored().nodes.single()
+        val outbound = outboundFor(node.server, RoutingConfig.build(node, RoutePolicy(apps = listOf("a.b"))))
+        assertEquals("shadowsocks", outbound.getString("type"))
+        assertEquals("chacha20-ietf-poly1305", outbound.getString("method"))
+    }
+
+    @Test fun everyManualProtocolProducesAConfigTheEngineAccepts() {
+        val uuid = "11111111-2222-3333-4444-555555555555"
+        ManualProtocol.entries.forEach { protocol ->
+            val form = ManualConnection(protocol, host = "srv.example", username = if (protocol.userLabel == "UUID") uuid else if (protocol.userLabel != null) "login" else "",
+                password = if (protocol.passwordLabel != null) "secret" else "", insecure = true)
+            assertEquals(protocol.name, null, ManualConnectionPolicy.validate(form))
+            val node = NodeShareParser.parse(ManualConnectionPolicy.toUri(form)).single()
+            runCatching { Libbox.checkConfig(RoutingConfig.build(node, RoutePolicy())) }.onFailure { throw AssertionError("${protocol.name}: ${it.message}", it) }
+        }
+    }
+
     @Test fun manuallyAddedServerCanBeRemovedAfterConfirmation() {
         val node = NodeShareParser.parse(ManualConnectionPolicy.toUri(ManualConnection(ManualProtocol.SOCKS5, host = "10.0.0.9", name = "Временный"))).single()
         install(ClientProfile(nodes = listOf(node), apps = listOf("a.b")))

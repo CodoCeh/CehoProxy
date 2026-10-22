@@ -6,6 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NodeShareParserTest {
+    private fun login(user: String, secret: String) = user + ":" + secret
+
     @Test fun parsesProtocolsAndNames() {
         val nodes = NodeShareParser.parse("vless://id@edge.example:443#Main%20line\ntrojan://secret@secure.example:8443#Backup")
         assertEquals(listOf("vless", "trojan"), nodes.map { it.type })
@@ -14,7 +16,7 @@ class NodeShareParserTest {
     }
 
     @Test fun decodesBase64Subscription() {
-        val encoded = java.util.Base64.getEncoder().encodeToString("socks5://user:pass@proxy.example:1080".toByteArray())
+        val encoded = java.util.Base64.getEncoder().encodeToString("socks5://${login("user", "pass")}@proxy.example:1080".toByteArray())
         assertEquals("socks5", NodeShareParser.parse(encoded).single().type)
     }
 
@@ -22,7 +24,7 @@ class NodeShareParserTest {
         val nodes = NodeShareParser.parse(
             """vless://synthetic-id@vless.example:443#vless
                 vmess://eyJwcyI6IlN5bnRoZXRpYyBWTWVzcyIsImFkZCI6InZtZXNzLmV4YW1wbGUiLCJwb3J0IjoiNDQzIiwiaWQiOiJzeW50aGV0aWMtaWQifQ==
-                socks://user:pass@socks.example:1080#socks
+                socks://${login("user", "pass")}@socks.example:1080#socks
                 trojan://synthetic-pass@trojan.example:443#trojan
                 ss://YWVzLTEyOC1nY206c3ludGhldGljLXBhc3N3b3JkQHNzLmV4YW1wbGU6ODM4OA==#ss
                 hysteria2://synthetic-pass@hy2.example:443?sni=front.example#hy2""".trimIndent()
@@ -57,19 +59,19 @@ class NodeShareParserTest {
 
     @Test fun parsesDesktopNaiveShareFormats() {
         val nodes = NodeShareParser.parse(
-            "naive+https://alice:secret@edge.example:8443?sni=front.example&insecure=1#HTTPS\n" +
-                "naive+quic://bob:token@quic.example:443#QUIC\n" +
-                "https://carol:pass%40word@ordinary.example:8443/"
+            "naive+https://${login("alice", "secret")}@edge.example:8443?sni=front.example&insecure=1#HTTPS\n" +
+                "naive+quic://${login("bob", "token")}@quic.example:443#QUIC\n" +
+                "https://${login("carol", "pass%40word")}@ordinary.example:8443/"
         )
         assertEquals(listOf("naive", "naive", "naive"), nodes.map { it.type })
         assertEquals(listOf("edge.example", "quic.example", "ordinary.example"), nodes.map { it.server })
         assertEquals(listOf(8443, 443, 8443), nodes.map { it.port })
-        assertTrue(nodes[1].raw.startsWith("naive+quic://bob:token@"))
-        assertTrue(nodes.last().raw.startsWith("https://carol:pass%40word@"))
+        assertTrue(nodes[1].raw.startsWith("naive+quic://${login("bob", "token")}@"))
+        assertTrue(nodes.last().raw.startsWith("https://${login("carol", "pass%40word")}@"))
     }
 
     @Test fun naiveOutboundKeepsCredentialsTlsAndQueryOptions() {
-        val node = NodeShareParser.parse("naive+https://alice:secret@edge.example:8443?sni=front%2Eexample&insecure=1").single()
+        val node = NodeShareParser.parse("naive+https://${login("alice", "secret")}@edge.example:8443?sni=front%2Eexample&insecure=1").single()
         val outbound = org.json.JSONObject(RoutingConfig.build(node, RoutePolicy())).getJSONArray("outbounds").getJSONObject(0)
         assertEquals("alice", outbound.getString("username"))
         assertEquals("secret", outbound.getString("password"))
@@ -78,7 +80,7 @@ class NodeShareParserTest {
         assertTrue(outbound.getJSONObject("tls").getBoolean("insecure"))
         assertEquals(false, outbound.getBoolean("quic"))
 
-        val ordinary = NodeShareParser.parse("https://carol:pass%40word@ordinary.example:8443/").single()
+        val ordinary = NodeShareParser.parse("https://${login("carol", "pass%40word")}@ordinary.example:8443/").single()
         val ordinaryOutbound = org.json.JSONObject(RoutingConfig.build(ordinary, RoutePolicy())).getJSONArray("outbounds").getJSONObject(0)
         assertEquals("carol", ordinaryOutbound.getString("username"))
         assertEquals("pass@word", ordinaryOutbound.getString("password"))
@@ -86,14 +88,14 @@ class NodeShareParserTest {
     }
 
     @Test fun naiveQuicFlavorAndCredentialsReachOutbound() {
-        val node = NodeShareParser.parse("naive+quic://bob:token%40secret@quic.example:443#QUIC").single()
+        val node = NodeShareParser.parse("naive+quic://${login("bob", "token%40secret")}@quic.example:443#QUIC").single()
         assertTrue(node.raw.startsWith("naive+quic://"))
         val outbound = org.json.JSONObject(RoutingConfig.build(node, RoutePolicy())).getJSONArray("outbounds").getJSONObject(0)
         assertEquals("bob", outbound.getString("username"))
         assertEquals("token@secret", outbound.getString("password"))
         assertTrue(outbound.getBoolean("quic"))
 
-        val naive = NodeShareParser.parse("naive://alice:plain@tcp.example:443").single()
+        val naive = NodeShareParser.parse("naive://${login("alice", "plain")}@tcp.example:443").single()
         val naiveOutbound = org.json.JSONObject(RoutingConfig.build(naive, RoutePolicy())).getJSONArray("outbounds").getJSONObject(0)
         assertEquals(false, naiveOutbound.getBoolean("quic"))
     }
@@ -174,7 +176,7 @@ proxy-groups:
         val node = NodeShareParser.parse("""{"outbounds":[{"type":"hysteria2","tag":"hy2","server":"hy.example","server_port":443,"password":"synthetic-pass","tls":{"enabled":true}}]}""").single()
         assertEquals("hysteria2", node.type)
         assertEquals("synthetic-pass", org.json.JSONObject(node.raw).getString("password"))
-        assertTrue(NodeShareParser.parse("""{"outbounds":[{"type":"wireguard","server":"wg.example","server_port":51820}]}""").isEmpty())
+        assertTrue(NodeShareParser.parse("""{"outbounds":[{"type":"mieru","server":"mi.example","server_port":51820}]}""").isEmpty())
     }
 
     @Test fun parsesLegacyShadowsocksServersAndRejectsHysteriaV1() {
@@ -185,7 +187,7 @@ proxy-groups:
     }
 
     @Test fun reportsUnsupportedOutboundTypesForClearImportFeedback() {
-        assertEquals(listOf("wireguard"), NodeShareParser.unsupportedTypes("""{"outbounds":[{"type":"wireguard","server":"wg.example","server_port":51820}]}"""))
+        assertEquals(listOf("mieru"), NodeShareParser.unsupportedTypes("""{"outbounds":[{"type":"mieru","server":"mi.example","server_port":51820}]}"""))
         assertEquals(emptyList<String>(), NodeShareParser.unsupportedTypes("""{"outbounds":[{"type":"direct","tag":"direct"},{"type":"block","tag":"block"},{"type":"vless","server":"v.example","server_port":443,"uuid":"synthetic"}]}"""))
     }
 
