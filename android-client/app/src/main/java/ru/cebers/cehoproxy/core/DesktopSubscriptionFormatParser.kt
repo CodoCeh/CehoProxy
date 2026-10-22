@@ -186,12 +186,23 @@ object DesktopSubscriptionFormatParser {
         val maps = mutableListOf<MutableMap<String, String>>()
         var current: MutableMap<String, String>? = null
         val parents = mutableListOf<Pair<Int, String>>()
+        var itemIndent = -1
+        val listCounts = mutableMapOf<String, Int>()
         for (line in lines.drop(start + 1)) {
             val trimmed = line.trim()
             if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
             val indent = line.indexOfFirst { !it.isWhitespace() }.coerceAtLeast(0)
             if (indent == 0 && trimmed != "proxies:") break
-            if (trimmed.startsWith("- ")) {
+            if (trimmed.startsWith("- ") && current != null && itemIndent >= 0 && indent > itemIndent) {
+                while (parents.isNotEmpty() && parents.last().first > indent) parents.removeAt(parents.lastIndex)
+                if (parents.isNotEmpty()) {
+                    val listKey = parents.joinToString(".") { it.second }
+                    val position = listCounts.merge(listKey, 1, Int::plus)!! - 1
+                    current["$listKey.$position"] = unquote(trimmed.drop(2).trim())
+                }
+            } else if (trimmed.startsWith("- ")) {
+                if (itemIndent < 0) itemIndent = indent
+                listCounts.clear()
                 current = linkedMapOf()
                 maps += current
                 parents.clear()

@@ -9,6 +9,13 @@ class LabConfigDumpTest {
     @Test fun dump() {
         val dir = System.getenv("CEHO_LAB_DIR")
         assumeTrue(dir != null)
+        File(dir, "e2e.txt").takeIf { it.exists() }?.readLines()?.filter { it.isNotBlank() }?.forEach { line ->
+            val name = line.substringBefore('\t')
+            val node = NodeShareParser.parse(line.substringAfter('\t').replace("\\n", "\n")).first()
+            val profile = ProfileCodec.encode(ClientProfile(nodes = listOf(node), apps = listOf("com.android.chrome")))
+            val escaped = profile.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+            File(dir, "profile-$name.xml").writeText("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <string name=\"data\">$escaped</string>\n</map>\n")
+        }
         File(dir, "manual.txt").takeIf { it.exists() }?.readLines()?.filter { it.isNotBlank() }?.forEach { line ->
             val f = line.split('\t')
             val form = ManualConnection(ManualProtocol.valueOf(f[1]), f[2], f[3], f[4], f[5], f[6], "", f[7] == "1", f[8] == "1", f[9].ifBlank { shadowsocksMethods.first() })

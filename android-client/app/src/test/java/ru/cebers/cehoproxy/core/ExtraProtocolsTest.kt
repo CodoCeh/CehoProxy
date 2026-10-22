@@ -173,4 +173,54 @@ class ExtraProtocolsTest {
         val out = JSONObject(RoutingConfig.build(NodeShareParser.parse(link).single(), RoutePolicy())).getJSONArray("outbounds").getJSONObject(0)
         assertTrue(out.getJSONObject("tls").getBoolean("insecure"))
     }
+
+    @Test fun clashBlockStyleKeepsListsAndNestedOptions() {
+        val yaml = """
+            proxies:
+              - name: "vless-ws"
+                type: vless
+                server: v.example
+                port: 443
+                uuid: 11111111-1111-1111-1111-111111111111
+                network: ws
+                tls: true
+                servername: front.example
+                ws-opts:
+                  path: /ws
+                  headers:
+                    Host: front.example
+              - name: "hy2-list"
+                type: hysteria2
+                server: h.example
+                port: 443
+                password: hp
+                sni: front.example
+                alpn:
+                  - h3
+                  - h2
+              - name: "wg-block"
+                type: wireguard
+                server: w.example
+                port: 51820
+                ip: 10.0.0.2
+                private-key: $wgPrivate
+                public-key: $wgPublic
+                reserved: [1, 2, 3]
+        """.trimIndent()
+        val nodes = NodeShareParser.parse(yaml)
+        assertEquals(listOf("vless", "hysteria2", "wireguard"), nodes.map { it.type })
+        val vless = JSONObject(nodes[0].raw)
+        assertEquals("/ws", vless.getJSONObject("transport").getString("path"))
+        assertEquals("front.example", vless.getJSONObject("transport").getJSONObject("headers").getString("Host"))
+        assertEquals(listOf("h3", "h2"), JSONObject(nodes[1].raw).getJSONObject("tls").getJSONArray("alpn").let { a -> (0 until a.length()).map(a::getString) })
+        assertEquals(3, JSONObject(nodes[2].raw).getJSONArray("peers").getJSONObject(0).getJSONArray("reserved").length())
+    }
+
+    @Test fun clashListWrittenAtTheSameIndentAsItsKey() {
+        val yaml = "proxies:\n  - name: hy\n    type: hysteria2\n    server: h.example\n    port: 443\n    password: hp\n    alpn:\n    - h3\n    - h2\n  - name: tr\n    type: trojan\n    server: t.example\n    port: 443\n    password: tp\n"
+        val nodes = NodeShareParser.parse(yaml)
+        assertEquals(listOf("hysteria2", "trojan"), nodes.map { it.type })
+        assertEquals(2, JSONObject(nodes[0].raw).getJSONObject("tls").getJSONArray("alpn").length())
+        assertEquals("tp", JSONObject(nodes[1].raw).getString("password"))
+    }
 }
