@@ -73,7 +73,8 @@ object RoutingConfig {
         outbounds.put(JSONObject().put("type", "direct").put("tag", "direct"))
             .put(JSONObject().put("type", "block").put("tag", "block"))
         val rules = JSONArray()
-        if (policy.sites.isNotEmpty() || policy.siteNodeRoutes.isNotEmpty() || policy.countryRuleSets.isNotEmpty() || dpiApps.isNotEmpty() || policy.blockYoutubeAds) rules.put(JSONObject().put("action", "sniff"))
+        rules.put(JSONObject().put("action", "sniff"))
+        rules.put(JSONObject().put("protocol", "dns").put("action", "hijack-dns"))
         if (policy.blockYoutubeAds) rules.put(JSONObject().put("domain_suffix", JSONArray(YoutubeAdPolicy.domainSuffixes)).put("action", "reject"))
         if (policy.countryRuleSets.isEmpty() && dpiApps.isEmpty()) {
             appendAssignedRules(rules, policy, tagByRouteId)
@@ -86,6 +87,7 @@ object RoutingConfig {
                 .put("action", "route").put("outbound", "direct"))
             appendAssignedRules(rules, policy.copy(siteNodeRoutes = emptyMap()), tagByRouteId)
         }
+        rules.put(JSONObject().put("ip_version", 6).put("action", "reject"))
         val onlySites = policy.siteMode == SiteMode.ONLY_LIST
         return JSONObject().put("log", JSONObject().put("level", "info"))
             .put("dns", dnsConfig(policy, fallbackTag, tagByRouteId))

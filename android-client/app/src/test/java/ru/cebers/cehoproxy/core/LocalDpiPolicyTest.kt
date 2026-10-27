@@ -39,7 +39,7 @@ class LocalDpiPolicyTest {
             val config = JSONObject(RoutingConfig.build(node, RoutePolicy(apps = listOf(app, other), localDpiApps = listOf(app),
                 sites = listOf("manual.example"), siteNodeRoutes = mapOf("assigned.example" to node.routeId),
                 appNodeRoutes = mapOf(other to node.routeId), siteMode = mode, countryRuleSets = sets)))
-            val rules = config.getJSONObject("route").getJSONArray("rules")
+            val rules = config.routeRulesWithoutDefaults()
             assertEquals("sniff", rules.getJSONObject(0).getString("action"))
             assertEquals("assigned.example", rules.getJSONObject(1).getJSONArray("domain").getString(0))
             assertEquals("manual.example", rules.getJSONObject(2).getJSONArray("domain").getString(0))
@@ -76,7 +76,7 @@ class LocalDpiPolicyTest {
         assertEquals("block", config.getJSONObject("route").getString("final"))
         assertEquals("block", config.getJSONObject("dns").getJSONArray("servers").getJSONObject(0).getString("detour"))
         assertEquals("reject", config.getJSONObject("dns").getJSONArray("rules").getJSONObject(1).getString("action"))
-        val rules = config.getJSONObject("route").getJSONArray("rules")
+        val rules = config.routeRulesWithoutDefaults()
         for (index in 1 until rules.length()) assertEquals(listOf(app), rules.getJSONObject(index).getJSONArray("package_name").let { array -> (0 until array.length()).map(array::getString) })
         assertEquals(app, config.getJSONArray("inbounds").getJSONObject(0).getJSONArray("include_package").getString(0))
         assertEquals(listOf("direct", "block"), config.getJSONArray("outbounds").let { array -> (0 until array.length()).map { array.getJSONObject(it).getString("type") } })
@@ -86,7 +86,7 @@ class LocalDpiPolicyTest {
     @Test fun noDpiOrOutsideScopeProducesNoFragmentOrQuicRestriction() {
         val config = RoutingConfig.build(node, RoutePolicy(apps = listOf(other), localDpiApps = listOf(app)))
         assertFalse(config.contains("tls_record_fragment"))
-        assertFalse(config.contains("reject"))
+        assertFalse(config.contains("\"protocol\": \"quic\""))
         assertFalse(config.contains(app))
     }
 }

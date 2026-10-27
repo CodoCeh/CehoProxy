@@ -12,7 +12,7 @@ class RoutingConfigTest {
     private fun JSONObject.routingRules(): org.json.JSONArray {
         val rules = getJSONArray("rules")
         return org.json.JSONArray((0 until rules.length()).map { rules.getJSONObject(it) }
-            .filter { it.optString("action") != "sniff" })
+            .filter { it.optString("action") != "sniff" && it.optString("action") != "hijack-dns" && !it.has("ip_version") })
     }
 
     private val node = NodeShareParser.parse("vless://11111111-1111-1111-1111-111111111111@edge.example:443#Test").single()
@@ -333,4 +333,11 @@ class RoutingConfigTest {
 
     private fun outbound(uri: String): JSONObject = JSONObject(RoutingConfig.build(NodeShareParser.parse(uri).single(), RoutePolicy()))
         .getJSONArray("outbounds").getJSONObject(0)
+
+    @Test fun ipv6DestinationsAreRejectedSoNothingLeaksAroundTheTunnelAndAppsFallBackToIpv4() {
+        val rules = JSONObject(RoutingConfig.build(node, RoutePolicy())).getJSONObject("route").getJSONArray("rules")
+        val last = rules.getJSONObject(rules.length() - 1)
+        assertEquals(6, last.getInt("ip_version"))
+        assertEquals("reject", last.getString("action"))
+    }
 }

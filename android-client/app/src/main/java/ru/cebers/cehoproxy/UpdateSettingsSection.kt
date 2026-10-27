@@ -16,7 +16,34 @@ import java.util.Date
 @Composable
 internal fun ObserveAutomaticUpdates() {
     val context = LocalContext.current
-    LaunchedEffect(Unit) { AndroidUpdateController.get(context).checkIfDue() }
+    val controller = remember { AndroidUpdateController.get(context) }
+    val state by controller.state.collectAsState()
+    val preferences = remember { context.getSharedPreferences("android_updates", android.content.Context.MODE_PRIVATE) }
+    var dismissed by remember { mutableStateOf(preferences.getString("dismissed_version", null)) }
+    LaunchedEffect(Unit) { controller.checkIfDue() }
+    val candidate = state.candidate
+    val key = candidate?.versionName ?: candidate?.name
+    if (candidate != null && key != null && key != dismissed) {
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) { preferences.edit().putString("dismissed_version", key).apply(); dismissed = key } },
+            title = { Text("Доступно обновление") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Вышла новая версия CehoProxy${candidate.versionName?.let { ": $it" } ?: ""}. Сейчас установлена ${BuildConfig.VERSION_NAME}.")
+                    Text(if (state.ready != null) "Файл загружен и проверен. Осталось подтвердить установку в системном окне Android." else "Файл скачается с GitHub, перед установкой проверим версию и подпись. Настройки сохранятся.", style = MaterialTheme.typography.bodySmall)
+                    if (state.busy) state.progress?.let { LinearProgressIndicator(progress = { it / 100f }, modifier = Modifier.fillMaxWidth()); Text("Загружено $it%") } ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    if (!state.busy && state.ready == null && state.message.isNotBlank() && !state.message.startsWith("Android APK найден")) Text(state.message, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                if (state.ready != null) QuietTextButton(onClick = { controller.install(context) }, modifier = Modifier.testTag("update-dialog-install")) { Text("Установить") }
+                else QuietTextButton(onClick = controller::download, modifier = Modifier.testTag("update-dialog-download")) { Text(if (state.busy) "Загрузка…" else "Обновить") }
+            },
+            dismissButton = {
+                QuietTextButton(onClick = { preferences.edit().putString("dismissed_version", key).apply(); dismissed = key }, modifier = Modifier.testTag("update-dialog-later")) { Text("Позже") }
+            },
+        )
+    }
 }
 
 @Composable

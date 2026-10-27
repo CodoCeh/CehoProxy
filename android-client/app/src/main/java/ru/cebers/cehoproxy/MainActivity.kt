@@ -1571,7 +1571,8 @@ private fun FirstRunOnboarding(
     LaunchedEffect(step, profile.nodes.size) { if (step == 1 && profile.nodes.size > nodesOnEntry) step = 2 }
     BackHandler(enabled = step > 0) { step -= 1 }
     val colors = MaterialTheme.colorScheme
-    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp).widthIn(max = 760.dp)) {
+    Column(modifier.padding(horizontal = 24.dp, vertical = 8.dp).widthIn(max = 760.dp)) {
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         if (step > 0) IconButton(onClick = { step -= 1 }, modifier = Modifier.size(48.dp).focusRing(24.dp).testTag("onboarding-back").semantics { contentDescription = "Назад" }) { BackGlyph(colors.onSurface) }
         when (step) {
             0 -> {
@@ -1633,7 +1634,6 @@ private fun FirstRunOnboarding(
                 OnboardingCountryRow(title = "Другая страна", subtitle = "Все ресурсы пойдут по вашим правилам", selected = profile.directCountryCode.isEmpty(), tag = "onboarding-country:none", onClick = { onPickCountry("") })
                 QuietDivider()
                 if (profile.directCountryCode == "ru") Text("Для России блокировка рекламных сайтов включается сама. Отключить её можно в «Настройки → Дополнительные параметры».", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp).testTag("onboarding-ads-note"))
-                QuietButton("Далее", { step = 3 }, Modifier.fillMaxWidth().padding(top = 20.dp).testTag("onboarding-country-next"))
             }
             else -> {
                 Text("Разрешение Android", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
@@ -1641,6 +1641,8 @@ private fun FirstRunOnboarding(
                 QuietButton("Перейти на главную", onFinish, Modifier.fillMaxWidth().testTag("onboarding-finish"))
             }
         }
+    }
+    if (step == 2) QuietButton("Далее", { step = 3 }, Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp).testTag("onboarding-country-next"))
     }
 }
 
@@ -1670,7 +1672,11 @@ private fun VortexArt(modifier: Modifier = Modifier) {
 }
 
 private fun countryOnboardingChoice(profile: ClientProfile, code: String): ClientProfile =
-    profile.copy(directCountryCode = code, blockYoutubeAds = if (code == "ru") true else profile.blockYoutubeAds)
+    profile.copy(
+        directCountryCode = code,
+        blockYoutubeAds = if (code == "ru") true else profile.blockYoutubeAds,
+        sites = if (code == "ru" && !profile.onlySites) profile.sites + DirectSitePresets.newHosts(profile.sites, DirectSitePresets.russianSites) else profile.sites,
+    )
 
 @Composable
 private fun CountryRouteSelector(profile: ClientProfile, onCountry: (String) -> Unit, modifier: Modifier = Modifier) {

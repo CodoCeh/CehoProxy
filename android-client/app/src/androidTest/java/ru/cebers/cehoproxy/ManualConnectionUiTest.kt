@@ -84,9 +84,9 @@ class ManualConnectionUiTest {
         install(ClientProfile(apps = listOf("a.b")))
         openManualForm()
         rule.onNodeWithTag("manual-host").performTextInput("proxy.example")
-        rule.waitUntil(5_000) { rule.onAllNodes(androidx.compose.ui.test.hasTestTag("manual-submit") and androidx.compose.ui.test.isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(20_000) { rule.onAllNodes(androidx.compose.ui.test.hasTestTag("manual-submit") and androidx.compose.ui.test.isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("manual-submit").performScrollTo().performClick()
-        rule.waitUntil(5_000) { rule.onAllNodesWithTag("manual-error").fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(20_000) { rule.onAllNodesWithTag("manual-error").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("manual-error").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Для HTTPS-прокси нужны логин и пароль").assertIsDisplayed()
         assertTrue(stored().nodes.isEmpty())

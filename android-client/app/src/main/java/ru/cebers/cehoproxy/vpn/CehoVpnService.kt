@@ -714,14 +714,15 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         val addresses4 = options.inet4Address
         while (addresses4.hasNext()) { val address = addresses4.next(); builder.addAddress(address.address(), address.prefix()) }
         val addresses6 = options.inet6Address
-        while (addresses6.hasNext()) { val address = addresses6.next(); builder.addAddress(address.address(), address.prefix()) }
+        var hasInet6Address = false
+        while (addresses6.hasNext()) { val address = addresses6.next(); hasInet6Address = true; builder.addAddress(address.address(), address.prefix()) }
         val dns = options.dnsServerAddress
         while (dns.hasNext()) builder.addDnsServer(dns.next())
         if (Build.VERSION.SDK_INT >= 33) {
             val routes4 = options.inet4RouteAddress
             if (routes4.hasNext()) while (routes4.hasNext()) builder.addRoute(routes4.next().toIpPrefix()) else builder.addRoute("0.0.0.0", 0)
             val routes6 = options.inet6RouteAddress
-            if (routes6.hasNext()) while (routes6.hasNext()) builder.addRoute(routes6.next().toIpPrefix())
+            if (routes6.hasNext()) while (routes6.hasNext()) builder.addRoute(routes6.next().toIpPrefix()) else if (hasInet6Address) builder.addRoute("::", 0)
             val excludes4 = options.inet4RouteExcludeAddress
             while (excludes4.hasNext()) builder.excludeRoute(excludes4.next().toIpPrefix())
             val excludes6 = options.inet6RouteExcludeAddress
@@ -730,7 +731,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             val routes4 = options.inet4RouteRange
             if (routes4.hasNext()) while (routes4.hasNext()) { val route = routes4.next(); builder.addRoute(route.address(), route.prefix()) } else builder.addRoute("0.0.0.0", 0)
             val routes6 = options.inet6RouteRange
-            while (routes6.hasNext()) { val route = routes6.next(); builder.addRoute(route.address(), route.prefix()) }
+            if (routes6.hasNext()) while (routes6.hasNext()) { val route = routes6.next(); builder.addRoute(route.address(), route.prefix()) } else if (hasInet6Address) builder.addRoute("::", 0)
         }
         val include = options.includePackage
         val includedPackages = buildList { while (include.hasNext()) add(include.next()) }

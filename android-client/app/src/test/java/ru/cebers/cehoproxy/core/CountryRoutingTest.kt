@@ -38,7 +38,7 @@ class CountryRoutingTest {
             val policy = RoutePolicy(apps = listOf("com.example.app"), sites = listOf("manual.example"), siteMode = mode,
                 appNodeRoutes = mapOf("com.example.app" to node.routeId), siteNodeRoutes = mapOf("assigned.example" to node.routeId), countryRuleSets = sets)
             val config = JSONObject(RoutingConfig.build(node, policy))
-            val rules = config.getJSONObject("route").getJSONArray("rules")
+            val rules = config.routeRulesWithoutDefaults()
             assertEquals("sniff", rules.getJSONObject(0).getString("action"))
             assertEquals("assigned.example", rules.getJSONObject(1).getJSONArray("domain").getString(0))
             assertEquals("manual.example", rules.getJSONObject(2).getJSONArray("domain").getString(0))
@@ -69,7 +69,7 @@ class CountryRoutingTest {
         val assigned = (0 until servers.length()).map { servers.getJSONObject(it) }.single { it.getString("tag") == "dns-route-proxy-1" }
         assertEquals("proxy-1", assigned.getString("detour"))
         assertEquals("1.1.1.1", assigned.getString("server"))
-        assertEquals("proxy-1", config.getJSONObject("route").getJSONArray("rules").getJSONObject(1).getString("outbound"))
+        assertEquals("proxy-1", config.routeRulesWithoutDefaults().getJSONObject(1).getString("outbound"))
     }
 
     @Test fun countryDoesNotExpandIncludedOrExcludedApplications() {
