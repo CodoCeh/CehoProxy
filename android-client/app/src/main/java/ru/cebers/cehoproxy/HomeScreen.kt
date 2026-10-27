@@ -28,6 +28,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ru.cebers.cehoproxy.core.ClientProfile
@@ -78,6 +80,7 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
     onOpenRules: () -> Unit,
     onOpenSubscription: (String) -> Unit,
     onAddSubscription: () -> Unit,
+    onAiMode: (Boolean) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val tunnelPackages = TunnelAppsPolicy.packages(profile, appChoices.map { it.packageName }).toSet()
@@ -87,6 +90,22 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
     val needsSubscription = profile.nodes.isEmpty() && profile.importedConfig == null && !directOnly
     val node = profile.selectedNode ?: profile.nodes.firstOrNull()
 
+    if (profile.nodes.size > 1 && profile.importedConfig == null) Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Режим ИИ", style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+            Text(
+                if (profile.aiMode) "Автовыбор берёт только серверы, через которые открывается Gemini" else "Включите, чтобы автовыбор брал только серверы для Gemini",
+                style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
+            )
+        }
+        androidx.compose.material3.Switch(
+            checked = profile.aiMode, onCheckedChange = onAiMode,
+            modifier = Modifier.testTag("home-ai-switch").semantics { contentDescription = "Режим ИИ: только серверы с Gemini" },
+        )
+    }
     TunnelVortex(
         apps = tunnelApps, active = starting, connected = connected, running = serviceRunning, blocked = blocked,
         fullTunnel = profile.excludeSelectedApps, directOnly = directOnly,

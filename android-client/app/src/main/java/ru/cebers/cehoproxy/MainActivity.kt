@@ -845,6 +845,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             onOpenServers = { openPage("Серверы") }, onOpenRules = { openPage("Маршрутизация") },
                             onOpenSubscription = { url -> subscriptionPageUrl = url; openPage("Подписка") },
                             onAddSubscription = { showAddSheet = true },
+                            onAiMode = { on -> onSaveRouteSettings(profile.copy(aiMode = on, autoRotationEnabled = profile.autoRotationEnabled || on)) },
                         )
                         "Подписки" -> {
                             PageHeading("Подписки", subtitle = "Автообновление, ссылки и удаление")

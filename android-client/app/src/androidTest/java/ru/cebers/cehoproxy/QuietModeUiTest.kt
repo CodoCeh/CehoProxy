@@ -142,4 +142,19 @@ class QuietModeUiTest {
         rule.waitUntil(5_000) { rule.onAllNodesWithText("Настроить подключение").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Настроить подключение").assertIsDisplayed()
     }
+
+    @Test fun aiModeSwitchOnHomeSavesTheChoiceAndTurnsOnAutoSwitching() {
+        val nodes = listOf(subscriptionNode("A", "https://a.example/sub", "Подписка"), subscriptionNode("B", "https://a.example/sub", "Подписка"))
+        install(ClientProfile(nodes = nodes, subscriptionUrls = listOf("https://a.example/sub"), apps = listOf("a.b"), autoRotationEnabled = false))
+        rule.onNodeWithTag("home-ai-switch").assertIsDisplayed().performClick()
+        rule.waitUntil(10_000) { stored().aiMode }
+        assertEquals(true, stored().autoRotationEnabled)
+        rule.onNodeWithTag("home-ai-switch").performClick()
+        rule.waitUntil(10_000) { !stored().aiMode }
+    }
+
+    @Test fun aiModeSwitchIsHiddenWithASingleServer() {
+        install(ClientProfile(nodes = listOf(subscriptionNode("Only", "https://one.example/sub", "Подписка")), apps = listOf("a.b")))
+        rule.onAllNodesWithTag("home-ai-switch").assertCountEquals(0)
+    }
 }

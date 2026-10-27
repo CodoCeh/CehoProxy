@@ -57,6 +57,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         private const val RECOVERY_PROBE_PAUSE_MILLIS = 400L
         private const val RECOVERY_CANDIDATES = 3
         private const val CHECK_INTERVAL_SECONDS = 15L
+        private const val AI_VERDICT_MILLIS = 10 * 60_000L
         private const val IDLE_CHECK_MILLIS = 60_000L
         private const val SCOUT_WAIT_MILLIS = 6_500L
         private const val NODE_LIST_RELOAD_DELAY_MILLIS = 1_500L
@@ -190,6 +191,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         firstConnection = !recovering
         releaseNetworkWaiter()
         nodeHealth.clear()
+        aiVerdicts.clear()
         publishStatus("starting", null)
         runCatching { failoverExecutor.schedule({ onConnectTimeout(generation) }, 15, TimeUnit.SECONDS) }
         try {
@@ -406,6 +408,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         // The engine already follows the new interface; drop the connections of the old one and verify at once, restart only if that fails.
         EventLog.append(this, "сеть сменилась, проверяем соединение")
         nodeHealth.clear()
+        aiVerdicts.clear()
         recoveryPending = true
         nativeCalls.run(SELECT_TIMEOUT_MILLIS) { Libbox.newStandaloneCommandClient().closeConnections() }
         failoverExecutor.execute(check)
@@ -563,7 +566,8 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 val current = { startGeneration.isCurrent(generation) }
                 val probeNode = { tag: String ->
                     val startedProbe = System.currentTimeMillis()
-                    val answered = answers(tag, port, generation, recovering) { client.selectOutbound(OrderedFailoverConfig.PROBE_TAG, tag) }
+                    val answered = answers(tag, port, generation, recovering) { client.selectOutbound(OrderedFailoverConfig.PROBE_TAG, tag) } &&
+                        (!profile.aiMode || aiAllows(tag, port, generation))
                     if (answered) System.currentTimeMillis() - startedProbe else null
                 }
                 fun round(): String? {
@@ -604,9 +608,10 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                         refreshDirectState()
                         if (FailoverHealthPolicy.showsError(failedChecks, first)) {
                             nativeCalls.run(SELECT_TIMEOUT_MILLIS) { client.selectOutbound(OrderedFailoverConfig.GLOBAL_TAG, "block") }
-                            publishStatus("error", outageText())
-                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(outageTitle()))
-                            notifyProblem(outageText())
+                            val aiOutage = profile.aiMode && directState == DirectReachability.State.OPEN
+                            publishStatus("error", if (aiOutage) "Нет серверов, через которые открывается Gemini. Выключите режим ИИ или добавьте другие серверы" else outageText())
+                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(if (aiOutage) "Нет серверов для ИИ" else outageTitle()))
+                            notifyProblem(if (aiOutage) "Нет серверов, через которые открывается Gemini" else outageText())
                         } else {
                             EventLog.append(this, "проверка узлов не прошла, последняя причина: ${probeFailure ?: "нет ответа"}")
                         }
@@ -623,6 +628,20 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         }
         val task = failoverExecutor.scheduleWithFixedDelay(check, 0, CHECK_INTERVAL_SECONDS, TimeUnit.SECONDS)
         if (startGeneration.isCurrent(generation)) { failoverTask = task; kickCheck = check } else task.cancel(true)
+    }
+
+    private val aiVerdicts = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, Long>>()
+
+    // The probe selector already points at [tag]; the verdict is cached so a rotation round does not repeat the two requests for each node.
+    private fun aiAllows(tag: String, port: Int, generation: Long): Boolean {
+        val cached = aiVerdicts[tag]
+        if (cached != null && System.currentTimeMillis() - cached.second < AI_VERDICT_MILLIS) return cached.first
+        if (!startGeneration.isCurrent(generation)) return false
+        val country = NodeExitCountryProbe.fetch(port)?.countryCode
+        val verdict = AiNodePolicy.countrySupported(country) && AiNodePolicy.googleReachable(port)
+        if (country != null) aiVerdicts[tag] = verdict to System.currentTimeMillis()
+        EventLog.append(this, "ИИ: узел $tag ${if (verdict) "подходит" else "не подходит"} (страна выхода ${country ?: "не определена"})")
+        return verdict
     }
 
     private fun probe(port: Int, generation: Long, timeoutMillis: Int = 4000): Boolean {

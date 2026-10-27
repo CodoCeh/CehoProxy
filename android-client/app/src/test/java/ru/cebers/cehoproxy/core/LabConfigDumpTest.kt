@@ -11,8 +11,9 @@ class LabConfigDumpTest {
         assumeTrue(dir != null)
         File(dir, "e2e.txt").takeIf { it.exists() }?.readLines()?.filter { it.isNotBlank() }?.forEach { line ->
             val name = line.substringBefore('\t')
-            val node = NodeShareParser.parse(line.substringAfter('\t').replace("\\n", "\n")).first()
-            val profile = ProfileCodec.encode(ClientProfile(nodes = listOf(node), apps = listOf("com.android.chrome")))
+            val nodes = NodeShareParser.parse(line.substringAfter('\t').replace("\\n", "\n"))
+            val ai = name.startsWith("ai")
+            val profile = ProfileCodec.encode(ClientProfile(nodes = if (ai) nodes else listOf(nodes.first()), apps = listOf("com.android.chrome"), aiMode = ai, autoRotationEnabled = ai))
             val escaped = profile.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
             File(dir, "profile-$name.xml").writeText("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <string name=\"data\">$escaped</string>\n</map>\n")
         }
