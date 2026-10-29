@@ -2019,6 +2019,7 @@ if (cmd is "daemon" or "web")
     DaemonControl.ClearStoppedByUser(Ceho.Root);
     if (!TunCleanup.IsOurEngineRunning(Ceho.RuntimeConfigPath, Ceho.Root)) ForwardingGuard.Restore(Ceho.Root, Log.Info);
     Autostart.EnsureKeepEngineDropIn();
+    Autostart.EnsureLaunchdInteractive();
     var engineAdopted = false;
     var admittedConfiguration = new AdmittedConfiguration(cfg);
     SingBoxProcess? guard = null;

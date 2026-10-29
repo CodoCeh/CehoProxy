@@ -171,9 +171,8 @@ public static class Autostart
         return code == 0 ? null : $"не удалось снять автозапуск: {output}";
     }
 
-    private static string? EnableLaunchd(string exePath, string workingDir)
-    {
-        var plist = $"""
+    /// <summary>Без ProcessType=Interactive launchd ограничивает демон фоновым приоритетом: под нагрузкой движок по секундам не получает процессор и соединения виснут.</summary>
+    public static string LaunchdPlist(string exePath, string workingDir) => $"""
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
             <plist version="1.0">
@@ -187,11 +186,36 @@ public static class Autostart
               <key>RunAtLoad</key><true/>
               <key>KeepAlive</key>
               <dict><key>SuccessfulExit</key><false/></dict>
+              <key>ProcessType</key><string>Interactive</string>
               <key>WorkingDirectory</key><string>{workingDir}</string>
               <key>StandardErrorPath</key><string>{Path.Combine(workingDir, "cehoproxy.log")}</string>
             </dict>
             </plist>
             """;
+
+    /// <summary>Plist прежних версий без ProcessType дописывается при старте демона; launchd применит его при следующей загрузке службы.</summary>
+    public static void EnsureLaunchdInteractive()
+    {
+        if (!Os.IsMac || !File.Exists(PlistPath) || !Os.IsElevated()) return;
+        try
+        {
+            var text = File.ReadAllText(PlistPath);
+            var fixedText = AddLaunchdProcessType(text);
+            if (fixedText != text) File.WriteAllText(PlistPath, fixedText);
+        }
+        catch { }
+    }
+
+    public static string AddLaunchdProcessType(string plist)
+    {
+        if (plist.Contains("<key>ProcessType</key>")) return plist;
+        var i = plist.LastIndexOf("</dict>", StringComparison.Ordinal);
+        return i < 0 ? plist : plist.Insert(i, "  <key>ProcessType</key><string>Interactive</string>\n");
+    }
+
+    private static string? EnableLaunchd(string exePath, string workingDir)
+    {
+        var plist = LaunchdPlist(exePath, workingDir);
 
         try
         {
