@@ -1245,6 +1245,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 QuietButton("Открыть настройки Android", onAlwaysOn, Modifier.fillMaxWidth().padding(bottom = 12.dp), primary = false)
                             }
                             QuietDivider()
+                            BatteryExemptionRow()
                             QuietRow("Внешний вид", subtitle = themePreference.label, onClick = { openPage("Внешний вид") }, leading = { QuietBadge { AppearanceGlyph(primary) } }, modifier = Modifier.testTag("settings-appearance"))
                             QuietDivider()
                             CaptionLabel("Сервис")

@@ -228,6 +228,12 @@ import androidx.compose.ui.unit.sp
     }, color, style = stroke)
 }
 
+@Composable internal fun BatteryGlyph(color: Color) = Glyph(color) { u, stroke ->
+    drawRoundRect(color, Offset(4 * u, 7 * u), androidx.compose.ui.geometry.Size(14 * u, 10 * u), androidx.compose.ui.geometry.CornerRadius(2 * u), style = stroke)
+    drawLine(color, Offset(20.5f * u, 10.5f * u), Offset(20.5f * u, 13.5f * u), stroke.width, StrokeCap.Round)
+    drawRect(color, Offset(7 * u, 10 * u), androidx.compose.ui.geometry.Size(8 * u, 4 * u))
+}
+
 @Composable internal fun AppearanceGlyph(color: Color) = Glyph(color) { u, stroke ->
     drawCircle(color, 8 * u, Offset(12 * u, 12 * u), style = stroke)
     drawPath(Path().apply { moveTo(12 * u, 4 * u); arcTo(androidx.compose.ui.geometry.Rect(4 * u, 4 * u, 20 * u, 20 * u), -90f, 180f, false); close() }, color)
