@@ -113,7 +113,7 @@ object ProfileCodec {
             subscriptionFetchedAtByUrl = json.optJSONObject("subscriptionFetchedAtByUrl")?.let { obj -> obj.keys().asSequence().associateWith { obj.optLong(it) } }.orEmpty(),
             subscriptionRefreshHours = json.optInt("subscriptionRefreshHours", SubscriptionRefreshPolicy.DEFAULT_INTERVAL_HOURS)
                 .takeIf { it in SubscriptionRefreshPolicy.INTERVAL_OPTIONS_HOURS } ?: SubscriptionRefreshPolicy.DEFAULT_INTERVAL_HOURS,
-            blockYoutubeAds = json.optBoolean("blockYoutubeAds"),
+            blockYoutubeAds = !ru.cebers.cehoproxy.BuildConfig.PLAY && json.optBoolean("blockYoutubeAds"),
             disabledSubscriptions = json.array("disabledSubscriptions"),
             autoDisabledSubscriptions = json.array("autoDisabledSubscriptions"),
         )

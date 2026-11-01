@@ -807,7 +807,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, launchRequest: String?, onLaunchRequestHandled: () -> Unit, onReceiveFromPhone: () -> Unit, receiverFirst: Boolean, onSendToDevice: (Set<String>) -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
     val clipboardContext = LocalContext.current
-    ObserveAutomaticUpdates()
+    if (!BuildConfig.PLAY) ObserveAutomaticUpdates()
     var pendingNodeCheck by remember { mutableStateOf<String?>(null) }
     pendingNodeCheck?.let { id ->
         AlertDialog(onDismissRequest = { pendingNodeCheck = null }, title = { Text("Проверить узел?") }, text = { Text("Измерим задержку и скорость через этот узел. Тест загружает и отправляет данные до 20 секунд. Расход зависит от скорости; лучше запускать по Wi-Fi. Маршруты приложений останутся прежними.") }, confirmButton = { QuietTextButton(onClick = { pendingNodeCheck = null; onCheckNode(id) }, modifier = Modifier.testTag("node-check-confirm")) { Text("Начать проверку") } }, dismissButton = { QuietTextButton(onClick = { pendingNodeCheck = null }) { Text("Отмена") } })
@@ -1379,7 +1379,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             QuietRow("Дополнительные параметры", subtitle = "Редкие и технические настройки", onClick = { openPage("Дополнительные параметры") }, leading = { QuietBadge { SlidersGlyph(primary) } }, modifier = Modifier.testTag("settings-advanced"))
                             QuietDivider()
                             CaptionLabel("О приложении")
-                            UpdateSettingsSection()
+                            if (BuildConfig.PLAY) Text("Установлена версия ${BuildConfig.VERSION_NAME}. Обновления приходят через Google Play.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                            else UpdateSettingsSection()
                         }
                         "Вручную" -> {
                             val protocol = ManualProtocol.valueOf(manualProtocol)
@@ -1501,11 +1502,13 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                         "Дополнительные параметры" -> {
                             PageHeading("Дополнительные параметры", subtitle = "Редкие и технические настройки")
                             QuietDivider()
-                            QuietRow(
-                                "Блокировка рекламных сайтов", subtitle = "Блокирует рекламные домены. Реклама внутри видео, например в YouTube, может остаться.",
-                                trailing = { Switch(checked = profile.blockYoutubeAds, onCheckedChange = { onSaveRouteSettings(profile.copy(blockYoutubeAds = it)) }, modifier = Modifier.testTag("home-block-youtube-ads").semantics { contentDescription = "Реклама YouTube" }) },
-                            )
-                            QuietDivider()
+                            if (!BuildConfig.PLAY) {
+                                QuietRow(
+                                    "Блокировка рекламных сайтов", subtitle = "Блокирует рекламные домены. Реклама внутри видео, например в YouTube, может остаться.",
+                                    trailing = { Switch(checked = profile.blockYoutubeAds, onCheckedChange = { onSaveRouteSettings(profile.copy(blockYoutubeAds = it)) }, modifier = Modifier.testTag("home-block-youtube-ads").semantics { contentDescription = "Реклама YouTube" }) },
+                                )
+                                QuietDivider()
+                            }
                             QuietRow(
                                 "Напоминать о сроке", subtitle = "Уведомление перед окончанием подписки",
                                 trailing = { Switch(checked = profile.expiryRemindersEnabled, onCheckedChange = onExpiryReminders, modifier = Modifier.semantics { contentDescription = "Напоминать о сроке" }) },
@@ -1800,7 +1803,7 @@ internal const val ACTION_SHORTCUT_SPEED_TEST = "ru.cebers.cehoproxy.action.SPEE
 private fun countryOnboardingChoice(profile: ClientProfile, code: String): ClientProfile =
     profile.copy(
         directCountryCode = code,
-        blockYoutubeAds = if (code == "ru") true else profile.blockYoutubeAds,
+        blockYoutubeAds = if (code == "ru" && !BuildConfig.PLAY) true else profile.blockYoutubeAds,
         sites = if (code == "ru" && !profile.onlySites) profile.sites + DirectSitePresets.newHosts(profile.sites, DirectSitePresets.russianSites) else profile.sites,
     )
 

@@ -918,7 +918,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         .apply { if (sinceMillis != null) setWhen(sinceMillis).setShowWhen(true).setUsesChronometer(true) }
         .addAction(0, "Выключить", PendingIntent.getService(this, 1, Intent(this, CehoVpnService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         .apply {
-            if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK))
+            if (!ru.cebers.cehoproxy.BuildConfig.PLAY && !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK))
                 addAction(0, "Приложения", PendingIntent.getActivity(this@CehoVpnService, 3, Intent(this@CehoVpnService, ru.cebers.cehoproxy.AppRouteActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         }
         .build()

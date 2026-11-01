@@ -32,6 +32,15 @@ android {
         }
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
     }
+    buildTypes {
+        getByName("debug") { buildConfigField("boolean", "PLAY", "false") }
+        getByName("release") { buildConfigField("boolean", "PLAY", "false") }
+        create("play") {
+            initWith(getByName("release"))
+            buildConfigField("boolean", "PLAY", "true")
+            matchingFallbacks += "release"
+        }
+    }
 
     buildFeatures {
         compose = true
