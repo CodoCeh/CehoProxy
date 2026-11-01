@@ -3645,17 +3645,12 @@ public sealed partial class WebServer
         sb.Append("<p class=hint>").Append(E(S("touch_not", []))).Append("</p></section>");
     }
 
-    private const string PartnerVpnBot = "CebCehVPN_bot";
-
     private static void RenderSubscriptionHelp(StringBuilder sb, Func<string, object[], string> S)
     {
         sb.Append("<section><h2>").Append(E(S("sub_where_title", []))).Append("</h2>");
         sb.Append("<p class=lede>").Append(E(S("sub_where_what", []))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("sub_where_formats", []))).Append("</p>");
         sb.Append("<p class=hint>").Append(E(S("sub_where_get", []))).Append("</p>");
-        sb.Append("<p class=hint>").Append(E(S("sub_where_partner", []))).Append(' ')
-          .Append("<a href=\"https://t.me/").Append(PartnerVpnBot).Append("\" target=_blank rel=noopener>@")
-          .Append(PartnerVpnBot).Append("</a></p>");
         sb.Append("<p class=hint>").Append(E(S("sub_where_own", []))).Append("</p></section>");
     }
 

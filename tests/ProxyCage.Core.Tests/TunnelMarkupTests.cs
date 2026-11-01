@@ -64,7 +64,7 @@ public class TunnelMarkupTests
     public void Portal_has_a_definite_nonshrinking_containing_box()
     {
         Assert.Contains(".tunnel-stage{position:relative;isolation:isolate;flex:0 0 auto;", TunnelUi.Css);
-        Assert.Contains(".tunnel-portal{position:absolute;inset:0;overflow:hidden;", TunnelUi.Css);
+        Assert.Contains(".tunnel-portal{position:absolute;top:0;bottom:0;left:50%;aspect-ratio:1;transform:translateX(-50%);overflow:hidden;", TunnelUi.Css);
         Assert.Contains(".tunnel-portal svg{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:hidden}", TunnelUi.Css);
     }
 

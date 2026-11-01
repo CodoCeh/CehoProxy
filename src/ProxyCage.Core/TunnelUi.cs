@@ -19,17 +19,9 @@ public static partial class TunnelUi
           .Append("</h2><p class=lede>").Append(E(T("Перетащите её из каталога или выберите вручную", "Drag it from the catalog or choose it manually"))).Append("</p>");
         sb.Append("<div id=tunnel-stage class=tunnel-stage role=group aria-label=\"")
           .Append(E(T("Область добавления программы", "App drop area"))).Append("\" aria-describedby=tunnel-drop-help data-phase=idle>")
-          .Append("<div class=tunnel-portal aria-hidden=true><svg viewBox=\"0 0 420 300\" focusable=false>")
-          .Append("<defs><linearGradient id=tunnel-shell x1=0 y1=0 x2=1 y2=1><stop stop-color=\"#34434b\"/><stop offset=1 stop-color=\"#14212b\"/></linearGradient>")
-          .Append("<linearGradient id=tunnel-edge x1=0 y1=0 x2=1 y2=1><stop stop-color=\"#0bc48c\"/><stop offset=1 stop-color=\"#13825d\"/></linearGradient></defs>")
-          .Append("<ellipse class=tunnel-shadow cx=221 cy=269 rx=123 ry=15 fill=\"#172d2510\"/>")
-          .Append("<path class=tunnel-rim d=\"M250 35 A111 111 0 1 1 135 221 A111 111 0 0 1 250 35Z\" fill=\"url(#tunnel-edge)\"/>")
-          .Append("<path d=\"M239 36 A109 109 0 1 1 126 222 A109 109 0 0 1 239 36Z\" fill=\"url(#tunnel-shell)\"/>")
-          .Append("<ellipse cx=201 cy=151 rx=58 ry=65 fill=\"#f6fbf8\"/>")
-          .Append("<path d=\"M224 89 C139 91 138 215 224 214 C174 204 165 104 224 89Z\" fill=\"#152832\"/>")
-          .Append("<path d=\"M180 98 C145 123 151 193 188 207\" fill=none stroke=\"#0caa79\" stroke-width=4 opacity=.6/>")
-          .Append("<path class=tunnel-trail d=\"M273 158 Q342 144 397 177\" fill=none stroke=\"#08b982\" stroke-width=12 stroke-linecap=round opacity=0/>")
-          .Append("</svg></div><div id=tunnel-token class=tunnel-token hidden aria-hidden=true><span class=tunnel-token-icon></span><span class=tunnel-token-name></span></div></div>");
+          .Append("<div class=tunnel-portal aria-hidden=true>");
+        Vortex(sb, cfg.Apps.Where(a => a.Enabled).Take(VortexAppLimit).Select(a => (AppIcons.Source(a, catalog), a.Label)).ToList(), running);
+        sb.Append("</div><div id=tunnel-token class=tunnel-token hidden aria-hidden=true><span class=tunnel-token-icon></span><span class=tunnel-token-name></span></div></div>");
         sb.Append("<p id=tunnel-status class=tunnel-status role=status aria-live=polite aria-atomic=true>")
           .Append(E(T("Выберите программу для добавления", "Choose an app to add"))).Append("</p>")
           .Append("<div class=tunnel-choose><button type=button id=tunnel-choose class=big hidden>").Append(E(T("Выбрать программу", "Choose an app")))
@@ -100,6 +92,42 @@ public static partial class TunnelUi
         }
     }
 
+    private const int VortexArms = 6;
+    private const int VortexAppLimit = 5;
+    private const double VortexRadius = 88;
+
+    // Same spiral as the Android home screen: t = 0 is the outer end of an arm, t = 1 is its centre.
+    private static (double X, double Y) VortexPoint(double t, int arm)
+    {
+        var angle = t * Math.PI * 4 + arm * 2 * Math.PI / VortexArms;
+        var r = VortexRadius * (.88 - .70 * t);
+        return (100 + Math.Cos(angle) * r, 100 + Math.Sin(angle) * r);
+    }
+
+    private static void Vortex(StringBuilder sb, IReadOnlyList<(string Path, string Label)> apps, bool running)
+    {
+        string N(double v) => v.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        sb.Append("<svg viewBox=\"0 0 200 200\" focusable=false><circle class=tunnel-rim cx=100 cy=100 r=\"").Append(N(VortexRadius * 1.02)).Append("\"/>");
+        for (var arm = 0; arm < VortexArms; arm++)
+        {
+            sb.Append("<path class=tunnel-arm d=\"");
+            for (var step = 0; step <= 96; step++)
+            {
+                var (x, y) = VortexPoint(step / 96.0, arm);
+                sb.Append(step == 0 ? 'M' : 'L').Append(N(x)).Append(' ').Append(N(y));
+            }
+            sb.Append("\"/>");
+        }
+        sb.Append("<circle class=\"tunnel-core").Append(running ? " on" : "").Append("\" cx=100 cy=100 r=\"").Append(N(VortexRadius * .14)).Append("\"/></svg>");
+        for (var i = 0; i < apps.Count; i++)
+        {
+            var (x, y) = VortexPoint(0, i);
+            sb.Append("<span class=tunnel-orbit style=\"left:").Append(N(x / 2)).Append("%;top:").Append(N(y / 2)).Append("%\">");
+            Icon(sb, apps[i].Path, apps[i].Label);
+            sb.Append("</span>");
+        }
+    }
+
     private static void Icon(StringBuilder sb, string path, string name) => sb.Append("<span class=ico data-letter=\"")
         .Append(E(WebServer.Initial(name))).Append("\"><img loading=lazy alt=\"\" src=\"/icon?path=")
         .Append(E(Uri.EscapeDataString(path))).Append("\" onerror=\"this.remove()\"></span>");
@@ -129,12 +157,16 @@ public static partial class TunnelUi
     .tunnel-panel h2{font-size:30px;line-height:1.2;letter-spacing:-.025em;align-self:flex-start;text-align:left;margin-bottom:8px}
     .tunnel-panel>.lede{align-self:flex-start;text-align:left;margin:0;color:var(--muted)}
     .tunnel-stage{position:relative;isolation:isolate;flex:0 0 auto;width:min(100%,500px);height:258px;margin:0 auto;border:2px solid transparent;border-radius:22px;transition:background .18s,border-color .18s}
-    .tunnel-portal{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+    .tunnel-portal{position:absolute;top:0;bottom:0;left:50%;aspect-ratio:1;transform:translateX(-50%);overflow:hidden;pointer-events:none}
     .tunnel-portal svg{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:hidden}
-    .tunnel-rim{transition:filter .16s,opacity .16s;opacity:.75}
+    .tunnel-rim{fill:none;stroke:var(--line);stroke-width:1;transition:stroke .16s}
+    .tunnel-arm{fill:none;stroke:color-mix(in srgb,var(--brand-ink) 35%,var(--muted));stroke-width:1.6;stroke-linecap:round}
+    .tunnel-core{fill:var(--line)}.tunnel-core.on{fill:var(--brand-ink)}
+    .tunnel-orbit{position:absolute;width:18%;aspect-ratio:1;transform:translate(-50%,-50%);display:grid}
+    .tunnel-orbit .ico{width:100%;height:100%;margin:0;border-radius:26%;background:var(--surface);border:1px solid var(--line);box-sizing:border-box}
+    .tunnel-orbit .ico img{inset:12%;width:76%;height:76%}
     .tunnel-stage[data-phase=hover]{border-color:color-mix(in srgb,var(--brand-ink) 30%,transparent);background:color-mix(in srgb,var(--brand-ink) 4%,transparent)}
-    .tunnel-stage[data-phase=hover] .tunnel-rim{filter:drop-shadow(0 0 7px #08b98260);opacity:1}
-    .tunnel-stage[data-phase=hover] .tunnel-trail{opacity:.09}
+    .tunnel-stage[data-phase=hover] .tunnel-rim{stroke:var(--brand-ink)}
     .tunnel-token{position:absolute;top:48%;left:57%;width:160px;max-width:40%;min-height:54px;display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);box-shadow:0 8px 20px #15283218;border:1px solid var(--line);border-radius:14px;z-index:1;text-align:left}
     .tunnel-token[hidden]{display:none}.tunnel-token .ico{margin:0;width:30px;height:30px}.tunnel-token-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600}
     .tunnel-token-icon:empty::before{content:'+';font-size:25px;color:var(--brand-ink)}
@@ -167,6 +199,6 @@ public static partial class TunnelUi
     @media(min-width:1200px){.wrap:has(#tunnel-workspace) header{margin-bottom:0}.tunnel-panel h2{font-size:34px}}
     @media(max-width:900px){.tunnel-workspace{grid-template-columns:1fr}.tunnel-stage{height:240px}.tunnel-catalog .app-groups{max-height:320px}.tunnel-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tunnel-panel h2{font-size:27px}}
     @media(max-width:540px){.tunnel-panel,.tunnel-catalog{padding:18px}.tunnel-panel h2{font-size:24px}.tunnel-catalog-grid{grid-template-columns:1fr}.tunnel-stage{height:220px}.tunnel-steps{gap:10px}.tunnel-steps li{gap:4px}.tunnel-token{left:55%;padding:8px;gap:6px;width:140px}.tunnel-choose{width:100%}.tunnel-choose>*{width:100%;justify-content:center}.tunnel-grip{display:none}}
-    @media(prefers-reduced-motion:reduce){.tunnel-stage,.tunnel-rim{transition:none}.tunnel-stage[data-phase=applied] .tunnel-token{animation:none;opacity:0}.tunnel-trail{display:none}}
+    @media(prefers-reduced-motion:reduce){.tunnel-stage,.tunnel-rim{transition:none}.tunnel-stage[data-phase=applied] .tunnel-token{animation:none;opacity:0}}
     """;
 }
