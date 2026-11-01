@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +57,8 @@ private fun servers(count: Int) = "$count ${SubscriptionSummary.plural(count.toL
         discovery.start()
         onDispose { discovery.stop() }
     }
+    var searchedLong by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(HOTSPOT_HINT_MILLIS); searchedLong = true }
     val target = request.target ?: picked?.takeIf { url -> devices.any { it.url == url } }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = colors.surfaceContainer) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp).testTag("send-device-sheet")) {
@@ -88,9 +91,16 @@ private fun servers(count: Int) = "$count ${SubscriptionSummary.plural(count.toL
                     Text(if (devices.isEmpty()) "Ищем устройства…" else "Ищем ещё…", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                 }
                 Text(
-                    "На устройстве откройте CehoProxy и нажмите «Получить с телефона». Телефон и устройство должны быть в одной сети Wi-Fi; для магнитолы подойдёт точка доступа этого телефона.",
+                    "На устройстве откройте CehoProxy и нажмите «Получить с телефона». Телефон и устройство должны быть в одной сети Wi-Fi.",
                     style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
                 )
+                if (devices.isEmpty() && searchedLong) androidx.compose.material3.Surface(color = colors.secondaryContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("send-hotspot-hint")) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Нет общей сети Wi-Fi?", style = MaterialTheme.typography.titleSmall, color = colors.onSecondaryContainer)
+                        Text("Включите точку доступа на этом телефоне и подключите к ней телевизор или магнитолу. Интернет для передачи не нужен: подписка пойдёт напрямую с телефона.", style = MaterialTheme.typography.bodySmall, color = colors.onSecondaryContainer, modifier = Modifier.padding(top = 4.dp))
+                        QuietTextButton(onClick = { openHotspotSettings(context) }, modifier = Modifier.testTag("send-hotspot-settings")) { Text("Открыть точку доступа") }
+                    }
+                }
                 QuietTextButton(onClick = onScanQr, modifier = Modifier.padding(top = 4.dp).testTag("send-scan-qr")) { Text("Устройства нет в списке — сканировать QR-код") }
             }
             QuietButton(
@@ -102,13 +112,23 @@ private fun servers(count: Int) = "$count ${SubscriptionSummary.plural(count.toL
     }
 }
 
+private const val HOTSPOT_HINT_MILLIS = 8_000L
+
+/** Hotspot settings have no public action; most firmwares answer the hidden one, the rest get the network settings. */
+private fun openHotspotSettings(context: android.content.Context) {
+    val tether = android.content.Intent("android.settings.TETHER_SETTINGS")
+    val wireless = android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS)
+    listOf(tether, wireless).firstOrNull { it.resolveActivity(context.packageManager) != null }
+        ?.let { runCatching { context.startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+}
+
 @Composable internal fun ReceiveFromPhoneDialog(url: String, deviceName: String, onCancel: () -> Unit) {
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text("Получить с телефона") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("На телефоне откройте CehoProxy → «Подписки» → «Отправить на устройство» и выберите «$deviceName». Или наведите камеру телефона на QR-код. Телефон и это устройство должны быть в одной сети Wi-Fi.")
+                Text("На телефоне откройте CehoProxy → «Подписки» → «Отправить на устройство» и выберите «$deviceName». Или наведите камеру телефона на QR-код. Телефон и это устройство должны быть в одной сети Wi-Fi. Нет общей сети — подключите это устройство к точке доступа телефона.")
                 QrCodeImage(url, Modifier.padding(top = 16.dp).size(200.dp).background(Color.White).padding(8.dp).testTag("receive-qr"))
                 Text(url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }

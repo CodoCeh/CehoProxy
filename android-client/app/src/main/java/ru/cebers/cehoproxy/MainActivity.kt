@@ -584,7 +584,7 @@ class MainActivity : ComponentActivity() {
             SubscriptionShare.decode(payload)?.let { incomingShare = it } ?: run { incomingLink = payload }
         }
         val url = runCatching { server.start(this, deviceName()) }.getOrNull()
-        if (url == null) { server.stop(); report("Устройство не подключено к Wi-Fi или кабелю. Подключите его к той же сети, что и телефон."); return }
+        if (url == null) { server.stop(); report("Устройство не подключено к Wi-Fi или кабелю. Подключите его к той же сети, что и телефон, или к точке доступа телефона."); return }
         receiver = server
         receiveUrl = url
     }
@@ -602,7 +602,7 @@ class MainActivity : ComponentActivity() {
             val sent = withContext(Dispatchers.IO) { ShareReceiver.send(url, payload) }
             notice = null
             if (sent) report("Отправлено. Подтвердите добавление на экране устройства", error = false)
-            else report("Устройство не ответило. Проверьте, что телефон и устройство в одной сети Wi-Fi, и откройте на устройстве «Получить с телефона» ещё раз.")
+            else report("Устройство не ответило. Проверьте, что телефон и устройство в одной сети Wi-Fi или устройство подключено к точке доступа телефона, и откройте на устройстве «Получить с телефона» ещё раз.")
         }
     }
 
