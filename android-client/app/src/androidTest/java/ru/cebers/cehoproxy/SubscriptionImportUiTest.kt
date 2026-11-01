@@ -247,10 +247,11 @@ class SubscriptionImportUiTest {
         assertEquals("clipboard-smoke", nodes.getJSONObject(nodes.length() - 1).getString("name"))
     }
 
-    @Test fun helpPageOffersSubscriptionBot() {
+    @Test fun helpPageDoesNotAdvertiseVpnService() {
         openSettingsPage("settings-help")
         rule.onNodeWithText("Помощь и поддержка").performScrollTo().assertIsDisplayed().performClick()
-        rule.onNodeWithText("Открыть @CebCehVPN_bot").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Ссылку на подписку выдаёт сервис", substring = true).performScrollTo().assertIsDisplayed()
+        rule.onAllNodesWithText("CebCehVPN_bot", substring = true).assertCountEquals(0)
     }
 
     @Test fun homeScreenUsesVortexAsConnectControlAndOffersInlineNodeAdd() {

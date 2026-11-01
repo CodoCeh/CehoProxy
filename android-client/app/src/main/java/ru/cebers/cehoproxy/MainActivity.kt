@@ -110,8 +110,6 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private const val SUPPORT_BOT_URL = "https://t.me/CebCehVPN_bot"
-
 /** Outcome of adding or refreshing something; shown on any screen until the user closes it or it times out. */
 internal data class UiResult(val id: Int, val message: String, val error: Boolean)
 
@@ -265,7 +263,6 @@ class MainActivity : ComponentActivity() {
                     onSaveRouteSettings = { next -> update(next, explicitSelection = next.selected != profile.selected); if (VpnHomeAction.shouldStop(connected, CehoVpnService.hasLiveServiceInstance())) connect() },
                     onConnect = requestConnect, onStop = { startService(Intent(this, CehoVpnService::class.java).setAction(CehoVpnService.ACTION_STOP)); notice = "VPN отключается" },
                     onAlwaysOn = { openVpnSettings() },
-                    onHelp = { openSupportBot() },
                     onExpiryReminders = { enabled ->
                         if (!enabled) update(profile.copy(expiryRemindersEnabled = false))
                         else if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -629,11 +626,6 @@ class MainActivity : ComponentActivity() {
             .onSuccess { notice = "На Android TV откройте: Сеть и Интернет → VPN → CehoProxy → Всегда включён." }
             .onFailure { notice = "Не удалось открыть настройки. На Android TV откройте: Настройки → Сеть и Интернет → VPN." }
     }
-
-    private fun openSupportBot() {
-        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SUPPORT_BOT_URL))) }
-            .onFailure { notice = "Откройте Telegram и найдите @CebCehVPN_bot" }
-    }
 }
 
 internal fun blockedTitle(notice: String?): String = when {
@@ -710,7 +702,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onHelp: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
+@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
     val clipboardContext = LocalContext.current
     ObserveAutomaticUpdates()
     var pendingNodeCheck by remember { mutableStateOf<String?>(null) }
@@ -836,7 +828,6 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     onImportFile = onImportFile,
                     onImportClipboard = onImportClipboard,
                     onScanQr = onScanQr,
-                    onHelp = onHelp,
                     onFinish = onCompleteOnboarding,
                     notice = result?.takeIf { it.error }?.message,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -1402,13 +1393,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                         "Помощь" -> {
                             PageHeading("Помощь")
                             Text("Подскажем, как получить ссылку и подключиться", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 20.dp))
-                            Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
-                                Column(Modifier.fillMaxWidth().padding(20.dp)) {
-                                    Text("Нет подписки?", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                                    Text("Откройте Telegram-бота партнёров — он поможет получить подписку.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp))
-                                    Button(onClick = onHelp, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("Открыть @CebCehVPN_bot") }
-                                }
-                            }
+                            Text("Ссылку на подписку выдаёт сервис, у которого вы берёте серверы: ищите в его личном кабинете или боте пункт «Подписка», «Импорт» или «Добавить в клиент».", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Подписку можно добавить по ссылке, из буфера обмена, QR-кода или файла, а также через «Поделиться». Поддерживаются URI VLESS, VMess, SOCKS, Trojan, Shadowsocks, Hysteria2 и распространённые форматы sing-box, Xray и Clash.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 18.dp))
                             Text("Если VPN не запускается: проверьте, что список узлов не пуст, разрешение VPN выдано, а срок подписки не истёк.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp))
                         }
@@ -1569,7 +1554,6 @@ private fun FirstRunOnboarding(
     onImportFile: () -> Unit,
     onImportClipboard: () -> Unit,
     onScanQr: () -> Unit,
-    onHelp: () -> Unit,
     onFinish: () -> Unit,
     notice: String?,
     modifier: Modifier = Modifier,
@@ -1618,7 +1602,6 @@ private fun FirstRunOnboarding(
                             DropdownMenu(expanded = showOther, onDismissRequest = { showOther = false }) {
                                 DropdownMenuItem(text = { Text("Сканировать QR-код") }, onClick = { showOther = false; onScanQr() })
                                 DropdownMenuItem(text = { Text("Открыть файл") }, onClick = { showOther = false; onImportFile() })
-                                DropdownMenuItem(text = { Text("Помощь в Telegram") }, onClick = { showOther = false; onHelp() })
                             }
                         }
                     }

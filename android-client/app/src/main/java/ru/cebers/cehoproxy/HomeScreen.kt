@@ -113,7 +113,7 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
     )
     Text(
-        when { blocked -> blockedTitle(notice); connected && directOnly -> "Обход DPI подключён"; connected -> "Подключено"; starting -> "Подключаем…"; else -> "Не подключено" },
+        when { blocked -> blockedTitle(notice); connected && directOnly -> "Устойчивое соединение подключено"; connected -> "Подключено"; starting -> "Подключаем…"; else -> "Не подключено" },
         style = cappedStyle(MaterialTheme.typography.headlineLarge), color = colors.onSurface, modifier = Modifier.padding(top = 24.dp).testTag("home-status"),
     )
     Text(
@@ -188,7 +188,7 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
                 modifier = Modifier.testTag("home-server"),
             )
         }
-        directOnly -> QuietRow("Локальный обход DPI", subtitle = "Без удалённого сервера", leading = { QuietBadge { ShieldBadgeGlyph(colors.primary) } }, modifier = Modifier.testTag("home-server"))
+        directOnly -> QuietRow("Устойчивое соединение", subtitle = "Без удалённого сервера", leading = { QuietBadge { ShieldBadgeGlyph(colors.primary) } }, modifier = Modifier.testTag("home-server"))
         profile.importedConfig != null -> QuietRow("Импортированная конфигурация", subtitle = "Серверы заданы файлом настроек", leading = { QuietBadge { ShieldBadgeGlyph(colors.primary) } }, modifier = Modifier.testTag("home-server"))
         else -> QuietRow("Сервер не выбран", subtitle = "Добавьте подписку, чтобы появились серверы", leading = { QuietBadge { ShieldBadgeGlyph(colors.outline) } }, modifier = Modifier.testTag("home-server"))
     }
