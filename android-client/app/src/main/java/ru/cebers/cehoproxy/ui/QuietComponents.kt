@@ -234,6 +234,17 @@ import androidx.compose.ui.unit.sp
     drawRect(color, Offset(7 * u, 10 * u), androidx.compose.ui.geometry.Size(8 * u, 4 * u))
 }
 
+@Composable internal fun PowerGlyph(color: Color) = Glyph(color) { u, stroke ->
+    drawArc(color, -60f, 300f, false, Offset(5 * u, 5.5f * u), androidx.compose.ui.geometry.Size(14 * u, 14 * u), style = stroke)
+    drawLine(color, Offset(12 * u, 3.5f * u), Offset(12 * u, 11 * u), stroke.width, StrokeCap.Round)
+}
+
+@Composable internal fun MinimizeGlyph(color: Color) = Glyph(color) { u, stroke ->
+    drawLine(color, Offset(12 * u, 4 * u), Offset(12 * u, 14 * u), stroke.width, StrokeCap.Round)
+    drawPath(Path().apply { moveTo(7.5f * u, 9.5f * u); lineTo(12 * u, 14 * u); lineTo(16.5f * u, 9.5f * u) }, color, style = stroke)
+    drawLine(color, Offset(5 * u, 19 * u), Offset(19 * u, 19 * u), stroke.width, StrokeCap.Round)
+}
+
 @Composable internal fun AppearanceGlyph(color: Color) = Glyph(color) { u, stroke ->
     drawCircle(color, 8 * u, Offset(12 * u, 12 * u), style = stroke)
     drawPath(Path().apply { moveTo(12 * u, 4 * u); arcTo(androidx.compose.ui.geometry.Rect(4 * u, 4 * u, 20 * u, 20 * u), -90f, 180f, false); close() }, color)

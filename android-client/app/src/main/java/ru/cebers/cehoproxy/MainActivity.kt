@@ -160,6 +160,7 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) { refreshVpnStatus(intent?.getStringExtra("status"), intent?.getStringExtra("message")) }
     }
     private var receiverRegistered = false
+    private var minimizePending = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -200,6 +201,23 @@ class MainActivity : ComponentActivity() {
             if (granted) update(profile.copy(expiryRemindersEnabled = true))
             else { update(profile.copy(expiryRemindersEnabled = false)); notice = "Android не разрешил уведомления. Напоминания можно включить в системных настройках приложения." }
         }
+        val requestConnect: () -> Unit = {
+            if (!hasNetwork()) notice = "Нет интернета. Подключитесь к Wi-Fi или мобильной сети"
+            else if (profile.apps.isEmpty() && !profile.excludeSelectedApps) notice = "Выберите приложения для туннеля или включите режим «Все, кроме выбранных»."
+            else if (profile.importedConfig.isNullOrBlank() && profile.selectedNode == null && LocalDpiPolicy.activeApps(profile).isEmpty()) notice = "Сначала добавьте ссылку или конфигурацию"
+            else {
+                minimizePending = LaunchBehavior.enabled(this, LaunchBehavior.MINIMIZE)
+                val notificationsAsked = getSharedPreferences("onboarding", MODE_PRIVATE)
+                if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && !notificationsAsked.getBoolean("notifications_asked", false)) {
+                    notificationsAsked.edit().putBoolean("notifications_asked", true).apply()
+                    connectNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    val intent = VpnService.prepare(this)
+                    if (intent != null) vpnPermission.launch(intent) else connect()
+                }
+            }
+        }
+        if (savedInstanceState == null && intent?.action == Intent.ACTION_MAIN && onboardingCompleted && !serviceRunning && !connected && LaunchBehavior.enabled(this, LaunchBehavior.AUTO_CONNECT)) requestConnect()
         setContent {
             CehoTheme(themePreference) {
                 ClientScreen(
@@ -245,21 +263,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onSaveRouteSettings = { next -> update(next, explicitSelection = next.selected != profile.selected); if (VpnHomeAction.shouldStop(connected, CehoVpnService.hasLiveServiceInstance())) connect() },
-                    onConnect = {
-                        if (!hasNetwork()) notice = "Нет интернета. Подключитесь к Wi-Fi или мобильной сети"
-                        else if (profile.apps.isEmpty() && !profile.excludeSelectedApps) notice = "Выберите приложения для туннеля или включите режим «Все, кроме выбранных»."
-                        else if (profile.importedConfig.isNullOrBlank() && profile.selectedNode == null && LocalDpiPolicy.activeApps(profile).isEmpty()) notice = "Сначала добавьте ссылку или конфигурацию"
-                        else {
-                            val notificationsAsked = getSharedPreferences("onboarding", MODE_PRIVATE)
-                            if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && !notificationsAsked.getBoolean("notifications_asked", false)) {
-                                notificationsAsked.edit().putBoolean("notifications_asked", true).apply()
-                                connectNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                val intent = VpnService.prepare(this)
-                                if (intent != null) vpnPermission.launch(intent) else connect()
-                            }
-                        }
-                    }, onStop = { startService(Intent(this, CehoVpnService::class.java).setAction(CehoVpnService.ACTION_STOP)); notice = "VPN отключается" },
+                    onConnect = requestConnect, onStop = { startService(Intent(this, CehoVpnService::class.java).setAction(CehoVpnService.ACTION_STOP)); notice = "VPN отключается" },
                     onAlwaysOn = { openVpnSettings() },
                     onHelp = { openSupportBot() },
                     onExpiryReminders = { enabled ->
@@ -379,6 +383,8 @@ class MainActivity : ComponentActivity() {
         metrics.restoreCountries(profile)
         connected = VpnStatusPolicy.isConnected(current, CehoVpnService.hasLiveTunnel())
         connectedSince = if (connected) prefs.getLong("connected_at", 0L) else 0L
+        if (current == "error") minimizePending = false
+        if (connected && minimizePending) { minimizePending = false; moveTaskToBack(true) }
         if (connected && resumed) metrics.start(profile) else metrics.stop()
         notice = when (current) {
             "error" -> message ?: prefs.getString("message", null) ?: "Ошибка VPN"
@@ -1246,6 +1252,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             }
                             QuietDivider()
                             BatteryExemptionRow()
+                            LaunchBehaviorRows()
                             QuietRow("Внешний вид", subtitle = themePreference.label, onClick = { openPage("Внешний вид") }, leading = { QuietBadge { AppearanceGlyph(primary) } }, modifier = Modifier.testTag("settings-appearance"))
                             QuietDivider()
                             CaptionLabel("Сервис")
