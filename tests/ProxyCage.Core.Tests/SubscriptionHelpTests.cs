@@ -45,10 +45,9 @@ public class SubscriptionHelpTests : IDisposable
 
         Assert.Contains(Strings.T(language, "sub_where_title"), help);
         Assert.Contains(Strings.T(language, "sub_where_formats", mode == CehoConfig.PanelModeSimple), help);
-        Assert.Contains("href=\"https://t.me/CebCehVPN_bot\"", help);
-        Assert.Contains("@CebCehVPN_bot</a>", help);
-        Assert.Contains(Strings.T(language, "sub_where_partner"), help);
-        Assert.Contains(language == "ru" ? "партнёрский сервис" : "partner service", help);
+        Assert.Contains(System.Net.WebUtility.HtmlEncode(Strings.T(language, "sub_where_get")), help);
+        Assert.DoesNotContain("CebCehVPN_bot", help);
+        Assert.DoesNotContain(language == "ru" ? "партнёрский сервис" : "partner service", help);
         Assert.DoesNotContain("CeBers_VPN_bot", help);
         Assert.DoesNotContain("наш телеграм-бот", help);
         Assert.DoesNotContain("our Telegram bot", help);

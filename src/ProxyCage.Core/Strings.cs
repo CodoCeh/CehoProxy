@@ -1788,8 +1788,6 @@ public static class Strings
             "или боте пункт «Подписка», «Импорт» или «Добавить в клиент».",
             "Any VPN service that allows third-party apps gives you such a link: look in its account page or bot " +
             "for \"Subscription\", \"Import\" or \"Add to client\"."),
-        ["sub_where_partner"] = new(
-            "Один из вариантов — партнёрский сервис в Telegram:", "One of the options is a partner service on Telegram:"),
         ["sub_where_own"] = new(
             "Если у вас есть собственный сервер, откройте «Подписки» и выберите «Свой сервер»: понадобятся " +
             "его адрес, логин и пароль.",
