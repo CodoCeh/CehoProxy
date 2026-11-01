@@ -15,7 +15,7 @@ object ProfileBackup {
     fun encode(profile: ClientProfile, scope: ProfileExportScope = ProfileExportScope.ALL): String {
         val selected = when (scope) {
             ProfileExportScope.SETTINGS -> profile.copy(nodes = emptyList(), selected = 0)
-            ProfileExportScope.SUBSCRIPTIONS -> ClientProfile(nodes = profile.nodes, selected = profile.selected)
+            ProfileExportScope.SUBSCRIPTIONS -> ClientProfile(nodes = profile.nodes, selected = profile.selected, subscriptionUrls = profile.subscriptionUrls)
             ProfileExportScope.ALL -> profile
         }
         return JSONObject()
@@ -46,7 +46,7 @@ object ProfileBackup {
                 importedConfig = incoming.importedConfig,
                 expiryRemindersEnabled = incoming.expiryRemindersEnabled,
             )
-            ProfileExportScope.SUBSCRIPTIONS -> current.copy(nodes = incoming.nodes, selected = incoming.selected.coerceAtMost((incoming.nodes.size - 1).coerceAtLeast(0)))
+            ProfileExportScope.SUBSCRIPTIONS -> current.copy(nodes = incoming.nodes, selected = incoming.selected.coerceAtMost((incoming.nodes.size - 1).coerceAtLeast(0)), subscriptionUrls = incoming.subscriptionUrls.ifEmpty { current.subscriptionUrls })
             ProfileExportScope.ALL -> incoming
         }
     }.getOrNull()

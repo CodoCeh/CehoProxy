@@ -1,0 +1,8 @@
+<resources>
+    <string name="shortcut_toggle_short">Вкл/выкл VPN</string>
+    <string name="shortcut_toggle_long">Включить или выключить VPN</string>
+    <string name="shortcut_servers_short">Серверы</string>
+    <string name="shortcut_servers_long">Выбрать сервер</string>
+    <string name="shortcut_speed_short">Скорость</string>
+    <string name="shortcut_speed_long">Проверить скорость</string>
+</resources>

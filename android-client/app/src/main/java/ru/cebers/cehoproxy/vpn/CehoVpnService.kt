@@ -715,6 +715,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         releaseCellular()
         destroyed = true
         startGeneration.invalidate()
+        trafficTicker.stop()
         cancelFailover()
         failoverExecutor.shutdownNow()
         nativeCalls.shutdown()
@@ -899,18 +900,31 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         getSystemService(NotificationManager::class.java).cancel(ALERT_NOTIFICATION_ID)
     }
 
-    private fun connectedNotification(): Notification {
-        val since = getSharedPreferences(PREFS, MODE_PRIVATE).getLong("connected_at", System.currentTimeMillis())
-        return notification(activeNodeName?.let { "Через: $it" } ?: "Подключено", activeSubscriptionText, since)
+    private var speedText: String? = null
+    private val trafficTicker by lazy {
+        TrafficTicker(this) { text ->
+            speedText = text
+            if (liveTunnelConnected) getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, connectedNotification())
+        }
     }
 
-    private fun notification(text: String, subscription: String? = null, sinceMillis: Long? = null): Notification = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(ru.cebers.cehoproxy.R.drawable.ic_ceho_whirlpool).setContentTitle("CehoProxy").setContentText(text).setSubText(subscription).setOngoing(true).setCategory(NotificationCompat.CATEGORY_SERVICE)
+    private fun connectedNotification(): Notification {
+        val since = getSharedPreferences(PREFS, MODE_PRIVATE).getLong("connected_at", System.currentTimeMillis())
+        return notification(listOfNotNull(activeNodeName?.let { "Через: $it" } ?: "Подключено", speedText).joinToString(" · "), activeSubscriptionText, since)
+    }
+
+    private fun notification(text: String, subscription: String? = null, sinceMillis: Long? = null): Notification = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(ru.cebers.cehoproxy.R.drawable.ic_ceho_whirlpool).setContentTitle("CehoProxy").setContentText(text).setSubText(subscription).setOngoing(true).setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setContentIntent(PendingIntent.getActivity(this, 2, Intent(this, ru.cebers.cehoproxy.MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         .apply { if (sinceMillis != null) setWhen(sinceMillis).setShowWhen(true).setUsesChronometer(true) }
         .addAction(0, "Выключить", PendingIntent.getService(this, 1, Intent(this, CehoVpnService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+        .apply {
+            if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK))
+                addAction(0, "Приложения", PendingIntent.getActivity(this@CehoVpnService, 3, Intent(this@CehoVpnService, ru.cebers.cehoproxy.AppRouteActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+        }
         .build()
     private fun publishStatus(status: String, message: String?) {
         liveTunnelConnected = status == "connected"
+        if (status == "connected") trafficTicker.start() else { trafficTicker.stop(); speedText = null }
         if (status == "connected" || status == "stopped" || status == "starting") clearProblem()
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         val unchanged = prefs.getString("status", null) == status && prefs.getString("message", null) == message

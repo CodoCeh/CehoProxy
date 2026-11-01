@@ -159,6 +159,11 @@ class MainActivity : ComponentActivity() {
     }
     private var receiverRegistered = false
     private var minimizePending = false
+    private var launchRequest by mutableStateOf<String?>(null)
+    private var clipboardOffer by mutableStateOf<String?>(null)
+    private var tvPairingUrl by mutableStateOf<String?>(null)
+    private var tvPairingServer: TvPairingServer? = null
+    private var phonePairTarget by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -219,7 +224,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             CehoTheme(themePreference) {
                 ClientScreen(
-                    profile = profile, connected = connected, connectedSince = connectedSince, serviceRunning = serviceRunning, blocked = blocked, measurements = measurements, notificationsBlocked = notificationsBlocked, onOpenNotificationSettings = ::openNotificationSettings, onCheckNode = metrics::check, onCheckNodes = ::checkNodes, onCancelNodeCheck = metrics::cancelProbe, notice = notice, result = result, onDismissResult = { result = null }, importing = importing, importRevision = importRevision,
+                    profile = profile, connected = connected, connectedSince = connectedSince, serviceRunning = serviceRunning, blocked = blocked, measurements = measurements, notificationsBlocked = notificationsBlocked, onOpenNotificationSettings = ::openNotificationSettings,
+                    launchRequest = launchRequest, onLaunchRequestHandled = { launchRequest = null },
+                    onPairWithPhone = if (packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) ::startTvPairing else null, onCheckNode = metrics::check, onCheckNodes = ::checkNodes, onCancelNodeCheck = metrics::cancelProbe, notice = notice, result = result, onDismissResult = { result = null }, importing = importing, importRevision = importRevision,
                     themePreference = themePreference, onThemePreference = { selected ->
                         themePreference = selected
                         getSharedPreferences("appearance", MODE_PRIVATE).edit().putString("theme", selected.storageValue).apply()
@@ -310,6 +317,39 @@ class MainActivity : ComponentActivity() {
                         if (VpnHomeAction.shouldStop(connected, CehoVpnService.hasLiveServiceInstance())) connect()
                     },
                 )
+                tvPairingUrl?.let { url ->
+                    AlertDialog(
+                        onDismissRequest = ::stopTvPairing,
+                        title = { Text("Настройка с телефона") },
+                        text = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Наведите камеру телефона на QR-код и откройте ссылку. На странице отправьте подписку из CehoProxy или вставьте ссылку на неё. Телефон и телевизор должны быть в одной сети Wi-Fi.")
+                                QrCodeImage(url, Modifier.padding(top = 16.dp).size(220.dp).background(androidx.compose.ui.graphics.Color.White).padding(8.dp).testTag("tv-pair-qr"))
+                                Text(url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                            }
+                        },
+                        confirmButton = { QuietTextButton(onClick = ::stopTvPairing, modifier = Modifier.testTag("tv-pair-cancel")) { Text("Отмена") } },
+                    )
+                }
+                phonePairTarget?.let { url ->
+                    AlertDialog(
+                        onDismissRequest = { phonePairTarget = null },
+                        title = { Text("Отправить подписки на телевизор?") },
+                        text = { Text(if (profile.nodes.isEmpty()) "На телефоне нет подписок. Вставьте ссылку на подписку прямо на странице телевизора." else "Телевизор получит ваши подписки и серверы: ${profile.nodes.size}. Приложения и правила останутся только на телефоне.") },
+                        confirmButton = { if (profile.nodes.isNotEmpty()) QuietTextButton(onClick = { phonePairTarget = null; sendToTv(url) }, modifier = Modifier.testTag("phone-pair-send")) { Text("Отправить") } },
+                        dismissButton = { QuietTextButton(onClick = { phonePairTarget = null }) { Text("Отмена") } },
+                    )
+                }
+                clipboardOffer?.let { offer ->
+                    val web = offer.startsWith("http://", true) || offer.startsWith("https://", true)
+                    AlertDialog(
+                        onDismissRequest = { clipboardOffer = null },
+                        title = { Text("Добавить из буфера обмена?") },
+                        text = { Text(if (web) "Вы скопировали ссылку на подписку: ${runCatching { java.net.URL(offer).host }.getOrDefault(offer)}." else "Вы скопировали ссылку на сервер. Она добавится в список серверов.") },
+                        confirmButton = { QuietTextButton(onClick = { clipboardOffer = null; importText(offer) }, modifier = Modifier.testTag("clipboard-offer-confirm")) { Text("Добавить") } },
+                        dismissButton = { QuietTextButton(onClick = { clipboardOffer = null }) { Text("Не нужно") } },
+                    )
+                }
                 pendingLinkImport?.let { link ->
                     AlertDialog(
                         onDismissRequest = { pendingLinkImport = null },
@@ -331,6 +371,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun consumeIncomingIntent(intent: Intent?) {
+        if (intent?.action == ACTION_SHORTCUT_SERVERS || intent?.action == ACTION_SHORTCUT_SPEED_TEST) {
+            launchRequest = intent.action
+            return
+        }
+        if (intent?.action == Intent.ACTION_VIEW && intent.data?.scheme == "cehoproxy" && intent.data?.host == "pair") {
+            phonePairTarget = TvPairing.fromAppLink(intent.data.toString())
+            return
+        }
         if (intent?.action == Intent.ACTION_VIEW && intent.data?.scheme == "cehoproxy") {
             pendingLinkImport = intent.data?.getQueryParameter("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
             return
@@ -339,6 +387,24 @@ class MainActivity : ComponentActivity() {
         val text = if (intent.action == Intent.ACTION_PROCESS_TEXT) intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
         else intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
         if (!text.isNullOrBlank()) importText(text.trim())
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) offerClipboard()
+    }
+
+    /** Reads the clipboard once per new copy, so Android shows its "pasted" notice at most once for each copied text. */
+    private fun offerClipboard() {
+        if (importing || clipboardOffer != null || pendingLinkImport != null) return
+        val clipboard = getSystemService(ClipboardManager::class.java) ?: return
+        val description = clipboard.primaryClipDescription ?: return
+        if (!description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_PLAIN) && !description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_URILIST)) return
+        val prefs = getSharedPreferences("clipboard_offer", MODE_PRIVATE)
+        if (prefs.getLong("seen", -1L) == description.timestamp) return
+        prefs.edit().putLong("seen", description.timestamp).apply()
+        val text = runCatching { clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString() }.getOrNull()
+        clipboardOffer = ClipboardOfferPolicy.candidate(text, profile)
     }
 
     private fun importClipboard() {
@@ -364,7 +430,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() { super.onResume(); resumed = true; refreshVpnStatus(); if (::store.isInitialized) ExpiryReminderScheduler.reconcile(this, profile) }
     override fun onPause() { resumed = false; metrics.stop(); super.onPause() }
-    override fun onDestroy() { metrics.destroy(); if (receiverRegistered) unregisterReceiver(statusReceiver); super.onDestroy() }
+    override fun onDestroy() { stopTvPairing(); metrics.destroy(); if (receiverRegistered) unregisterReceiver(statusReceiver); super.onDestroy() }
 
     private fun openNotificationSettings() {
         startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName))
@@ -373,7 +439,7 @@ class MainActivity : ComponentActivity() {
     private fun refreshVpnStatus(status: String? = null, message: String? = null) {
         val prefs = getSharedPreferences("vpn_status", MODE_PRIVATE)
         val current = status ?: prefs.getString("status", "stopped")
-        if (::store.isInitialized) profile = store.read().let { stored -> if (stored.nodes.map { it.raw } != profile.nodes.map { it.raw }) stored else ActiveNodeSelection.sync(profile, stored) }
+        if (::store.isInitialized) profile = store.read().let { stored -> if (stored.nodes.map { it.raw } != profile.nodes.map { it.raw }) stored else ActiveNodeSelection.sync(profile, stored).copy(apps = stored.apps, appNodeRoutes = stored.appNodeRoutes) }
         serviceRunning = current != "stopped" && VpnHomeAction.shouldStop(VpnStatusPolicy.isConnected(current, CehoVpnService.hasLiveTunnel()), CehoVpnService.hasLiveServiceInstance())
         blocked = VpnHomeAction.isBlocked(current, CehoVpnService.hasLiveServiceInstance())
         notificationsBlocked = !androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()
@@ -504,8 +570,35 @@ class MainActivity : ComponentActivity() {
 
     private class SubscriptionBodyTooLarge : Exception()
 
+    private fun startTvPairing() {
+        stopTvPairing()
+        val server = TvPairingServer { payload -> stopTvPairing(); importText(payload) }
+        val url = runCatching { server.start(this) }.getOrNull()
+        if (url == null) { server.stop(); report("Телевизор не подключён к Wi-Fi или кабелю. Подключите его к той же сети, что и телефон."); return }
+        tvPairingServer = server
+        tvPairingUrl = url
+    }
+
+    private fun stopTvPairing() {
+        tvPairingServer?.stop()
+        tvPairingServer = null
+        tvPairingUrl = null
+    }
+
+    private fun sendToTv(url: String) {
+        val payload = ProfileBackup.encode(profile, ProfileExportScope.SUBSCRIPTIONS)
+        lifecycleScope.launch {
+            notice = "Отправляем на телевизор…"
+            val sent = withContext(Dispatchers.IO) { TvPairingServer.send(url, payload) }
+            notice = null
+            if (sent) report("Подписки отправлены на телевизор", error = false)
+            else report("Телевизор не ответил. Проверьте, что телефон и телевизор в одной сети Wi-Fi, и отсканируйте QR-код ещё раз.")
+        }
+    }
+
     private fun importText(text: String) {
         val trimmed = text.trim()
+        if (TvPairing.isPairingUrl(trimmed)) { phonePairTarget = trimmed; return }
         if (!trimmed.startsWith("{")) { importSubscription(trimmed); return }
         if (importing) return
         val currentProfile = profile
@@ -702,7 +795,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
+@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, launchRequest: String?, onLaunchRequestHandled: () -> Unit, onPairWithPhone: (() -> Unit)?, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
     val clipboardContext = LocalContext.current
     ObserveAutomaticUpdates()
     var pendingNodeCheck by remember { mutableStateOf<String?>(null) }
@@ -720,6 +813,18 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
     }
     val contentScroll = rememberScrollState()
     LaunchedEffect(page) { contentScroll.scrollTo(0) }
+    var speedTestWanted by remember { mutableStateOf(false) }
+    LaunchedEffect(launchRequest) {
+        when (launchRequest) {
+            ACTION_SHORTCUT_SERVERS -> { pageHistory.clear(); page = "Главная"; openPage("Серверы") }
+            ACTION_SHORTCUT_SPEED_TEST -> { pageHistory.clear(); page = "Главная"; speedTestWanted = true; if (!serviceRunning) onConnect() }
+        }
+        if (launchRequest != null) onLaunchRequestHandled()
+    }
+    val speedRouteId = (profile.selectedNode ?: profile.nodes.firstOrNull())?.routeId
+    LaunchedEffect(speedTestWanted, measurements.connected, speedRouteId) {
+        if (speedTestWanted && measurements.connected && speedRouteId != null) { speedTestWanted = false; onCheckNode(speedRouteId) }
+    }
     var importValue by remember { mutableStateOf("") }
     var appsValue by remember(profile.apps) { mutableStateOf(profile.apps.joinToString(", ")) }
     var sitesValue by remember(profile.sites) { mutableStateOf(profile.sites.joinToString(", ")) }
@@ -828,6 +933,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     onImportFile = onImportFile,
                     onImportClipboard = onImportClipboard,
                     onScanQr = onScanQr,
+                    onPairWithPhone = onPairWithPhone,
                     onFinish = onCompleteOnboarding,
                     notice = result?.takeIf { it.error }?.message,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -843,6 +949,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             onOpenSubscription = { url -> subscriptionPageUrl = url; openPage("Подписка") },
                             onAddSubscription = { showAddSheet = true },
                             onAiMode = { on -> onSaveRouteSettings(profile.copy(aiMode = on, autoRotationEnabled = profile.autoRotationEnabled || on)) },
+                            onSpeedTest = { routeId -> pendingNodeCheck = routeId },
+                            onPairWithPhone = onPairWithPhone,
                         )
                         "Подписки" -> {
                             PageHeading("Подписки", subtitle = "Автообновление, ссылки и удаление")
@@ -1554,6 +1662,7 @@ private fun FirstRunOnboarding(
     onImportFile: () -> Unit,
     onImportClipboard: () -> Unit,
     onScanQr: () -> Unit,
+    onPairWithPhone: (() -> Unit)?,
     onFinish: () -> Unit,
     notice: String?,
     modifier: Modifier = Modifier,
@@ -1594,6 +1703,7 @@ private fun FirstRunOnboarding(
                     Text("Подписка уже добавлена: серверов ${profile.nodes.size}.", color = colors.primary, style = MaterialTheme.typography.bodyLarge)
                     QuietButton("Далее", { step = 2 }, Modifier.fillMaxWidth().padding(top = 16.dp).testTag("onboarding-continue"))
                 } else {
+                    if (onPairWithPhone != null) QuietButton("Настроить с телефона", onPairWithPhone, Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("onboarding-pair-phone"))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         QuietButton("Вставить из буфера", onImportClipboard, Modifier.weight(3f).testTag("onboarding-paste"))
                         Spacer(Modifier.width(8.dp))
@@ -1662,6 +1772,9 @@ private fun VortexArt(modifier: Modifier = Modifier) {
         }
     }
 }
+
+internal const val ACTION_SHORTCUT_SERVERS = "ru.cebers.cehoproxy.action.SERVERS"
+internal const val ACTION_SHORTCUT_SPEED_TEST = "ru.cebers.cehoproxy.action.SPEED_TEST"
 
 private fun countryOnboardingChoice(profile: ClientProfile, code: String): ClientProfile =
     profile.copy(

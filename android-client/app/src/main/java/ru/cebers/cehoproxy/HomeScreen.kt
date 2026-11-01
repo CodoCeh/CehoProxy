@@ -19,6 +19,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import ru.cebers.cehoproxy.core.ClientProfile
 import ru.cebers.cehoproxy.core.LocalDpiPolicy
 import ru.cebers.cehoproxy.core.NodeCountry
+import ru.cebers.cehoproxy.core.NodeMetricsPolicy
 import ru.cebers.cehoproxy.core.NodePresentation
 import ru.cebers.cehoproxy.core.ProxyNode
 import ru.cebers.cehoproxy.core.SubscriptionMembership
@@ -81,6 +84,8 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
     onOpenSubscription: (String) -> Unit,
     onAddSubscription: () -> Unit,
     onAiMode: (Boolean) -> Unit,
+    onSpeedTest: (String) -> Unit,
+    onPairWithPhone: (() -> Unit)?,
 ) {
     val colors = MaterialTheme.colorScheme
     val tunnelPackages = TunnelAppsPolicy.packages(profile, appChoices.map { it.packageName }).toSet()
@@ -126,7 +131,8 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
         },
         style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
     )
-    if (needsSubscription) QuietButton("Добавить подписку", onAddSubscription, Modifier.fillMaxWidth().padding(top = 20.dp).testTag("home-add-node"))
+    if (needsSubscription && onPairWithPhone != null) QuietButton("Настроить с телефона", onPairWithPhone, Modifier.fillMaxWidth().padding(top = 20.dp).testTag("home-pair-phone"))
+    if (needsSubscription) QuietButton("Добавить подписку", onAddSubscription, Modifier.fillMaxWidth().padding(top = if (onPairWithPhone != null) 8.dp else 20.dp).testTag("home-add-node"), primary = onPairWithPhone == null)
     if (blocked) QuietButton("Проверить серверы снова", onConnect, Modifier.fillMaxWidth().padding(top = 16.dp).testTag("home-retry"), primary = false)
     val fastestIndex = profile.nodes.withIndex().filter { nodeAllowed(profile, it.value) && measurements.nodes[it.value.routeId]?.latencyMs != null && measurements.nodes[it.value.routeId]?.failed != true }
         .minByOrNull { measurements.nodes[it.value.routeId]?.latencyMs ?: Int.MAX_VALUE }?.index
@@ -141,6 +147,7 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
 
     QuietDivider(Modifier.padding(top = 24.dp))
     ServerSummaryRow(profile, node, measurements, directOnly, onOpenServers)
+    if (connected && node != null && profile.importedConfig == null) SpeedBlock(node, measurements, onSpeedTest)
     QuietDivider()
 
     val url = node?.let { SubscriptionRemovalPolicy.urlFor(profile, it.subscriptionMetadata) }
@@ -193,6 +200,72 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
         else -> QuietRow("Сервер не выбран", subtitle = "Добавьте подписку, чтобы появились серверы", leading = { QuietBadge { ShieldBadgeGlyph(colors.outline) } }, modifier = Modifier.testTag("home-server"))
     }
 }
+
+@Composable private fun SpeedBlock(node: ProxyNode, measurements: VpnMeasurements, onSpeedTest: (String) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val down by rememberUpdatedState(measurements.downloadBitsPerSecond)
+    val up by rememberUpdatedState(measurements.uploadBitsPerSecond)
+    val history = remember { mutableStateListOf<Pair<Long, Long>>() }
+    LaunchedEffect(measurements.connected) {
+        history.clear()
+        while (measurements.connected) {
+            history.add((down ?: 0L) to (up ?: 0L))
+            if (history.size > SPEED_HISTORY) history.removeAt(0)
+            kotlinx.coroutines.delay(1_000)
+        }
+    }
+    val probe = measurements.nodes[node.routeId]
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp).testTag("home-speed")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Сейчас", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(
+                if (measurements.connected) "↓ ${NodeMetricsPolicy.speed(down ?: 0)}  ↑ ${NodeMetricsPolicy.speed(up ?: 0)} Мбит/с" else "—",
+                style = MaterialTheme.typography.titleSmall, color = colors.onSurface, modifier = Modifier.testTag("home-live-speed"),
+            )
+        }
+        Canvas(Modifier.fillMaxWidth().padding(top = 8.dp).height(40.dp).testTag("home-speed-graph")) {
+            val peak = history.maxOfOrNull { maxOf(it.first, it.second) }?.coerceAtLeast(1L)?.toFloat() ?: 1f
+            val step = size.width / (SPEED_HISTORY - 1)
+            fun line(pick: (Pair<Long, Long>) -> Long, color: Color, width: Float) {
+                if (history.size < 2) return
+                val offset = SPEED_HISTORY - history.size
+                val path = androidx.compose.ui.graphics.Path()
+                history.forEachIndexed { i, sample ->
+                    val x = (offset + i) * step
+                    val y = size.height - pick(sample) / peak * size.height
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(width, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+            }
+            drawLine(colors.outlineVariant, androidx.compose.ui.geometry.Offset(0f, size.height), androidx.compose.ui.geometry.Offset(size.width, size.height), 1.dp.toPx())
+            line({ it.second }, colors.secondary, 1.5.dp.toPx())
+            line({ it.first }, colors.primary, 2.dp.toPx())
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                when {
+                    probe?.testing == true -> "Измеряем скорость сервера, до 20 секунд…"
+                    probe?.failed == true -> "Скорость не измерить: ${probe.failureReason ?: "сервер проверки не ответил"}"
+                    probe?.downloadBitsPerSecond != null -> listOfNotNull(
+                        "↓ ${NodeMetricsPolicy.speed(probe.downloadBitsPerSecond)}",
+                        probe.uploadBitsPerSecond?.let { "↑ ${NodeMetricsPolicy.speed(it)} Мбит/с" } ?: "Мбит/с",
+                        probe.latencyMs?.let { "$it мс" },
+                    ).joinToString("  ")
+                    else -> "Узнайте, сколько выдаёт сервер"
+                },
+                style = if (probe?.downloadBitsPerSecond != null && probe.testing != true && probe.failed != true) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                color = if (probe?.failed == true) colors.error else colors.onSurface,
+                modifier = Modifier.weight(1f).testTag("home-speed-result"),
+            )
+            if (probe?.testing == true) androidx.compose.material3.CircularProgressIndicator(Modifier.padding(start = 12.dp).height(20.dp).width(20.dp), strokeWidth = 2.dp)
+            else QuietTextButton(onClick = { onSpeedTest(node.routeId) }, enabled = measurements.connected, modifier = Modifier.heightIn(min = 48.dp).testTag("home-speed-test")) {
+                Text(if (probe?.downloadBitsPerSecond != null) "Ещё раз" else "Проверить скорость")
+            }
+        }
+    }
+}
+
+private const val SPEED_HISTORY = 60
 
 @Composable private fun ShieldBadgeGlyph(color: Color) = ru.cebers.cehoproxy.ui.ShieldGlyph(color)
 

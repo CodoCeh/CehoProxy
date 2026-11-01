@@ -1,0 +1,11 @@
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="toggle" android:icon="@drawable/ic_shortcut_power" android:shortcutShortLabel="@string/shortcut_toggle_short" android:shortcutLongLabel="@string/shortcut_toggle_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="ru.cebers.cehoproxy" android:targetClass="ru.cebers.cehoproxy.vpn.ToggleVpnActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="servers" android:icon="@drawable/ic_shortcut_servers" android:shortcutShortLabel="@string/shortcut_servers_short" android:shortcutLongLabel="@string/shortcut_servers_long">
+        <intent android:action="ru.cebers.cehoproxy.action.SERVERS" android:targetPackage="ru.cebers.cehoproxy" android:targetClass="ru.cebers.cehoproxy.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="speed" android:icon="@drawable/ic_shortcut_speed" android:shortcutShortLabel="@string/shortcut_speed_short" android:shortcutLongLabel="@string/shortcut_speed_long">
+        <intent android:action="ru.cebers.cehoproxy.action.SPEED_TEST" android:targetPackage="ru.cebers.cehoproxy" android:targetClass="ru.cebers.cehoproxy.MainActivity" />
+    </shortcut>
+</shortcuts>
