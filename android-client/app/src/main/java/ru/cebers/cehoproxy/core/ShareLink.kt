@@ -4,9 +4,11 @@ import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 
-/** Address a TV shows as a QR code so a phone in the same network can hand it subscriptions. */
-internal object TvPairing {
+/** Address a receiving device shows as a QR code and announces in the local network, so a phone can hand it subscriptions. */
+internal object ShareLink {
     private val path = Regex("^/p/([0-9a-f]{32})$")
+    const val ATTRIBUTE_TOKEN = "t"
+    const val ATTRIBUTE_HOST = "h"
 
     fun url(host: String, port: Int, token: String): String = "http://$host:$port/p/$token"
 
@@ -17,7 +19,7 @@ internal object TvPairing {
 
     fun tokenOf(requestPath: String): String? = path.find(requestPath.substringBefore('?'))?.groupValues?.get(1)
 
-    /** Link the TV page offers to a phone that already has CehoProxy; the app opens and sends its subscriptions. */
+    /** Link the receiver page offers to a phone that already has CehoProxy; the app opens and sends its subscriptions. */
     fun appLink(pairingUrl: String): String = "cehoproxy://pair?u=" + URLEncoder.encode(pairingUrl, "UTF-8")
 
     fun fromAppLink(link: String): String? {
@@ -29,7 +31,7 @@ internal object TvPairing {
         return value.takeIf(::isPairingUrl)
     }
 
-    /** Body of the TV page form: `link=<url-encoded text>`. */
+    /** Body of the receiver page form: `link=<url-encoded text>`. */
     fun formField(body: String, name: String): String? = body.split('&').firstNotNullOfOrNull { pair ->
         if (pair.substringBefore('=') == name) runCatching { URLDecoder.decode(pair.substringAfter('=', ""), "UTF-8") }.getOrNull() else null
     }?.trim()?.takeIf { it.isNotEmpty() }

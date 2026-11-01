@@ -2,10 +2,12 @@ package ru.cebers.cehoproxy
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
-import ru.cebers.cehoproxy.core.TvPairing
+import ru.cebers.cehoproxy.core.ShareLink
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -16,26 +18,52 @@ import java.net.Socket
 import java.net.URI
 import java.security.SecureRandom
 
-/** Small one-shot web server on the TV: the phone opens its page or posts subscriptions to it. */
-internal class TvPairingServer(private val onPayload: (String) -> Unit) {
+/** One-shot web server on the receiving device, announced in the local network: a phone finds it or scans its QR code and posts subscriptions. */
+internal class ShareReceiver(private val onPayload: (String) -> Unit) {
     private val main = Handler(Looper.getMainLooper())
     private val token = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
     @Volatile private var server: ServerSocket? = null
+    private var nsd: NsdManager? = null
+    private var announcement: NsdManager.RegistrationListener? = null
 
-    /** Returns the address to show as a QR code, or null when the TV has no Wi-Fi or Ethernet address. */
-    fun start(context: Context): String? {
+    /** Returns the address to show as a QR code, or null when the device has no Wi-Fi or Ethernet address. */
+    fun start(context: Context, deviceName: String): String? {
         val host = lanAddress(context) ?: return null
         val socket = ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(0), 4) }
         server = socket
-        Thread({ serve(socket) }, "ceho-tv-pairing").apply { isDaemon = true }.start()
+        Thread({ serve(socket) }, "ceho-share-receiver").apply { isDaemon = true }.start()
+        announce(context, deviceName, host, socket.localPort)
         main.postDelayed({ stop() }, LIFETIME_MILLIS)
-        return TvPairing.url(host, socket.localPort, token)
+        return ShareLink.url(host, socket.localPort, token)
     }
 
     fun stop() {
         main.removeCallbacksAndMessages(null)
+        announcement?.let { listener -> runCatching { nsd?.unregisterService(listener) } }
+        announcement = null
         runCatching { server?.close() }
         server = null
+    }
+
+    private fun announce(context: Context, deviceName: String, host: String, port: Int) {
+        val manager = context.getSystemService(NsdManager::class.java) ?: return
+        val info = NsdServiceInfo().apply {
+            serviceName = deviceName
+            serviceType = SERVICE_TYPE
+            this.port = port
+            setAttribute(ShareLink.ATTRIBUTE_TOKEN, token)
+            setAttribute(ShareLink.ATTRIBUTE_HOST, host)
+        }
+        val listener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(info: NsdServiceInfo) {}
+            override fun onRegistrationFailed(info: NsdServiceInfo, error: Int) {}
+            override fun onServiceUnregistered(info: NsdServiceInfo) {}
+            override fun onUnregistrationFailed(info: NsdServiceInfo, error: Int) {}
+        }
+        if (runCatching { manager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener) }.isSuccess) {
+            nsd = manager
+            announcement = listener
+        }
     }
 
     private fun serve(socket: ServerSocket) {
@@ -52,31 +80,31 @@ internal class TvPairingServer(private val onPayload: (String) -> Unit) {
         val headers = generateSequence { readLine(input)?.takeIf { it.isNotEmpty() } }.associate { it.substringBefore(':').trim().lowercase() to it.substringAfter(':', "").trim() }
         val method = requestLine.substringBefore(' ')
         val path = requestLine.substringAfter(' ').substringBefore(' ')
-        if (TvPairing.tokenOf(path) != token) return respond(client, 404, page("Ссылка устарела", "Откройте на телевизоре «Настроить с телефона» ещё раз и отсканируйте новый QR-код."))
+        if (ShareLink.tokenOf(path) != token) return respond(client, 404, page("Ссылка устарела", "На устройстве снова откройте «Получить с телефона»."))
         when (method) {
             "GET" -> respond(client, 200, formPage(headers["host"]))
             "POST" -> {
-                val length = headers["content-length"]?.toIntOrNull() ?: return respond(client, 411, page("Ошибка", "Телевизор не понял запрос."))
+                val length = headers["content-length"]?.toIntOrNull() ?: return respond(client, 411, page("Ошибка", "Устройство не поняло запрос."))
                 if (length !in 1..MAX_BODY) return respond(client, 413, page("Слишком много данных", "Отправьте только ссылку на подписку."))
                 val body = String(readBytes(input, length), Charsets.UTF_8)
-                val payload = if (headers["content-type"].orEmpty().startsWith("application/x-www-form-urlencoded")) TvPairing.formField(body, "link") else body.trim().takeIf { it.isNotEmpty() }
+                val payload = if (headers["content-type"].orEmpty().startsWith("application/x-www-form-urlencoded")) ShareLink.formField(body, "link") else body.trim().takeIf { it.isNotEmpty() }
                 if (payload == null) return respond(client, 400, formPage(headers["host"], "Вставьте ссылку на подписку."))
-                respond(client, 200, page("Готово", "Телевизор получил данные. Посмотрите на экран телевизора."))
+                respond(client, 200, page("Отправлено", "Подтвердите добавление на экране устройства."))
                 stop()
                 main.post { onPayload(payload) }
             }
-            else -> respond(client, 405, page("Ошибка", "Телевизор не понял запрос."))
+            else -> respond(client, 405, page("Ошибка", "Устройство не поняло запрос."))
         }
     }
 
     private fun formPage(host: String?, error: String? = null): String {
         val self = "/p/$token"
-        val appLink = host?.takeIf { HOST.matches(it) }?.let { TvPairing.appLink("http://$it$self") }
-        return page("CehoProxy на телевизоре", listOfNotNull(
+        val appLink = host?.takeIf { HOST.matches(it) }?.let { ShareLink.appLink("http://$it$self") }
+        return page("Отправить подписку на устройство", listOfNotNull(
             appLink?.let { "<p>Если CehoProxy установлен на этом телефоне, отправьте подписки из приложения:</p><a class=\"button\" href=\"$it\">Отправить из CehoProxy</a>" },
             "<p>${if (appLink != null) "Или вставьте" else "Вставьте"} ссылку на подписку:</p>",
             error?.let { "<p class=\"error\">$it</p>" },
-            "<form method=\"post\" action=\"$self\"><textarea name=\"link\" rows=\"4\" placeholder=\"https://…\"></textarea><button type=\"submit\">Отправить на телевизор</button></form>",
+            "<form method=\"post\" action=\"$self\"><textarea name=\"link\" rows=\"4\" placeholder=\"https://…\"></textarea><button type=\"submit\">Отправить на устройство</button></form>",
         ).joinToString("\n"))
     }
 
@@ -129,6 +157,7 @@ internal class TvPairingServer(private val onPayload: (String) -> Unit) {
     }
 
     companion object {
+        const val SERVICE_TYPE = "_cehoproxy._tcp"
         private const val MAX_BODY = 1_000_000
         private const val LIFETIME_MILLIS = 10 * 60_000L
         private val HOST = Regex("^[0-9A-Za-z.:\\-]{1,64}$")

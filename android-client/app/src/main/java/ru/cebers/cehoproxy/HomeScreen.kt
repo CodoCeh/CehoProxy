@@ -131,7 +131,7 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
         },
         style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
     )
-    if (needsSubscription && onPairWithPhone != null) QuietButton("Настроить с телефона", onPairWithPhone, Modifier.fillMaxWidth().padding(top = 20.dp).testTag("home-pair-phone"))
+    if (needsSubscription && onPairWithPhone != null) QuietButton("Получить с телефона", onPairWithPhone, Modifier.fillMaxWidth().padding(top = 20.dp).testTag("home-pair-phone"))
     if (needsSubscription) QuietButton("Добавить подписку", onAddSubscription, Modifier.fillMaxWidth().padding(top = if (onPairWithPhone != null) 8.dp else 20.dp).testTag("home-add-node"), primary = onPairWithPhone == null)
     if (blocked) QuietButton("Проверить серверы снова", onConnect, Modifier.fillMaxWidth().padding(top = 16.dp).testTag("home-retry"), primary = false)
     val fastestIndex = profile.nodes.withIndex().filter { nodeAllowed(profile, it.value) && measurements.nodes[it.value.routeId]?.latencyMs != null && measurements.nodes[it.value.routeId]?.failed != true }

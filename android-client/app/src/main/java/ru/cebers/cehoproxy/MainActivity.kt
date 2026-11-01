@@ -161,9 +161,11 @@ class MainActivity : ComponentActivity() {
     private var minimizePending = false
     private var launchRequest by mutableStateOf<String?>(null)
     private var clipboardOffer by mutableStateOf<String?>(null)
-    private var tvPairingUrl by mutableStateOf<String?>(null)
-    private var tvPairingServer: TvPairingServer? = null
-    private var phonePairTarget by mutableStateOf<String?>(null)
+    private var receiveUrl by mutableStateOf<String?>(null)
+    private var receiver: ShareReceiver? = null
+    private var incomingShare by mutableStateOf<SubscriptionShare.Incoming?>(null)
+    private var incomingLink by mutableStateOf<String?>(null)
+    private var sendRequest by mutableStateOf<SendRequest?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -226,7 +228,7 @@ class MainActivity : ComponentActivity() {
                 ClientScreen(
                     profile = profile, connected = connected, connectedSince = connectedSince, serviceRunning = serviceRunning, blocked = blocked, measurements = measurements, notificationsBlocked = notificationsBlocked, onOpenNotificationSettings = ::openNotificationSettings,
                     launchRequest = launchRequest, onLaunchRequestHandled = { launchRequest = null },
-                    onPairWithPhone = if (packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) ::startTvPairing else null, onCheckNode = metrics::check, onCheckNodes = ::checkNodes, onCancelNodeCheck = metrics::cancelProbe, notice = notice, result = result, onDismissResult = { result = null }, importing = importing, importRevision = importRevision,
+                    onReceiveFromPhone = ::startReceiving, receiverFirst = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || !packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY), onSendToDevice = { keys -> sendRequest = SendRequest(keys, null) }, onCheckNode = metrics::check, onCheckNodes = ::checkNodes, onCancelNodeCheck = metrics::cancelProbe, notice = notice, result = result, onDismissResult = { result = null }, importing = importing, importRevision = importRevision,
                     themePreference = themePreference, onThemePreference = { selected ->
                         themePreference = selected
                         getSharedPreferences("appearance", MODE_PRIVATE).edit().putString("theme", selected.storageValue).apply()
@@ -317,27 +319,29 @@ class MainActivity : ComponentActivity() {
                         if (VpnHomeAction.shouldStop(connected, CehoVpnService.hasLiveServiceInstance())) connect()
                     },
                 )
-                tvPairingUrl?.let { url ->
-                    AlertDialog(
-                        onDismissRequest = ::stopTvPairing,
-                        title = { Text("Настройка с телефона") },
-                        text = {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Наведите камеру телефона на QR-код и откройте ссылку. На странице отправьте подписку из CehoProxy или вставьте ссылку на неё. Телефон и телевизор должны быть в одной сети Wi-Fi.")
-                                QrCodeImage(url, Modifier.padding(top = 16.dp).size(220.dp).background(androidx.compose.ui.graphics.Color.White).padding(8.dp).testTag("tv-pair-qr"))
-                                Text(url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-                            }
+                receiveUrl?.let { url -> ReceiveFromPhoneDialog(url, deviceName(), ::stopReceiving) }
+                incomingShare?.let { incoming ->
+                    IncomingShareDialog(
+                        SubscriptionShare.summary(incoming),
+                        onAccept = {
+                            incomingShare = null
+                            val before = profile.nodes.size
+                            update(SubscriptionShare.merge(profile, incoming))
+                            report(if (profile.nodes.size > before) "Добавлено серверов: ${profile.nodes.size - before}" else "Эти серверы уже есть на устройстве", error = false)
                         },
-                        confirmButton = { QuietTextButton(onClick = ::stopTvPairing, modifier = Modifier.testTag("tv-pair-cancel")) { Text("Отмена") } },
+                        onDecline = { incomingShare = null },
                     )
                 }
-                phonePairTarget?.let { url ->
-                    AlertDialog(
-                        onDismissRequest = { phonePairTarget = null },
-                        title = { Text("Отправить подписки на телевизор?") },
-                        text = { Text(if (profile.nodes.isEmpty()) "На телефоне нет подписок. Вставьте ссылку на подписку прямо на странице телевизора." else "Телевизор получит ваши подписки и серверы: ${profile.nodes.size}. Приложения и правила останутся только на телефоне.") },
-                        confirmButton = { if (profile.nodes.isNotEmpty()) QuietTextButton(onClick = { phonePairTarget = null; sendToTv(url) }, modifier = Modifier.testTag("phone-pair-send")) { Text("Отправить") } },
-                        dismissButton = { QuietTextButton(onClick = { phonePairTarget = null }) { Text("Отмена") } },
+                incomingLink?.let { link -> IncomingLinkDialog(link, onAccept = { incomingLink = null; importText(link) }, onDecline = { incomingLink = null }) }
+                sendRequest?.let { request ->
+                    SendToDeviceSheet(
+                        profile, request,
+                        onScanQr = {
+                            scanQr.startScan().addOnSuccessListener { code -> code.rawValue?.let(::importText) ?: run { report("В QR-коде нет текста") } }
+                                .addOnFailureListener { report("Сканер недоступен. Откройте QR-код на устройстве и наведите на него камеру телефона.") }
+                        },
+                        onSend = { keys, url -> sendRequest = null; sendToDevice(keys, url) },
+                        onDismiss = { sendRequest = null },
                     )
                 }
                 clipboardOffer?.let { offer ->
@@ -376,7 +380,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (intent?.action == Intent.ACTION_VIEW && intent.data?.scheme == "cehoproxy" && intent.data?.host == "pair") {
-            phonePairTarget = TvPairing.fromAppLink(intent.data.toString())
+            ShareLink.fromAppLink(intent.data.toString())?.let { target -> sendRequest = SendRequest(sendRequest?.keys.orEmpty(), target) }
             return
         }
         if (intent?.action == Intent.ACTION_VIEW && intent.data?.scheme == "cehoproxy") {
@@ -430,7 +434,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() { super.onResume(); resumed = true; refreshVpnStatus(); if (::store.isInitialized) ExpiryReminderScheduler.reconcile(this, profile) }
     override fun onPause() { resumed = false; metrics.stop(); super.onPause() }
-    override fun onDestroy() { stopTvPairing(); metrics.destroy(); if (receiverRegistered) unregisterReceiver(statusReceiver); super.onDestroy() }
+    override fun onDestroy() { stopReceiving(); metrics.destroy(); if (receiverRegistered) unregisterReceiver(statusReceiver); super.onDestroy() }
 
     private fun openNotificationSettings() {
         startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName))
@@ -570,35 +574,41 @@ class MainActivity : ComponentActivity() {
 
     private class SubscriptionBodyTooLarge : Exception()
 
-    private fun startTvPairing() {
-        stopTvPairing()
-        val server = TvPairingServer { payload -> stopTvPairing(); importText(payload) }
-        val url = runCatching { server.start(this) }.getOrNull()
-        if (url == null) { server.stop(); report("Телевизор не подключён к Wi-Fi или кабелю. Подключите его к той же сети, что и телефон."); return }
-        tvPairingServer = server
-        tvPairingUrl = url
+    private fun deviceName(): String =
+        runCatching { android.provider.Settings.Global.getString(contentResolver, "device_name") }.getOrNull()?.takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
+
+    private fun startReceiving() {
+        stopReceiving()
+        val server = ShareReceiver { payload ->
+            stopReceiving()
+            SubscriptionShare.decode(payload)?.let { incomingShare = it } ?: run { incomingLink = payload }
+        }
+        val url = runCatching { server.start(this, deviceName()) }.getOrNull()
+        if (url == null) { server.stop(); report("Устройство не подключено к Wi-Fi или кабелю. Подключите его к той же сети, что и телефон."); return }
+        receiver = server
+        receiveUrl = url
     }
 
-    private fun stopTvPairing() {
-        tvPairingServer?.stop()
-        tvPairingServer = null
-        tvPairingUrl = null
+    private fun stopReceiving() {
+        receiver?.stop()
+        receiver = null
+        receiveUrl = null
     }
 
-    private fun sendToTv(url: String) {
-        val payload = ProfileBackup.encode(profile, ProfileExportScope.SUBSCRIPTIONS)
+    private fun sendToDevice(keys: Set<String>, url: String) {
+        val payload = SubscriptionShare.encode(profile, keys)
         lifecycleScope.launch {
-            notice = "Отправляем на телевизор…"
-            val sent = withContext(Dispatchers.IO) { TvPairingServer.send(url, payload) }
+            notice = "Отправляем на устройство…"
+            val sent = withContext(Dispatchers.IO) { ShareReceiver.send(url, payload) }
             notice = null
-            if (sent) report("Подписки отправлены на телевизор", error = false)
-            else report("Телевизор не ответил. Проверьте, что телефон и телевизор в одной сети Wi-Fi, и отсканируйте QR-код ещё раз.")
+            if (sent) report("Отправлено. Подтвердите добавление на экране устройства", error = false)
+            else report("Устройство не ответило. Проверьте, что телефон и устройство в одной сети Wi-Fi, и откройте на устройстве «Получить с телефона» ещё раз.")
         }
     }
 
     private fun importText(text: String) {
         val trimmed = text.trim()
-        if (TvPairing.isPairingUrl(trimmed)) { phonePairTarget = trimmed; return }
+        if (ShareLink.isPairingUrl(trimmed)) { sendRequest = SendRequest(sendRequest?.keys.orEmpty(), trimmed); return }
         if (!trimmed.startsWith("{")) { importSubscription(trimmed); return }
         if (importing) return
         val currentProfile = profile
@@ -795,7 +805,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, launchRequest: String?, onLaunchRequestHandled: () -> Unit, onPairWithPhone: (() -> Unit)?, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
+@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, launchRequest: String?, onLaunchRequestHandled: () -> Unit, onReceiveFromPhone: () -> Unit, receiverFirst: Boolean, onSendToDevice: (Set<String>) -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
     val clipboardContext = LocalContext.current
     ObserveAutomaticUpdates()
     var pendingNodeCheck by remember { mutableStateOf<String?>(null) }
@@ -933,7 +943,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                     onImportFile = onImportFile,
                     onImportClipboard = onImportClipboard,
                     onScanQr = onScanQr,
-                    onPairWithPhone = onPairWithPhone,
+                    onReceiveFromPhone = onReceiveFromPhone,
+                    receiverFirst = receiverFirst,
                     onFinish = onCompleteOnboarding,
                     notice = result?.takeIf { it.error }?.message,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -950,7 +961,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             onAddSubscription = { showAddSheet = true },
                             onAiMode = { on -> onSaveRouteSettings(profile.copy(aiMode = on, autoRotationEnabled = profile.autoRotationEnabled || on)) },
                             onSpeedTest = { routeId -> pendingNodeCheck = routeId },
-                            onPairWithPhone = onPairWithPhone,
+                            onPairWithPhone = onReceiveFromPhone.takeIf { receiverFirst },
                         )
                         "Подписки" -> {
                             PageHeading("Подписки", subtitle = "Автообновление, ссылки и удаление")
@@ -982,6 +993,11 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                     Spacer(Modifier.width(8.dp))
                                     Text(if (refreshingSubscriptions.isEmpty()) "Обновить все подписки" else "Обновляем…")
                                 }
+                            }
+                            if (profile.nodes.isNotEmpty() && profile.importedConfig == null) OutlinedButton(onClick = { onSendToDevice(emptySet()) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 48.dp).testTag("subscriptions-send-device")) {
+                                ShareGlyph(MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Отправить на устройство")
                             }
                             QuietButton("Добавить подписку", { showAddSheet = true }, Modifier.fillMaxWidth().padding(top = 14.dp).testTag("subscriptions-add"))
                             if (profile.subscriptionUrls.isNotEmpty()) {
@@ -1558,6 +1574,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                 QuietDivider()
                 QuietRow("Ввести вручную", subtitle = "VLESS, Trojan, Shadowsocks, SOCKS5 и другие", onClick = { openManualForm() }, enabled = !importing, leading = { QuietBadge(size = 40.dp) { SlidersGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-manual"))
                 QuietDivider()
+                QuietRow("С другого устройства", subtitle = "Телефон с CehoProxy отправит подписку по Wi-Fi", onClick = { showAddSheet = false; onReceiveFromPhone() }, enabled = !importing, leading = { QuietBadge(size = 40.dp) { ShareGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-receive"))
+                QuietDivider()
                 QuietRow("Файл", subtitle = "Конфигурация .json или .txt", onClick = onImportFile, enabled = !importing, leading = { QuietBadge(size = 40.dp) { FileGlyph(MaterialTheme.colorScheme.primary) } }, modifier = Modifier.testTag("add-sheet-file"))
                 QuietDivider()
             }
@@ -1583,6 +1601,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                 Text("Отсканируйте в приложении, чтобы добавить подписку", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
                 SheetOption(title = "Скопировать ссылку", subtitle = "Ссылка подписки в буфер обмена", glyph = { CopyGlyph(MaterialTheme.colorScheme.primary) }, modifier = Modifier.testTag("subscription-share-link"), onClick = { copySubscriptionLink(clipboardContext, url); onNotice("Ссылка подписки скопирована"); shareCandidate = null })
                 SheetOption(title = "Отправить…", subtitle = "Системное меню «Поделиться»", glyph = { ShareGlyph(MaterialTheme.colorScheme.primary) }, modifier = Modifier.testTag("subscription-share-system"), onClick = { shareSubscriptionLink(clipboardContext, url, telegram = false); shareCandidate = null })
+                SheetOption(title = "Отправить на устройство", subtitle = "Телевизор, магнитола или другой телефон по Wi-Fi", glyph = { ShareGlyph(MaterialTheme.colorScheme.primary) }, modifier = Modifier.testTag("subscription-share-device"), onClick = { shareCandidate = null; onSendToDevice(setOf(url)) })
                 SheetOption(title = "Отправить в Telegram", subtitle = "Откроется выбор чата", glyph = { TelegramGlyph(Color(0xFF2AABEE)) }, modifier = Modifier.testTag("subscription-share-telegram"), onClick = { shareSubscriptionLink(clipboardContext, url, telegram = true); shareCandidate = null })
             }
         }
@@ -1662,7 +1681,8 @@ private fun FirstRunOnboarding(
     onImportFile: () -> Unit,
     onImportClipboard: () -> Unit,
     onScanQr: () -> Unit,
-    onPairWithPhone: (() -> Unit)?,
+    onReceiveFromPhone: () -> Unit,
+    receiverFirst: Boolean,
     onFinish: () -> Unit,
     notice: String?,
     modifier: Modifier = Modifier,
@@ -1703,7 +1723,7 @@ private fun FirstRunOnboarding(
                     Text("Подписка уже добавлена: серверов ${profile.nodes.size}.", color = colors.primary, style = MaterialTheme.typography.bodyLarge)
                     QuietButton("Далее", { step = 2 }, Modifier.fillMaxWidth().padding(top = 16.dp).testTag("onboarding-continue"))
                 } else {
-                    if (onPairWithPhone != null) QuietButton("Настроить с телефона", onPairWithPhone, Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("onboarding-pair-phone"))
+                    if (receiverFirst) QuietButton("Получить с телефона", onReceiveFromPhone, Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("onboarding-pair-phone"))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         QuietButton("Вставить из буфера", onImportClipboard, Modifier.weight(3f).testTag("onboarding-paste"))
                         Spacer(Modifier.width(8.dp))
@@ -1712,6 +1732,7 @@ private fun FirstRunOnboarding(
                             DropdownMenu(expanded = showOther, onDismissRequest = { showOther = false }) {
                                 DropdownMenuItem(text = { Text("Сканировать QR-код") }, onClick = { showOther = false; onScanQr() })
                                 DropdownMenuItem(text = { Text("Открыть файл") }, onClick = { showOther = false; onImportFile() })
+                                if (!receiverFirst) DropdownMenuItem(text = { Text("Получить с другого устройства") }, onClick = { showOther = false; onReceiveFromPhone() })
                             }
                         }
                     }
@@ -2287,7 +2308,7 @@ private fun telegramLink(metadata: SubscriptionMetadata): String? {
     }
 }
 
-@Composable private fun QrCodeImage(text: String, modifier: Modifier = Modifier) {
+@Composable internal fun QrCodeImage(text: String, modifier: Modifier = Modifier) {
     val bitmap = remember(text) {
         val modules = SubscriptionQr.modules(text)
         val n = modules.size
