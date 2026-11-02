@@ -15,10 +15,10 @@ android {
 
     defaultConfig {
         applicationId = "ru.cebers.cehoproxy"
-        minSdk = 29
+        minSdk = 28
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.1.17"
+        versionCode = 19
+        versionName = "0.1.18"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
