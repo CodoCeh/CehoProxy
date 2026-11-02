@@ -114,13 +114,14 @@ class CehoTileService : TileService() {
         tile.icon = Icon.createWithResource(this, if (animateNow) R.drawable.ic_ceho_whirlpool_activation else R.drawable.ic_ceho_whirlpool)
         tile.state = if ((live && status != "stopped") || animateNow) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         val displayStatus = if (animateNow && !live) "starting" else status
-        tile.subtitle = when (displayStatus) {
+        val subtitle = when (displayStatus) {
             "starting" -> "Подключаемся"
             "connected" -> "Подключено"
             "error" -> "Ошибка подключения"
             else -> "Выключено"
         }
-        tile.contentDescription = "CehoProxy: ${tile.subtitle}"
+        if (android.os.Build.VERSION.SDK_INT >= 29) tile.subtitle = subtitle
+        tile.contentDescription = "CehoProxy: $subtitle"
         tile.updateTile()
         if (BuildConfig.DEBUG) {
             val safeStatus = status?.takeIf { it in setOf("starting", "connected", "error", "stopped") } ?: "unknown"

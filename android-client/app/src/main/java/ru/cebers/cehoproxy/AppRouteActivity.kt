@@ -129,8 +129,13 @@ class AppRouteActivity : ComponentActivity() {
         ContextCompat.startForegroundService(this, Intent(this, CehoVpnService::class.java).setAction(CehoVpnService.ACTION_START))
     }
 
-    private fun usageAccessGranted(): Boolean =
-        getSystemService(AppOpsManager::class.java).unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName) == AppOpsManager.MODE_ALLOWED
+    @Suppress("DEPRECATION")
+    private fun usageAccessGranted(): Boolean {
+        val appOps = getSystemService(AppOpsManager::class.java)
+        val mode = if (android.os.Build.VERSION.SDK_INT >= 29) appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+            else appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
 
     private fun openUsageAccess() {
         val own = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:$packageName"))

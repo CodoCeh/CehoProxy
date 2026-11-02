@@ -788,6 +788,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     override fun usePlatformAutoDetectInterfaceControl() = true
     override fun autoDetectInterfaceControl(fd: Int) { check(protect(fd)) { "Не удалось исключить соединение ядра из VPN" } }
     override fun useProcFS() = false
+    @SuppressLint("NewApi")
     override fun findConnectionOwner(ipProtocol: Int, sourceAddress: String, sourcePort: Int, destinationAddress: String, destinationPort: Int): ConnectionOwner {
         check(Build.VERSION.SDK_INT >= 29) { "Android этой версии не сообщает владельца соединения" }
         val uid = getSystemService(android.net.ConnectivityManager::class.java).getConnectionOwnerUid(ipProtocol, java.net.InetSocketAddress(sourceAddress, sourcePort), java.net.InetSocketAddress(destinationAddress, destinationPort))
