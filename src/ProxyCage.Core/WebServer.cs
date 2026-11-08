@@ -79,14 +79,36 @@ public sealed partial class WebServer
 
     private string Root => Path.GetDirectoryName(_configPath) ?? ".";
 
+    private int _lightPort;
+
+    [ThreadStatic] private static bool _lightRequest;
+
     public void Start(int port)
     {
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        _lightPort = FreeLightPort(port);
+        if (_lightPort != 0) _listener.Prefixes.Add($"http://127.0.0.1:{_lightPort}/");
         _listener.Start();
-        Auth.WritePanelPointer(Root, port, CehoConfig.Load(_configPath).MixedPort);
+        Auth.WritePanelPointer(Root, port, CehoConfig.Load(_configPath).MixedPort, _lightPort == 0 ? null : _lightPort);
         _log(Strings.T(CehoConfig.Load(_configPath).Language, "panel_at", $"http://127.0.0.1:{port}"));
         _ = Task.Run(LoopAsync);
+    }
+
+    private static int FreeLightPort(int panelPort)
+    {
+        for (var port = panelPort + 1; port <= panelPort + 20 && port <= 65535; port++)
+        {
+            try
+            {
+                var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, port);
+                probe.Start();
+                probe.Stop();
+                return port;
+            }
+            catch { }
+        }
+        return 0;
     }
 
     public void Stop()
@@ -110,7 +132,11 @@ public sealed partial class WebServer
 
     private async Task ServeAsync(HttpListenerContext ctx)
     {
-        try { await HandleAsync(ctx); }
+        try
+        {
+            var light = _lightPort != 0 && ctx.Request.LocalEndPoint?.Port == _lightPort;
+            await HandleAsync(ctx, light);
+        }
         catch (HttpListenerException ex) when (ex.ErrorCode is 64 or 995 or 1229) { }
         catch (Exception ex)
         {
@@ -120,7 +146,7 @@ public sealed partial class WebServer
         }
     }
 
-    private async Task HandleAsync(HttpListenerContext ctx)
+    private async Task HandleAsync(HttpListenerContext ctx, bool light)
     {
         if (!IsSameOriginRequest(ctx.Request))
         {
@@ -140,7 +166,13 @@ public sealed partial class WebServer
 
         if (!Authorized(ctx, cfg))
         {
-            await HandleGateAsync(ctx, cfg, path);
+            await HandleGateAsync(ctx, cfg, path, light);
+            return;
+        }
+
+        if (path == "/speed")
+        {
+            await HandleSpeedAsync(ctx, cfg);
             return;
         }
 
@@ -238,8 +270,8 @@ public sealed partial class WebServer
         var st = _state();
         if (current == "exit" && st.Running)
             await RefreshLiveLatencyAsync(cfg);
-        await WriteHtmlAsync(ctx, RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel,
-            ctx.Request.QueryString["wizard"], ctx.Request.QueryString["pick_path"]));
+        await WriteHtmlAsync(ctx, AsSkin(light, () => RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel,
+            ctx.Request.QueryString["wizard"], ctx.Request.QueryString["pick_path"])));
     }
 
     private static bool IsSameOriginRequest(HttpListenerRequest request)
@@ -262,7 +294,7 @@ public sealed partial class WebServer
         return Auth.ValidSession(cfg, cookie);
     }
 
-    private async Task HandleGateAsync(HttpListenerContext ctx, CehoConfig cfg, string path)
+    private async Task HandleGateAsync(HttpListenerContext ctx, CehoConfig cfg, string path, bool light)
     {
         string? error = null;
 
@@ -284,7 +316,7 @@ public sealed partial class WebServer
                 : Strings.T(cfg.Language, "auth_wrong");
         }
 
-        await WriteHtmlAsync(ctx, RenderGate(cfg, error));
+        await WriteHtmlAsync(ctx, RenderGate(cfg, error, light));
     }
 
     public Func<string[], Task<(bool Ok, string Text)>>? OnApiCommand { get; set; }
@@ -350,6 +382,37 @@ public sealed partial class WebServer
         ctx.Response.Headers["Content-Disposition"] = "attachment; filename=\"" + SupportReport.FileName + "\"";
         ctx.Response.Headers["Cache-Control"] = "no-store";
         ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        ctx.Response.ContentLength64 = bytes.Length;
+        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.Close();
+    }
+
+    private static readonly HttpClient SpeedHttp = new() { Timeout = TimeSpan.FromSeconds(3) };
+
+    private async Task HandleSpeedAsync(HttpListenerContext ctx, CehoConfig cfg)
+    {
+        long down = 0, up = 0;
+        if (_state().Running)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                using var response = await SpeedHttp.GetAsync($"http://127.0.0.1:{cfg.ClashApiPort}/traffic",
+                    HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cts.Token));
+                var first = await reader.ReadLineAsync(cts.Token);
+                if (!string.IsNullOrWhiteSpace(first))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(first);
+                    down = doc.RootElement.TryGetProperty("down", out var d) && d.TryGetInt64(out var dv) ? dv : 0;
+                    up = doc.RootElement.TryGetProperty("up", out var u) && u.TryGetInt64(out var uv) ? uv : 0;
+                }
+            }
+            catch { }
+        }
+        var bytes = Encoding.UTF8.GetBytes($"{{\"down\":{down},\"up\":{up}}}");
+        ctx.Response.ContentType = "application/json; charset=utf-8";
+        ctx.Response.Headers.Add("Cache-Control", "no-store");
         ctx.Response.ContentLength64 = bytes.Length;
         await ctx.Response.OutputStream.WriteAsync(bytes);
         ctx.Response.Close();
@@ -1503,9 +1566,17 @@ public sealed partial class WebServer
           .Append(ProductBrand.DarkLogoDataUri).Append("\" alt=\"CehoProxy\"></span>");
     }
 
-    private static string RenderGate(CehoConfig cfg, string? error)
+    private static string AsSkin(bool light, Func<string> render)
+    {
+        _lightRequest = light;
+        try { return render(); }
+        finally { _lightRequest = false; }
+    }
+
+    private static string RenderGate(CehoConfig cfg, string? error, bool light = false)
     {
         var sb = new StringBuilder();
+        _lightRequest = light;
         Head(sb, cfg, null);
         sb.Append("<div class=gate>");
         AppendProductLogo(sb);
@@ -1518,12 +1589,14 @@ public sealed partial class WebServer
           .Append(E(Strings.T(cfg.Language, "auth_password"))).Append("\">");
         sb.Append("<button>").Append(E(Strings.T(cfg.Language, "auth_enter"))).Append("</button></form>");
         sb.Append("</div></body></html>");
+        _lightRequest = false;
         return sb.ToString();
     }
 
     private static void Head(StringBuilder sb, CehoConfig cfg, Job? job)
     {
-        sb.Append("<!doctype html><html lang=").Append(cfg.Language).Append("><head><meta charset=utf-8>");
+        var light = _lightRequest;
+        sb.Append("<!doctype html><html lang=").Append(cfg.Language).Append(light ? " class=light" : "").Append("><head><meta charset=utf-8>");
         sb.Append("<meta name=viewport content=\"width=device-width,initial-scale=1\">");
 
         // Без JavaScript страница с идущей операцией обновляется сама: панель управления
@@ -1531,7 +1604,7 @@ public sealed partial class WebServer
         if (job is { Running: true })
             sb.Append("<noscript><meta http-equiv=refresh content=2></noscript>");
 
-        sb.Append("<title>CehoProxy</title><link rel=icon type=\"image/svg+xml\" href=\"").Append(ProductBrand.IconDataUri).Append("\">").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append(TunnelUi.Css).Append("</style></head>");
+        sb.Append(light ? "<title>CehoProxy Light</title>" : "<title>CehoProxy</title>").Append("<link rel=icon type=\"image/svg+xml\" href=\"").Append(ProductBrand.IconDataUri).Append("\">").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append(TunnelUi.Css).Append(light ? LightUi.Css : "").Append("</style></head>");
 
         // Пока идёт операция, страница перерисовывается каждые пару секунд.
         // Появление разделов на таких перерисовках только мельтешит, поэтому его выключаем.
@@ -1542,6 +1615,7 @@ public sealed partial class WebServer
         CehoConfig cfg, ControlState st, string tab, string? flash, bool flashErr, Job? job,
         LogView logView = LogView.All, string? tunnelFolder = null, string? wizard = null, string? pickedPath = null)
     {
+        var light = _lightRequest;
         string S(string key, params object[] a) => Strings.T(cfg.Language, key, cfg.SimplePanel, a);
         var sb = new StringBuilder();
         Head(sb, cfg, job);
@@ -1638,6 +1712,7 @@ public sealed partial class WebServer
         if (tab == "access") sb.Append(WebUi.TransferPartsScript);
         if (tab is "state" or "doctor" or "apps") sb.Append(WebUi.StateRefreshScript);
         if (tab is "state" or "apps") sb.Append(TunnelUi.Script);
+        if (light && tab == "state") sb.Append(LightUi.SpeedScript);
         sb.Append("</body></html>");
         return sb.ToString();
     }
@@ -1783,7 +1858,9 @@ public sealed partial class WebServer
             : guarded ? ("warn", T("Туннель выключен", "Tunnel is off"), T("Защитный барьер отмечен как включённый", "Guard is recorded as enabled"))
             : ("off", T("Туннель выключен", "Tunnel is off"), T("Защитный барьер не подтверждён", "Guard is not confirmed"));
 
-        sb.Append("<section data-live=hero><div class=\"hero ").Append(cls).Append("\" role=status aria-live=polite><span class=dot></span><div><h1>")
+        sb.Append("<section data-live=hero><div class=\"hero ").Append(cls).Append("\" role=status aria-live=polite>");
+        if (_lightRequest) TunnelUi.LightVortex(sb, cfg, InstalledAppCatalog.Detect(cfg.Language), st.Running);
+        sb.Append("<span class=dot></span><div><h1>")
           .Append(E(title)).Append("</h1><p>").Append(E(detail)).Append("</p><p class=scope-note>")
           .Append(E(T("VPN предназначен только для выбранных программ. Их фактические соединения проверяются отдельно.",
               "VPN is configured for selected apps only. Their actual connections are checked separately."))).Append("</p></div>")
@@ -1815,6 +1892,7 @@ public sealed partial class WebServer
               .Append(E(T("Проверить программы", "Check apps"))).Append("</a></div>");
         }
         sb.Append("</section>");
+        if (_lightRequest) LightUi.Speed(sb, cfg.Language == "ru");
         RenderLiveApps(sb, cfg, st, guarded, S);
 
         sb.Append("<section>");

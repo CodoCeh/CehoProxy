@@ -230,13 +230,13 @@ public static class Auth
         }
     }
 
-    public static void WritePanelPointer(string root, int panelPort, int proxyPort)
+    public static void WritePanelPointer(string root, int panelPort, int proxyPort, int? lightPort = null)
     {
         try
         {
             Directory.CreateDirectory(root);
             var file = Path.Combine(root, "panel.port");
-            File.WriteAllText(file, $"{panelPort} {proxyPort}");
+            File.WriteAllText(file, lightPort is { } light ? $"{panelPort} {proxyPort} {light}" : $"{panelPort} {proxyPort}");
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
         }
@@ -246,6 +246,8 @@ public static class Auth
     public static int? ReadPanelPointer(string root) => ReadPointer(root, 0);
 
     public static int? ReadProxyPointer(string root) => ReadPointer(root, 1);
+
+    public static int? ReadLightPointer(string root) => ReadPointer(root, 2);
 
     private static int? ReadPointer(string root, int index)
     {

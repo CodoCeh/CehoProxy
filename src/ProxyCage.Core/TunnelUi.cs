@@ -104,6 +104,13 @@ public static partial class TunnelUi
         return (100 + Math.Cos(angle) * r, 100 + Math.Sin(angle) * r);
     }
 
+    internal static void LightVortex(StringBuilder sb, CehoConfig cfg, IReadOnlyList<InstalledAppCatalog.Entry> catalog, bool running)
+    {
+        sb.Append("<div class=\"light-vortex").Append(running ? " on" : "").Append("\" aria-hidden=true><div class=tunnel-portal>");
+        Vortex(sb, cfg.Apps.Where(a => a.Enabled).Take(VortexAppLimit).Select(a => (AppIcons.Source(a, catalog), a.Label)).ToList(), running);
+        sb.Append("</div></div>");
+    }
+
     private static void Vortex(StringBuilder sb, IReadOnlyList<(string Path, string Label)> apps, bool running)
     {
         string N(double v) => v.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
