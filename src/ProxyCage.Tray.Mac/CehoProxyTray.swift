@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 
 enum Look: Hashable {
     case guarded, starting, off, trouble, stopped, locked
@@ -33,7 +34,8 @@ struct Phrase {
 let phrases: [String: Phrase] = [
     "btn_on": Phrase(ru: "Включить", en: "Turn on"),
     "btn_off": Phrase(ru: "Выключить", en: "Turn off"),
-    "tray_panel": Phrase(ru: "Открыть панель", en: "Open the panel"),
+    "tray_panel": Phrase(ru: "Открыть веб-панель", en: "Open the web panel"),
+    "tray_light": Phrase(ru: "Открыть CehoProxy Light", en: "Open CehoProxy Light"),
     "tray_quit": Phrase(ru: "Выход", en: "Quit"),
     "state_on": Phrase(ru: "Защита включена", en: "Protection is on"),
     "state_starting": Phrase(
@@ -123,6 +125,12 @@ final class PanelLink {
     }
 
     var url: String? { port.map { "http://127.0.0.1:\($0)" } }
+
+    var lightURL: String? {
+        guard let text = try? String(contentsOfFile: root + "/panel.port", encoding: .utf8) else { return nil }
+        let parts = text.split(whereSeparator: { $0 == " " || $0 == "\n" })
+        return parts.count > 2 ? Int(parts[2]).map { "http://localhost:\($0)" } : nil
+    }
 
     private func post(_ path: String, _ body: String, _ type: String, _ password: String?,
                       _ done: @escaping (Int, Data?, String?) -> Void) {
@@ -217,6 +225,123 @@ final class PanelLink {
             exitIp: state["exitIp"] as? String,
             exitProbed: probed,
             trayControls: state["trayControls"] as? Bool ?? false)
+    }
+}
+
+final class LightWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSWindowDelegate {
+    private let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+    private let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 1120, height: 800),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered, defer: false)
+    private var loaded: URL?
+
+    override init() {
+        super.init()
+        window.title = "CehoProxy Light"
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 380, height: 520)
+        window.setFrameAutosaveName("CehoProxyLight")
+        window.contentView = web
+        window.delegate = self
+        web.navigationDelegate = self
+        web.uiDelegate = self
+        web.setValue(false, forKey: "drawsBackground")
+    }
+
+    func show(_ url: URL) {
+        if loaded != url { loaded = url; web.load(URLRequest(url: url)) }
+        if !window.isVisible && window.frameAutosaveName.isEmpty == false { window.center() }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.mainMenu = LightWindow.mainMenu()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    static func mainMenu() -> NSMenu {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let app = NSMenu()
+        app.addItem(withTitle: "Hide CehoProxy Light", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        appItem.submenu = app
+        main.addItem(appItem)
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(NSMenuItem.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        main.addItem(editItem)
+        return main
+    }
+
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url { NSWorkspace.shared.open(url) }
+        return nil
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if let url = navigationAction.request.url, let host = url.host, host != "127.0.0.1", host != "localhost",
+           navigationAction.navigationType == .linkActivated {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition") ?? ""
+        decisionHandler(disposition.lowercased().hasPrefix("attachment") || !navigationResponse.canShowMIMEType
+            ? .download : .allow)
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
+                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        completionHandler(folder?.appendingPathComponent(suggestedFilename))
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        NSWorkspace.shared.open(FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.runModal()
+        completionHandler()
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        completionHandler(alert.runModal() == .alertFirstButtonReturn)
     }
 }
 
@@ -500,6 +625,12 @@ final class Tray: NSObject, NSMenuDelegate {
             menu.addItem(NSMenuItem.separator())
         }
 
+        let light = NSMenuItem(
+            title: say(lang, "tray_light"), action: #selector(openLight), keyEquivalent: "")
+        light.target = self
+        light.isEnabled = link.lightURL != nil
+        menu.addItem(light)
+
         let panel = NSMenuItem(
             title: say(lang, "tray_panel"), action: #selector(openPanel), keyEquivalent: "")
         panel.target = self
@@ -556,6 +687,15 @@ final class Tray: NSObject, NSMenuDelegate {
                 self.read()
             }
         }
+    }
+
+    private var lightWindow: LightWindow?
+
+    @objc func openLight() {
+        guard let url = link.lightURL, let target = URL(string: url) else { return }
+        let window = lightWindow ?? LightWindow()
+        lightWindow = window
+        window.show(target)
     }
 
     @objc func openPanel() {

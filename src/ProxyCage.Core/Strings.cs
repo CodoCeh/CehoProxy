@@ -1854,7 +1854,8 @@ public static class Strings
         ["upd_auto_done"] = new(
             "Версия {0} поставлена автообновлением {1}",
             "Version {0} was installed by auto-update on {1}"),
-        ["tray_panel"] = new("Открыть панель", "Open the panel"),
+        ["tray_panel"] = new("Открыть веб-панель", "Open the web panel"),
+        ["tray_light"] = new("Открыть CehoProxy Light", "Open CehoProxy Light"),
         ["tray_quit"] = new("Выход", "Quit"),
         ["tray_no_service"] = new("Служба не запущена", "The service is not running"),
         ["tray_no_service_hint"] = new(

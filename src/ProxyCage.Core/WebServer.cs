@@ -79,7 +79,7 @@ public sealed partial class WebServer
 
     private string Root => Path.GetDirectoryName(_configPath) ?? ".";
 
-    private int _lightPort;
+    private bool _lightHost;
 
     [ThreadStatic] private static bool _lightRequest;
 
@@ -87,28 +87,22 @@ public sealed partial class WebServer
     {
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-        _lightPort = FreeLightPort(port);
-        if (_lightPort != 0) _listener.Prefixes.Add($"http://127.0.0.1:{_lightPort}/");
-        _listener.Start();
-        Auth.WritePanelPointer(Root, port, CehoConfig.Load(_configPath).MixedPort, _lightPort == 0 ? null : _lightPort);
-        _log(Strings.T(CehoConfig.Load(_configPath).Language, "panel_at", $"http://127.0.0.1:{port}"));
-        _ = Task.Run(LoopAsync);
-    }
-
-    private static int FreeLightPort(int panelPort)
-    {
-        for (var port = panelPort + 1; port <= panelPort + 20 && port <= 65535; port++)
+        _listener.Prefixes.Add($"http://localhost:{port}/");
+        try
         {
-            try
-            {
-                var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, port);
-                probe.Start();
-                probe.Stop();
-                return port;
-            }
-            catch { }
+            _listener.Start();
+            _lightHost = true;
         }
-        return 0;
+        catch (HttpListenerException)
+        {
+            _listener.Close();
+            _listener = new HttpListener();
+            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            _listener.Start();
+        }
+        Auth.WritePanelPointer(Root, port, CehoConfig.Load(_configPath).MixedPort, _lightHost ? port : null);
+        _log(Strings.T(CehoConfig.Load(_configPath).Language, "panel_at", $"http://127.0.0.1:{port}"));
+        _ = Task.Run(() => LoopAsync(_listener));
     }
 
     public void Stop()
@@ -116,12 +110,12 @@ public sealed partial class WebServer
         try { _listener?.Stop(); } catch { }
     }
 
-    private async Task LoopAsync()
+    private async Task LoopAsync(HttpListener listener)
     {
-        while (_listener is { IsListening: true })
+        while (listener.IsListening)
         {
             HttpListenerContext ctx;
-            try { ctx = await _listener.GetContextAsync(); }
+            try { ctx = await listener.GetContextAsync(); }
             catch { return; }
 
             // Каждый запрос — сам по себе. Раньше страница ждала, пока закончится
@@ -132,11 +126,7 @@ public sealed partial class WebServer
 
     private async Task ServeAsync(HttpListenerContext ctx)
     {
-        try
-        {
-            var light = _lightPort != 0 && ctx.Request.LocalEndPoint?.Port == _lightPort;
-            await HandleAsync(ctx, light);
-        }
+        try { await HandleAsync(ctx, string.Equals(ctx.Request.Url?.Host, "localhost", StringComparison.OrdinalIgnoreCase)); }
         catch (HttpListenerException ex) when (ex.ErrorCode is 64 or 995 or 1229) { }
         catch (Exception ex)
         {

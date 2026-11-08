@@ -13,6 +13,7 @@ internal sealed class TrayWindow : IDisposable
     private const int IdPanel = 3;
     private const int IdQuit = 4;
     private const int IdSignIn = 5;
+    private const int IdLight = 6;
 
     private readonly PanelLink _link;
     private readonly string _root;
@@ -189,7 +190,7 @@ internal sealed class TrayWindow : IDisposable
             case Win32.WM_TRAY:
                 var click = (int)lParam;
                 if (click is Win32.WM_RBUTTONUP or Win32.WM_CONTEXTMENU) ShowMenu();
-                else if (click == Win32.WM_LBUTTONDBLCLK) OpenPanel();
+                else if (click == Win32.WM_LBUTTONDBLCLK) OpenLight();
                 return IntPtr.Zero;
 
             case Win32.WM_COMMAND:
@@ -248,6 +249,8 @@ internal sealed class TrayWindow : IDisposable
 
             if (_look == TrayLook.Locked || TrayState.ShowsControls(_snapshot))
                 Win32.AppendMenu(menu, Win32.MF_SEPARATOR, 0, null);
+            Win32.AppendMenu(menu, Win32.MF_STRING | (_link.LightUrl is null ? Win32.MF_GRAYED : 0),
+                IdLight, Strings.T(_lang, "tray_light"));
             Win32.AppendMenu(menu, Win32.MF_STRING | (_link.Url is null ? Win32.MF_GRAYED : 0),
                 IdPanel, Strings.T(_lang, "tray_panel"));
             Win32.AppendMenu(menu, Win32.MF_SEPARATOR, 0, null);
@@ -270,6 +273,7 @@ internal sealed class TrayWindow : IDisposable
             case IdOn: Command(_link.TurnOnAsync); break;
             case IdOff: Command(_link.TurnOffAsync); break;
             case IdSignIn: SignIn(); break;
+            case IdLight: OpenLight(); break;
             case IdPanel: OpenPanel(); break;
             case IdQuit: Win32.DestroyWindow(_window); break;
         }
@@ -305,6 +309,12 @@ internal sealed class TrayWindow : IDisposable
             }
             finally { Interlocked.Exchange(ref _working, 0); }
         });
+    }
+
+    private void OpenLight()
+    {
+        if (_link.LightUrl is { } url) LightWindow.Open(_root, url);
+        else OpenPanel();
     }
 
     private void OpenPanel()

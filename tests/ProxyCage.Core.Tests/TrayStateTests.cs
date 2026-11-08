@@ -193,7 +193,7 @@ public class TrayStateTests
     {
         foreach (var key in new[]
                  {
-                     "tray_panel", "tray_quit", "tray_no_service", "tray_no_service_hint",
+                     "tray_panel", "tray_light", "tray_quit", "tray_no_service", "tray_no_service_hint",
                      "tray_need_password", "tray_sign_in", "tray_password_hint",
                      "tray_password_prompt", "tray_wait", "tray_wait_hint", "tray_failed",
                      "btn_on", "btn_off", "hero_no_exit",

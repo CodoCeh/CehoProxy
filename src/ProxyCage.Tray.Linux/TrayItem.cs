@@ -23,6 +23,7 @@ internal sealed class TrayItem : IDisposable
     private const int IdOff = 5;
     private const int IdSignIn = 6;
     private const int IdPanel = 8;
+    private const int IdLight = 11;
     private const int IdQuit = 10;
 
     private static readonly int[] Sizes = { 16, 20, 22, 24, 32, 48, 64 };
@@ -395,6 +396,7 @@ internal sealed class TrayItem : IDisposable
                 list.Add(new(IdOff, Strings.T(_lang, "btn_off"), !busy && TrayState.CanTurnOff(_look)));
             }
             if (_look == TrayLook.Locked || TrayState.ShowsControls(_snapshot)) list.Add(new(7, null, true, true));
+            list.Add(new(IdLight, Strings.T(_lang, "tray_light"), _link.LightUrl is not null));
             list.Add(new(IdPanel, Strings.T(_lang, "tray_panel"), _link.Url is not null));
             list.Add(new(9, null, true, true));
             list.Add(new(IdQuit, Strings.T(_lang, "tray_quit"), true));
@@ -615,6 +617,9 @@ internal sealed class TrayItem : IDisposable
             case IdOn when TrayState.ShowsControls(_snapshot): Command(_link.TurnOnAsync); break;
             case IdOff when TrayState.ShowsControls(_snapshot): Command(_link.TurnOffAsync); break;
             case IdSignIn: _ = Task.Run(SignInAsync); break;
+            case IdLight:
+                if (_link.LightUrl is { } lightUrl) LightWindow.Open(_root, lightUrl);
+                break;
             case IdPanel:
                 if (_link.Url is { } url) Os.OpenInBrowser(url);
                 break;
