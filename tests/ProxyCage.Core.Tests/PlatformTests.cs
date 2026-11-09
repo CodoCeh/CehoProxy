@@ -25,6 +25,7 @@ public class PlatformTests
     {
         var probe = Directory.EnumerateFiles(SystemBinDir).FirstOrDefault(file =>
         {
+            if (new FileInfo(file).LinkTarget is not null) return false;
             try { AppDetector.Detect(file); return true; }
             catch (InvalidOperationException) { return false; }
         });
