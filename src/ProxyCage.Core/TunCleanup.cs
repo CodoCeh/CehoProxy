@@ -456,7 +456,7 @@ public static class TunCleanup
         while (Environment.TickCount64 < deadline)
         {
             if (!EngineStillRunning(runtimeConfigPath)) return;
-            Thread.Sleep(400);
+            Thread.Sleep(150);
         }
         log?.Invoke("движок ещё держит Wintun — принудительная остановка");
         KillOurProcesses(runtimeConfigPath, log);
@@ -471,6 +471,7 @@ public static class TunCleanup
         {
             foreach (var (pid, line) in Os.WindowsProcesses(name))
             {
+                if (line.Contains("geo-probes", StringComparison.OrdinalIgnoreCase)) continue;
                 if (name.Equals(Os.EngineFileName, StringComparison.OrdinalIgnoreCase)
                     || line.Contains(runtimeConfigPath, StringComparison.OrdinalIgnoreCase)
                     || (home.Length > 0 && line.Contains(home, StringComparison.OrdinalIgnoreCase)))

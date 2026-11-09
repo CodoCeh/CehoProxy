@@ -191,7 +191,10 @@ public static class Ceho
             if (saved.Count > 0) return Tag(saved, sub.Name);
         }
 
-        var fetched = await FetchWithRetriesAsync(sub.Url, report, lang, timeoutSeconds);
+        // Есть сохранённая копия — долго не ждём: два коротких захода, дальше берём копию.
+        var haveCopy = File.Exists(cache);
+        var fetched = await FetchWithRetriesAsync(sub.Url, report, lang,
+            haveCopy ? Math.Min(timeoutSeconds, 8) : timeoutSeconds, haveCopy ? 2 : FetchAttempts);
         if (fetched.Body is not null)
         {
             report?.Note(Strings.T(lang, "sub_parsing_nodes"));
@@ -251,14 +254,14 @@ public static class Ceho
         expectedLength is > 0 && receivedLength < expectedLength.Value;
 
     private static async Task<Fetched> FetchWithRetriesAsync(
-        string url, IStageReport? report = null, string lang = "ru", int timeoutSeconds = 45)
+        string url, IStageReport? report = null, string lang = "ru", int timeoutSeconds = 45, int attempts = FetchAttempts)
     {
-        var fetchTimeout = SubscriptionTimeout(timeoutSeconds);
+        var fetchTimeout = attempts < FetchAttempts ? timeoutSeconds : SubscriptionTimeout(timeoutSeconds);
         string? failure = null;
         string? webPage = null;
-        for (var attempt = 1; attempt <= FetchAttempts; attempt++)
+        for (var attempt = 1; attempt <= attempts; attempt++)
         {
-            report?.Note(Strings.T(lang, "sub_fetch_attempt", attempt, FetchAttempts));
+            report?.Note(Strings.T(lang, "sub_fetch_attempt", attempt, attempts));
             try
             {
                 using var http = MakeClient(null, SubscriptionFetcher.PersonaOf(attempt), fetchTimeout);
@@ -307,7 +310,7 @@ public static class Ceho
                 else
                 {
                     failure = SubscriptionFetcher.HttpFailureMessage(response, lang);
-                    if (attempt < FetchAttempts)
+                    if (attempt < attempts)
                         report?.Note(Strings.T(lang, "sub_fetch_retry", attempt, failure));
                 }
             }
@@ -315,11 +318,11 @@ public static class Ceho
             {
                 var msg = ex is TaskCanceledException ? Strings.T(lang, "sub_timeout") : ex.Message;
                 failure = msg;
-                if (attempt < FetchAttempts)
+                if (attempt < attempts)
                     report?.Note(Strings.T(lang, "sub_fetch_retry", attempt, failure));
             }
 
-            if (attempt < FetchAttempts)
+            if (attempt < attempts)
                 await Task.Delay(TimeSpan.FromSeconds(Math.Min(8, attempt * 2)));
         }
 
@@ -393,6 +396,7 @@ public static class Ceho
             throw new PoolEmptyException(Strings.T(cfg.Language, "subs_all_off"));
 
         report?.Phase(Strings.T(cfg.Language, "stage_loading_subs"), waiting: true);
+        var lap = System.Diagnostics.Stopwatch.StartNew();
         var done = 0;
         var lists = active.Count == 0
             ? Array.Empty<IReadOnlyList<ProxyNode>>()
@@ -404,6 +408,7 @@ public static class Ceho
                 return nodes;
             }));
 
+        Log.Info($"    чтение подписок: {lap.Elapsed.TotalSeconds:F1} с"); lap.Restart();
         report?.Phase(Strings.T(cfg.Language, "sub_building_pool"));
 
         var pool = new List<ProxyNode>();
@@ -422,7 +427,9 @@ public static class Ceho
 
         // Subscription labels are hints only. Countries used in policy must be verified
         // against the egress IP observed through each individual outbound.
+        Log.Info($"    сборка пула: {lap.Elapsed.TotalSeconds:F1} с"); lap.Restart();
         var countryService = await GetNodeCountryServiceAsync(report, cfg.Language);
+        Log.Info($"    база стран: {lap.Elapsed.TotalSeconds:F1} с"); lap.Restart();
         if (countryService is null)
         {
             foreach (var node in pool)
@@ -434,19 +441,60 @@ public static class Ceho
         }
         else
         {
-            report?.Phase(Strings.T(cfg.Language, "stage_country_queue"), waiting: true);
-            await CountryRefreshGate.WaitAsync(CountryRefreshCancellation.Token);
-            try
+            // Страны нужны правилам, но не должны держать запуск: берём сохранённые ответы (даже просроченные),
+            // а недостающие проверяем уже при работающем туннеле. Ждём только если у человека есть список
+            // исключений или предпочтений и в пуле есть ни разу не проверенные ноды.
+            await countryService.ApplyCachedAsync(pool, allowStale: true);
+            var pending = countryService.NeedProbe(pool);
+            Log.Info($"    страны из сохранённого: {lap.Elapsed.TotalSeconds:F1} с, без свежего ответа {pending.Count}"); lap.Restart();
+            if (pending.Count > 0)
             {
-                report?.Phase(Strings.T(cfg.Language, "country_probe"), waiting: true);
-                await countryService.RefreshAsync(pool, progress: (current, total) =>
-                    report?.Note($"{Strings.T(cfg.Language, "country_probe")} {current}/{total}"),
-                    cancellationToken: CountryRefreshCancellation.Token);
+                var mustWait = (cfg.ExcludedCountries.Count > 0 || cfg.PreferredCountries.Count > 0)
+                    && pending.Any(countryService.NeverProbed);
+                if (mustWait)
+                {
+                    report?.Phase(Strings.T(cfg.Language, "country_probe"), waiting: true);
+                    using var limit = CancellationTokenSource.CreateLinkedTokenSource(CountryRefreshCancellation.Token);
+                    limit.CancelAfter(TimeSpan.FromSeconds(10));
+                    await ProbeCountriesAsync(countryService, pending, limit.Token);
+                    await countryService.ApplyCachedAsync(pool, allowStale: true);
+                    var rest = countryService.NeedProbe(pool);
+                    if (rest.Count > 0) _pendingProbe = new PendingProbe(countryService, rest);
+                }
+                if (!mustWait) _pendingProbe = new PendingProbe(countryService, pending);
             }
-            finally { CountryRefreshGate.Release(); }
         }
 
         return pool;
+    }
+
+    private sealed record PendingProbe(NodeCountryService Service, IReadOnlyList<ProxyNode> Nodes);
+
+    private static PendingProbe? _pendingProbe;
+
+    /// <summary>Проверку стран новых нод запускаем уже после того, как туннель поднят: она не должна ни тормозить запуск, ни путаться с ним.</summary>
+    public static void ScheduleCountryProbe()
+    {
+        var pending = Interlocked.Exchange(ref _pendingProbe, null);
+        if (pending is null) return;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            await ProbeCountriesAsync(pending.Service, pending.Nodes, CountryRefreshCancellation.Token);
+        });
+    }
+
+    private static async Task ProbeCountriesAsync(
+        NodeCountryService service, IReadOnlyList<ProxyNode> nodes, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await CountryRefreshGate.WaitAsync(cancellationToken);
+            try { await service.RefreshAsync(nodes, cancellationToken: cancellationToken, updateNodes: false); }
+            finally { CountryRefreshGate.Release(); }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Warn($"проверка стран нод не завершилась: {ex.Message}"); }
     }
 
     public static async Task<IReadOnlyList<NodeProbe.CountryRow>> RefreshNodeCountriesAsync(
@@ -513,6 +561,7 @@ public static class Ceho
         Directory.CreateDirectory(Root);
         PrivateFile.Write(RuntimeConfigPath, json);
         Auth.RestrictConfigAccess(ConfigPath);
+        ScheduleCountryProbe();
         var rebuilt = Strings.T(cfg.Language, "rules_rebuilt");
         return moved is null ? rebuilt : $"{moved} {rebuilt}";
     }

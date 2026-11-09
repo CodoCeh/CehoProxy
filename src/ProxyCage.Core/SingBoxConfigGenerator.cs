@@ -53,7 +53,7 @@ public static class SingBoxConfigGenerator
             ["tag"] = ProxyTag,
             ["outbounds"] = poolTags,
             ["url"] = settings.UrlTestUrl,
-            ["interval"] = "3m",
+            ["interval"] = "1m",
             ["tolerance"] = 50,
         });
         outbounds.Add(new JsonObject { ["type"] = "direct", ["tag"] = DirectTag });
@@ -123,7 +123,7 @@ public static class SingBoxConfigGenerator
             ["tag"] = ProxyTag,
             ["outbounds"] = poolTags,
             ["url"] = settings.UrlTestUrl,
-            ["interval"] = "3m",
+            ["interval"] = "1m",
             ["tolerance"] = 50,
         });
         outbounds.Add(new JsonObject { ["type"] = "direct", ["tag"] = DirectTag });
@@ -767,7 +767,7 @@ public static class SingBoxConfigGenerator
         ["tag"] = tag,
         ["outbounds"] = outboundTags,
         ["url"] = url,
-        ["interval"] = "3m",
+        ["interval"] = "1m",
         ["tolerance"] = 50,
     };
 

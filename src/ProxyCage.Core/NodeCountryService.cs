@@ -34,7 +34,7 @@ public sealed class NodeCountryService
         string cachePath,
         string databaseVersion,
         TimeSpan? cacheLifetime = null,
-        int maxConcurrency = 3)
+        int maxConcurrency = 8)
     {
         _exitProbe = exitProbe;
         _lookup = lookup;
@@ -47,7 +47,8 @@ public sealed class NodeCountryService
 
     public string DatabaseVersion => _databaseVersion;
 
-    public async Task ApplyCachedAsync(IReadOnlyList<ProxyNode> nodes, CancellationToken cancellationToken = default)
+    public async Task ApplyCachedAsync(IReadOnlyList<ProxyNode> nodes, CancellationToken cancellationToken = default,
+        bool allowStale = false)
     {
         foreach (var node in nodes)
         {
@@ -55,20 +56,30 @@ public sealed class NodeCountryService
             if (node.IsMeta) continue;
             node.CountryCode = null;
             node.CountryName = null;
-            if (_cache.TryGetValue(Fingerprint(node), out var cached)
-                && cached.DatabaseVersion == _databaseVersion
-                && DateTimeOffset.UtcNow - cached.VerifiedAtUtc <= _cacheLifetime)
+            if (!_cache.TryGetValue(Fingerprint(node), out var cached)) continue;
+            if (allowStale
+                ? IsCountryCode(cached.Code)
+                : cached.DatabaseVersion == _databaseVersion && DateTimeOffset.UtcNow - cached.VerifiedAtUtc <= _cacheLifetime)
                 SetCountry(node, cached.Code);
         }
         await Task.CompletedTask;
     }
 
+    /// <summary>Ноды, у которых нет свежего ответа проверки; нужны ли им пробы, решает вызывающий.</summary>
+    public IReadOnlyList<ProxyNode> NeedProbe(IReadOnlyList<ProxyNode> nodes) =>
+        nodes.Where(n => !n.IsMeta && !(_cache.TryGetValue(Fingerprint(n), out var cached)
+            && cached.DatabaseVersion == _databaseVersion
+            && DateTimeOffset.UtcNow - cached.VerifiedAtUtc <= CacheLifetime(cached))).ToList();
+
+    public bool NeverProbed(ProxyNode node) => !_cache.ContainsKey(Fingerprint(node));
+
     public async Task<IReadOnlyList<NodeProbe.CountryRow>> RefreshAsync(
         IReadOnlyList<ProxyNode> nodes,
-        int probeTimeoutMs = 15000,
+        int probeTimeoutMs = 8000,
         Action<int, int>? progress = null,
         CancellationToken cancellationToken = default,
-        bool forceProbe = false)
+        bool forceProbe = false,
+        bool updateNodes = true)
     {
         var real = nodes.Where(n => !n.IsMeta).ToList();
         var semaphore = new SemaphoreSlim(_maxConcurrency, _maxConcurrency);
@@ -78,14 +89,17 @@ public sealed class NodeCountryService
             await semaphore.WaitAsync(cancellationToken);
             try
             {
-                node.CountryCode = null;
-                node.CountryName = null;
+                if (updateNodes)
+                {
+                    node.CountryCode = null;
+                    node.CountryName = null;
+                }
                 var key = Fingerprint(node);
                 if (!forceProbe && _cache.TryGetValue(key, out var cached)
                     && cached.DatabaseVersion == _databaseVersion
                     && DateTimeOffset.UtcNow - cached.VerifiedAtUtc <= CacheLifetime(cached))
                 {
-                    if (IsCountryCode(cached.Code)) SetCountry(node, cached.Code);
+                    if (updateNodes && IsCountryCode(cached.Code)) SetCountry(node, cached.Code);
                     return;
                 }
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -98,7 +112,7 @@ public sealed class NodeCountryService
                         var code = _lookup.LookupCountry(ip);
                         if (IsCountryCode(code))
                         {
-                            SetCountry(node, code!);
+                            if (updateNodes) SetCountry(node, code!);
                             _cache[key] = new CachedCountry(code!, DateTimeOffset.UtcNow, _databaseVersion);
                         }
                         else _cache[key] = UnknownCache();

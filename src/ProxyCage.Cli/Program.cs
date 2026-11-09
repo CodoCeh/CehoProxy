@@ -2225,9 +2225,12 @@ if (cmd is "daemon" or "web")
                     : $"API port {c.ClashApiPort} is occupied; it could not be moved. Other processes were not stopped.");
             // Only this admitted start may change network protection. Observers use its snapshot.
             admittedConfiguration.Admit(c);
+            var lap = System.Diagnostics.Stopwatch.StartNew();
             LeakGuard.Apply(c, Ceho.Root);
+            Log.Info($"  защита от утечек (1): {lap.Elapsed.TotalSeconds:F1} с"); lap.Restart();
 
             var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: reasonCode != "exit-unavailable", report);
+            Log.Info($"  подписки и страны: {lap.Elapsed.TotalSeconds:F1} с, нод {nodes.Count}"); lap.Restart();
 
             if (nodes.Any(n => n.Protocol == ProxyProtocol.Naive) && Installer.MissingCronetDll(Ceho.Root))
             {
@@ -2252,6 +2255,7 @@ if (cmd is "daemon" or "web")
             configurationError = StartupPreflight.ConfigurationError(c);
             if (configurationError is not null) throw new InvalidOperationException(configurationError);
             var generatedRules = SingBoxConfigGenerator.GenerateForConfig(nodes, c);
+            Log.Info($"  сборка правил: {lap.Elapsed.TotalSeconds:F1} с"); lap.Restart();
             if (keepEngine is not null)
             {
                 string? previousRules = null;
@@ -2266,8 +2270,10 @@ if (cmd is "daemon" or "web")
             VerifiedConfigStore.Candidate? candidate = null;
             try { candidate = VerifiedConfigStore.Capture(Ceho.Root, c, generatedRules); }
             catch { Log.Warn("Не удалось подготовить проверенную копию настроек."); }
+            Log.Info($"  проверенная копия: {lap.Elapsed.TotalSeconds:F1} с"); lap.Restart();
             admittedConfiguration.Admit(c);
             LeakGuard.Apply(c, Ceho.Root);
+            Log.Info($"  защита от утечек (2): {lap.Elapsed.TotalSeconds:F1} с");
             Log.Info($"этап: подписки и правила {watch.Elapsed.TotalSeconds:F1} с");
             foreach (var networkLine in Os.DescribePhysicalNetwork(c.TunAddress)) Log.Info(networkLine);
 
@@ -2327,6 +2333,7 @@ if (cmd is "daemon" or "web")
             }
             appliedRulesConfig = c;
             succeeded = true;
+            Ceho.ScheduleCountryProbe();
             return null;
         }
         catch (Exception ex)

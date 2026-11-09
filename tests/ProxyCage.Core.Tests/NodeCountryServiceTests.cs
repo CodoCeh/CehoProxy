@@ -27,6 +27,60 @@ public sealed class NodeCountryServiceTests
     }
 
     [Fact]
+    public async Task A_stale_answer_still_gives_the_country_so_start_does_not_wait_for_new_probes()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "cehoproxy-country-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var known = new ProxyNode { Tag = "n001", Protocol = ProxyProtocol.Vless, Server = "a.example", Port = 443, Credential = "k" };
+            var fresh = new ProxyNode { Tag = "n002", Protocol = ProxyProtocol.Vless, Server = "b.example", Port = 443, Credential = "k" };
+            var cache = Path.Combine(temp, "cache.json");
+            var first = new NodeCountryService(new FixedExitIpProbe(IPAddress.Parse("198.51.100.10")), new FixedCountryLookup("US"),
+                cache, "db-1", cacheLifetime: TimeSpan.FromMilliseconds(1));
+            await first.RefreshAsync(new[] { known });
+            await Task.Delay(30);
+
+            var probe = new FixedExitIpProbe(IPAddress.Parse("198.51.100.11"));
+            var later = new NodeCountryService(probe, new FixedCountryLookup("DE"), cache, "db-1", cacheLifetime: TimeSpan.FromMilliseconds(1));
+            var pool = new[] { known, fresh };
+            await later.ApplyCachedAsync(pool, allowStale: true);
+
+            Assert.Equal("US", known.CountryCode);
+            Assert.Null(fresh.CountryCode);
+            Assert.Equal(0, probe.Calls);
+            Assert.True(later.NeverProbed(fresh));
+            Assert.False(later.NeverProbed(known));
+            Assert.Equal(2, later.NeedProbe(pool).Count);
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task Background_refresh_fills_the_cache_without_touching_the_nodes_in_use()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "cehoproxy-country-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var node = new ProxyNode { Tag = "n001", Protocol = ProxyProtocol.Vless, Server = "a.example", Port = 443, Credential = "k", CountryCode = "FR" };
+            var service = new NodeCountryService(new FixedExitIpProbe(IPAddress.Parse("198.51.100.10")), new FixedCountryLookup("US"),
+                Path.Combine(temp, "cache.json"), "db-1");
+
+            await service.RefreshAsync(new[] { node }, updateNodes: false);
+
+            Assert.Equal("FR", node.CountryCode);
+            await service.ApplyCachedAsync(new[] { node });
+            Assert.Equal("US", node.CountryCode);
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task Verified_exit_ip_overrides_country_guessed_from_node_remark()
     {
         var temp = Path.Combine(Path.GetTempPath(), "cehoproxy-country-" + Guid.NewGuid().ToString("N"));

@@ -342,6 +342,24 @@ public static class Os
     [SupportedOSPlatform("windows")]
     private static IEnumerable<string> FromWindowsDns()
     {
+        // Системный интерфейс отдаёт адреса мгновенно; PowerShell на это тратит секунду-две при каждом вызове.
+        try
+        {
+            var native = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up
+                    && n.NetworkInterfaceType is not (System.Net.NetworkInformation.NetworkInterfaceType.Loopback
+                        or System.Net.NetworkInformation.NetworkInterfaceType.Tunnel))
+                .OrderBy(n => n.NetworkInterfaceType is System.Net.NetworkInformation.NetworkInterfaceType.Ethernet
+                    or System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211 ? 0 : 1)
+                .SelectMany(n => n.GetIPProperties().DnsAddresses)
+                .Where(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                .Select(a => a.ToString())
+                .Distinct()
+                .ToList();
+            if (native.Count > 0) return native;
+        }
+        catch { }
+
         const string script =
             "Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | " +
             "ForEach-Object { (Get-DnsClientServerAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4 " +
@@ -536,6 +554,7 @@ public static class Os
         var list = new List<(int, string)>();
         if (!IsWindows) return list;
         if (!AnyProcessNamed(exeName)) return list;
+        if (NativeProcessLines(exeName) is { } native) return native;
 
         var filter = exeName.Replace("'", "''");
         var (code, output) = Run("powershell", "-NoProfile -Command " +
@@ -552,6 +571,26 @@ public static class Os
             list.Add((pid, line[(tab + 1)..].Trim()));
         }
         return list;
+    }
+
+    private static List<(int, string)>? NativeProcessLines(string exeName)
+    {
+        var processes = System.Diagnostics.Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exeName));
+        try
+        {
+            var lines = new List<(int, string)>();
+            foreach (var p in processes)
+            {
+                bool gone;
+                try { gone = p.HasExited; } catch { gone = true; }
+                if (gone) continue;
+                var line = WindowsProcessInfo.CommandLine(p.Id);
+                if (line is null) return null;
+                lines.Add((p.Id, line.Trim()));
+            }
+            return lines;
+        }
+        finally { foreach (var p in processes) p.Dispose(); }
     }
 
     private static bool AnyProcessNamed(string exeName)
@@ -599,11 +638,14 @@ public static class Os
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             };
+            var watch = Stopwatch.StartNew();
             using var p = Process.Start(psi);
             if (p is null) return (-1, "процесс не запустился");
             var stdout = p.StandardOutput.ReadToEnd();
             var stderr = p.StandardError.ReadToEnd();
             if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return (-1, "не дождались завершения"); }
+            if (watch.ElapsedMilliseconds >= 700)
+                Log.Info($"медленная команда {file} {(args.Length > 90 ? args[..90] : args)}: {watch.Elapsed.TotalSeconds:F1} с");
             return (p.ExitCode, (stdout + stderr).Trim());
         }
         catch (Exception ex)

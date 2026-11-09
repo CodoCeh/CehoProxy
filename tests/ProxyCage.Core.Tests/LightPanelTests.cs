@@ -2,6 +2,7 @@ using ProxyCage.Core;
 
 namespace ProxyCage.Core.Tests;
 
+[Collection("panel password")]
 public class LightPanelTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ceho-light-" + Guid.NewGuid().ToString("N")[..8]);
@@ -12,6 +13,7 @@ public class LightPanelTests : IDisposable
 
     public LightPanelTests()
     {
+        Auth.ResetThrottle();
         Directory.CreateDirectory(_root);
         new CehoConfig { PanelMode = CehoConfig.PanelModeSimple }.Save(Path.Combine(_root, "config.json"));
         _web = new WebServer(Path.Combine(_root, "config.json"), () => new WebServer.ControlState(false, null, null, null, false), _ => { });
