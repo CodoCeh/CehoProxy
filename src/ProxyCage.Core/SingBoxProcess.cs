@@ -329,10 +329,16 @@ public sealed class SingBoxProcess : IDisposable
     {
         foreach (var port in ports)
         {
-            using var client = new System.Net.Sockets.TcpClient();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
-            try { await client.ConnectAsync(System.Net.IPAddress.Loopback, port, timeout.Token); }
-            catch { return false; }
+            var answered = false;
+            for (var attempt = 0; attempt < 2 && !answered; attempt++)
+            {
+                using var client = new System.Net.Sockets.TcpClient();
+                using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+                try { await client.ConnectAsync(System.Net.IPAddress.Loopback, port, timeout.Token); answered = true; }
+                catch (OperationCanceledException) { }
+                catch { break; }
+            }
+            if (!answered) return false;
         }
         return true;
     }
