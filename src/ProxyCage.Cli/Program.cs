@@ -2444,9 +2444,9 @@ if (cmd is "daemon" or "web")
             TunCleanup.ReleaseOurs(
                 Ceho.RuntimeConfigPath, c.TunAddress, Ceho.Root, Log.Info,
                 attempts: 3, aggressive: true, beforeStart: before);
-            TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
-            TunCleanup.PrepareWintunForStart(Log.Info);
-            await Task.Delay(1500);
+            var ghosts = TunCleanup.RemoveLeftovers(Log.Info, c.TunAddress, Ceho.Root, before, Ceho.RuntimeConfigPath);
+            var enabled = TunCleanup.PrepareWintunForStart(Log.Info);
+            await Task.Delay(!Os.IsWindows || killed + ghosts + enabled > 0 ? 1500 : 150);
         }
         ForwardingGuard.Apply(Ceho.Root, c.TunAddress, Log.Info);
         Log.Info($"этап: подготовка к запуску {watch.Elapsed.TotalSeconds:F1} с");
@@ -2515,7 +2515,7 @@ if (cmd is "daemon" or "web")
         if (proc is null) return Strings.T(cfg.Language, "already_off");
         var stoppingConfig = activeEngineConfig ?? cfg;
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        var clean = proc.Stop(Os.IsWindows ? 2000 : 8000);
+        var clean = proc.Stop(Os.IsWindows ? 400 : 8000);
         Log.Info($"этап: остановка движка {watch.Elapsed.TotalSeconds:F1} с");
         watch.Restart();
         proc.Dispose();
@@ -2529,7 +2529,7 @@ if (cmd is "daemon" or "web")
         {
             Log.Info("движок не успел завершиться сам, завершаю принудительно и снимаю следы");
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
-            Thread.Sleep(800);
+            Thread.Sleep(Os.IsWindows ? 200 : 800);
         }
 
         TunCleanup.ReleaseOurs(

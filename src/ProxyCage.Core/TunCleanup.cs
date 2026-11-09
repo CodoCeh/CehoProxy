@@ -165,7 +165,7 @@ public static class TunCleanup
 
             cleaned += FlushHijackedRoutes(ourIp, log);
 
-            if (removed > 0) Thread.Sleep(allGone ? 1000 : 4000);
+            if (removed > 0) Thread.Sleep(allGone ? 250 : 4000);
 
             if (!AnyOursLeft(recorded, lookup, ourIp, aggressive, quarantined) && !TunnelAddressBusy(ourIp))
             {
@@ -189,6 +189,7 @@ public static class TunCleanup
         }
 
         var removed = 0;
+        var allGone = true;
         var lookup = Adapter(tunAddress);
         foreach (var (name, instanceId) in Removable(
                      WintunDevices(), lookup, Ours(root), log, beforeStart))
@@ -201,10 +202,13 @@ public static class TunCleanup
 
             removed++;
             if (!WaitUntilGone(instanceId))
+            {
+                allGone = false;
                 log?.Invoke($"устройство {instanceId} ещё держится — движок может не встать");
+            }
         }
 
-        if (removed > 0) Thread.Sleep(2500);
+        if (removed > 0) Thread.Sleep(allGone ? 500 : 2500);
         return removed;
     }
 
@@ -253,14 +257,42 @@ public static class TunCleanup
         var n = 0;
         foreach (var id in WintunDevices())
         {
+            if (!DeviceIsDisabled(id)) continue;
             if (!EnableDeviceWithPowerShell(id, log)) continue;
             n++;
             log?.Invoke($"включен Wintun: {id}");
         }
 
-        foreach (var name in new[] { InterfaceName, AdapterName(2), AdapterName(3) })
+        foreach (var name in DownTunInterfaces())
             EnableInterface(name);
         return n;
+    }
+
+    internal static bool ConfigFlagsDisabled(object? value) => value is int flags && (flags & 1) != 0;
+
+    private static bool DeviceIsDisabled(string instanceId)
+    {
+        if (!OperatingSystem.IsWindows()) return true;
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\" + instanceId);
+            return key is null || ConfigFlagsDisabled(key.GetValue("ConfigFlags"));
+        }
+        catch { return true; }
+    }
+
+    private static IReadOnlyList<string> DownTunInterfaces()
+    {
+        var names = new[] { InterfaceName, AdapterName(2), AdapterName(3) };
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Where(nic => nic.OperationalStatus != OperationalStatus.Up
+                    && names.Contains(nic.Name, StringComparer.OrdinalIgnoreCase))
+                .Select(nic => nic.Name)
+                .ToList();
+        }
+        catch { return names; }
     }
 
     private static bool DisableDeviceWithPowerShell(string instanceId, Action<string>? log)
@@ -493,7 +525,7 @@ public static class TunCleanup
                     return true;
             }
             catch { return true; }
-            Thread.Sleep(500);
+            Thread.Sleep(100);
         }
         return false;
     }
@@ -547,7 +579,7 @@ public static class TunCleanup
                 .Contains(instanceId, StringComparer.OrdinalIgnoreCase);
             var nicGone = guid is null || Look(guid, null) is null;
             if (!listed && nicGone) return true;
-            Thread.Sleep(500);
+            Thread.Sleep(100);
         }
         return false;
     }
