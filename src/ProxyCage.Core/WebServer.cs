@@ -989,7 +989,15 @@ public sealed partial class WebServer
                     var folders = f.GetValueOrDefault("folders", "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                     var chosen = cfg.Apps.Where(a => a.Enabled && folders.Any(x => AppIdentity.SameConfiguredPath(a.Folder, x))).Select(a => a.Folder).ToList();
                     if (chosen.Count == 0) return (S("app_tunnel_missing"), true, null);
-                    return (OnFixLeaks(chosen), false, null);
+                    var fixText = OnFixLeaks(chosen);
+                    Thread.Sleep(3000);
+                    InvalidateAppObservations();
+                    var after = _state().Running ? AppsLive() : null;
+                    var left = cfg.Apps.Where(a => chosen.Contains(a.Folder) && after?.FirstOrDefault(l => l.Folder == a.Folder) is { Direct: > 0 })
+                        .Select(a => a.Label).ToList();
+                    return left.Count == 0
+                        ? (fixText + " " + S("fix_recheck_ok"), false, null)
+                        : (fixText + " " + S("fix_recheck_left", string.Join(", ", left)), true, null);
                 }
 
                 case "/apps/rename":
@@ -1859,7 +1867,7 @@ public sealed partial class WebServer
         sb.Append("</form>");
         if (light)
             sb.Append("<button type=button id=light-plus class=light-plus aria-label=\"").Append(E(S("light_plus_label"))).Append("\" title=\"")
-              .Append(E(S("light_plus_label"))).Append("\">+</button>");
+              .Append(E(S("light_plus_label"))).Append("\"><svg viewBox=\"0 0 24 24\" width=18 height=18 aria-hidden=true focusable=false><path d=\"M12 5v14M5 12h14\" fill=none stroke=currentColor stroke-width=2 stroke-linecap=round /></svg></button>");
         sb.Append("<button type=button id=theme class=theme data-light=\"").Append(E(S("theme_to_light")))
           .Append("\" data-dark=\"").Append(E(S("theme_to_dark"))).Append("\">")
           .Append(WebUi.ThemeIcons).Append("</button>");
@@ -2620,16 +2628,17 @@ public sealed partial class WebServer
     private void AppendLeakFix(StringBuilder sb, CehoConfig cfg, IEnumerable<AppEntry> apps, string tab, bool compact = false)
     {
         if (OnFixLeaks is null) return;
-        var folders = string.Join('|', apps.Select(a => a.Folder));
+        var list = apps.ToList();
+        var folders = string.Join('|', list.Select(a => a.Folder));
         if (folders.Length == 0) return;
         string T(string ru, string en) => AppObservation.Text(cfg, ru, en);
         sb.Append("<form class=\"app-actions leak-fix\" method=post action=/apps/fix><input type=hidden name=tab value=\"").Append(E(tab))
           .Append("\"><input type=hidden name=folders value=\"").Append(E(folders)).Append("\"><button class=primary>")
-          .Append(E(T("Исправить: сбросить старые соединения", "Fix: reset old connections"))).Append("</button>");
+          .Append(E(compact ? T("Исправить", "Fix") : T("Исправить все", "Fix all"))).Append("</button>");
         if (!compact)
             sb.Append("<p class=hint>").Append(E(T(
-                "Закроет уже открытые соединения программы мимо VPN, и она откроет их заново через туннель. Окно программы не закрывается; браузеру перезапустится сетевой процесс.",
-                "Closes the app's already open connections that bypass VPN; it reopens them through the tunnel. The app window stays open; a browser restarts its network process."))).Append("</p>");
+                "Программы не закроются, но на несколько секунд потеряют связь: их соединения мимо VPN будут закрыты, и они подключатся заново через туннель; у браузеров перезапустится сетевой процесс. Затем панель сама проверит снова.",
+                "Apps will not close, but may lose connection for a few seconds: their connections outside VPN are closed and reopen through the tunnel; browsers restart their network process. The panel then rechecks by itself."))).Append("</p>");
         sb.Append("</form>");
     }
 

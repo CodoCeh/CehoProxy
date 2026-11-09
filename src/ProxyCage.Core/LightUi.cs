@@ -87,6 +87,8 @@ public static class LightUi
 
     @media (max-width:820px){
       .light .wrap{display:block;padding:16px 16px 92px}
+      .light header .mark{margin-right:auto}
+      .light header form.mode{order:9;flex:1 0 100%;justify-content:center;margin:4px 0 0}
       .light nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;top:auto;flex-direction:row;overflow-x:auto;gap:2px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--line)}
       .light nav.tabs a,.light nav.tabs details.more summary{width:auto;flex:0 0 auto;min-height:44px;padding:8px 14px;font-size:14px;white-space:nowrap}
       .light nav.tabs details.more>div{position:absolute;bottom:58px;right:8px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:8px;box-shadow:0 10px 30px #0003}
@@ -113,7 +115,9 @@ public static class LightUi
     .light-vortex .tunnel-orbit[hidden]{display:none}
     .light-vortex.moving .tunnel-portal svg{animation:none}
     .light .light-tap{margin:2px 0 0;color:var(--subtext);font-size:16px}
-    .light button.light-plus{display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--brand-ink);font-size:26px;line-height:1;font-weight:400;cursor:pointer;margin-left:auto}
+    .light button.light-plus{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:40px;height:40px;min-height:0;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--brand-ink);cursor:pointer;margin-left:0}
+    .light header form.mode{margin-left:auto}
+    .light button.light-plus svg{display:block;width:18px;height:18px}
     .light button.light-plus+button.theme{margin-left:0}
     .light dialog.ls-sheet{width:min(560px,calc(100% - 28px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;border:1px solid var(--line);border-radius:24px;background:var(--bg);color:var(--text);box-shadow:0 20px 80px #0004}
     .light dialog.ls-sheet::backdrop{background:#0c191a77}

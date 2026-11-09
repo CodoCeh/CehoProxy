@@ -194,7 +194,8 @@ public sealed class VerifiedPanelRenderTests : IDisposable
         _samples = new[] { new WebServer.AppLive(_cfg.Apps[0].Folder, 1, 1, 2) };
         var leaking = Render();
         Assert.Contains("action=/apps/fix", leaking);
-        Assert.Contains("Fix: reset old connections", leaking);
+        Assert.Contains(">Fix all</button>", leaking);
+        Assert.Contains("will not close", leaking);
 
         _samples = new[] { new WebServer.AppLive(_cfg.Apps[0].Folder, 1, 2, 0, 2, 0) };
         Refresh();
