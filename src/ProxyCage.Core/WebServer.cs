@@ -1325,6 +1325,13 @@ public sealed partial class WebServer
                     return (Strings.T(cfg.Language, "lang_set", cfg.Language), false, null);
                 }
 
+                case "/whatsnew/seen":
+                {
+                    cfg.WhatsNewSeen = Updater.CurrentVersion;
+                    Save(cfg);
+                    return ("", false, null);
+                }
+
                 case "/open-target":
                 {
                     cfg.OpenTarget = CehoConfig.NormalizeOpenTarget(f.GetValueOrDefault("open", ""));
@@ -1809,6 +1816,10 @@ public sealed partial class WebServer
           .Append("<span>").Append(E(S("footer_local"))).Append("</span></span></footer>");
         sb.Append("</div>");
 
+        var pending = WhatsNew.Pending(cfg, Updater.CurrentVersion);
+        if (cfg.WhatsNewSeen is null && pending.Count == 0) { cfg.WhatsNewSeen = Updater.CurrentVersion; Save(cfg); }
+        sb.Append("<style>").Append(WhatsNew.Css).Append("</style>");
+        WhatsNew.Render(sb, cfg, pending, Updater.CurrentVersion, k => S(k), t => t == "subs" ? "/?tab=subs" : (cfg.SimplePanel ? "/?tab=state#settings" : "/?tab=access"));
         sb.Append(WebUi.InteractionScript).Append(WebUi.ToastScript);
         if (job is { Running: true }) sb.Append(WebUi.JobScript);
         if (tab == "subs" && cfg.Subscriptions.Count > 0) sb.Append(WebUi.SubModalScript);

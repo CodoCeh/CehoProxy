@@ -66,6 +66,8 @@ public static class Updater
         throw new InvalidOperationException($"В релизе {tag} нет файла {wanted} для этой системы.");
     }
 
+    internal static bool IsNewerVersion(string candidate, string current) => IsNewer(candidate, current);
+
     private static bool IsNewer(string candidate, string current)
     {
         static int[] Parts(string v) =>

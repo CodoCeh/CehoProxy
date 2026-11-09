@@ -106,6 +106,9 @@ public sealed class CehoConfig
     /// <summary>Что открывает ярлык на рабочем столе: ask — спросить, web — веб-панель, light — окно CehoProxy Light.</summary>
     public string? OpenTarget { get; set; }
 
+    /// <summary>Версия, для которой окно «Что нового» уже показано.</summary>
+    public string? WhatsNewSeen { get; set; }
+
     public static string NormalizeOpenTarget(string? value) =>
         string.Equals(value, OpenWeb, StringComparison.OrdinalIgnoreCase) ? OpenWeb
         : string.Equals(value, OpenLight, StringComparison.OrdinalIgnoreCase) ? OpenLight
