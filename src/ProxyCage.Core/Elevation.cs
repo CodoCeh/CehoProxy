@@ -34,12 +34,13 @@ public static class Elevation
 
     public static RightsAsk Way() => Way(Os.Kind, !Console.IsInputRedirected);
 
-    internal static RightsAsk Way(OsKind kind, bool hasTerminal)
+    internal static RightsAsk Way(OsKind kind, bool hasTerminal, Func<string, string?>? find = null)
     {
-        if (kind == OsKind.Windows) return Os.FindOnPath("powershell") is not null ? RightsAsk.Window : RightsAsk.None;
-        if (hasTerminal && Os.FindOnPath("sudo") is not null) return RightsAsk.Terminal;
+        find ??= Os.FindOnPath;
+        if (kind == OsKind.Windows) return find("powershell") is not null ? RightsAsk.Window : RightsAsk.None;
+        if (hasTerminal && find("sudo") is not null) return RightsAsk.Terminal;
         if (kind == OsKind.Mac) return RightsAsk.Window;
-        return Os.FindOnPath("pkexec") is not null ? RightsAsk.Window : RightsAsk.None;
+        return find("pkexec") is not null ? RightsAsk.Window : RightsAsk.None;
     }
 
     public static string ShellQuote(string value) => "'" + value.Replace("'", "'\\''") + "'";

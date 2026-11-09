@@ -50,8 +50,23 @@ public sealed class ElevationTests
     [Fact]
     public void Windows_never_pretends_it_can_ask_for_a_password()
     {
-        Assert.Equal(OperatingSystem.IsWindows() ? RightsAsk.Window : RightsAsk.None, Elevation.Way(OsKind.Windows, hasTerminal: true));
-        Assert.Equal(RightsAsk.None, Elevation.Way(OsKind.Windows, hasTerminal: false));
+        Assert.Equal(RightsAsk.Window, Elevation.Way(OsKind.Windows, hasTerminal: true, find: name => name == "powershell" ? "powershell.exe" : null));
+        Assert.Equal(RightsAsk.None, Elevation.Way(OsKind.Windows, hasTerminal: true, find: _ => null));
+        Assert.Equal(RightsAsk.None, Elevation.Way(OsKind.Windows, hasTerminal: false, find: _ => null));
+    }
+
+    [Fact]
+    public void On_Windows_a_program_name_without_an_extension_is_found_on_the_path()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var dir = Path.Combine(Path.GetTempPath(), "ceho-path-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "ceho-fake-tool.exe"), "x");
+            Assert.Equal(Path.Combine(dir, "ceho-fake-tool.exe"), Os.FindIn("ceho-fake-tool", dir));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
     }
 
     [Fact]

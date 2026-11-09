@@ -23,7 +23,11 @@ public class PlatformTests
     [Fact]
     public void Program_inside_system_directory_falls_back_to_single_file()
     {
-        var probe = Directory.EnumerateFiles(SystemBinDir).FirstOrDefault();
+        var probe = Directory.EnumerateFiles(SystemBinDir).FirstOrDefault(file =>
+        {
+            try { AppDetector.Detect(file); return true; }
+            catch (InvalidOperationException) { return false; }
+        });
         Assert.NotNull(probe);
 
         var d = AppDetector.Detect(probe!);

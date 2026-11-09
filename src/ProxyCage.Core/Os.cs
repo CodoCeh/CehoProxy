@@ -404,9 +404,10 @@ public static class Os
         return FindOnPath("curl");
     }
 
-    public static string? FindOnPath(string fileName)
+    public static string? FindOnPath(string fileName) => FindIn(fileName, Environment.GetEnvironmentVariable("PATH"));
+
+    internal static string? FindIn(string fileName, string? path)
     {
-        var path = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrEmpty(path)) return null;
         foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
@@ -414,6 +415,7 @@ public static class Os
             {
                 var full = Path.Combine(dir.Trim(), fileName);
                 if (IsRunnable(full)) return full;
+                if (IsWindows && Path.GetExtension(fileName).Length == 0 && IsRunnable(full + ".exe")) return full + ".exe";
             }
             catch { }
         }
