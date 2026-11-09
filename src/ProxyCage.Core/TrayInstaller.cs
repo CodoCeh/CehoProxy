@@ -237,7 +237,7 @@ public static class TrayInstaller
         <dict>
           <key>Label</key><string>{Installer.TrayLaunchAgentLabel}</string>
           <key>ProgramArguments</key>
-          <array><string>{Installer.TrayAppPath}/Contents/MacOS/CehoProxyTray</string></array>
+          <array><string>{Installer.TrayAppPath}/Contents/MacOS/CehoProxyTray</string><string>--background</string></array>
           <key>RunAtLoad</key><true/>
           <key>KeepAlive</key><false/>
           <key>LimitLoadToSessionType</key><string>Aqua</string>

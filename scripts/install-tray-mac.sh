@@ -38,7 +38,7 @@ cat > "$AGENTS/${LABEL}.plist" <<PLIST
 <dict>
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key>
-  <array><string>${APP}/Contents/MacOS/CehoProxyTray</string></array>
+  <array><string>${APP}/Contents/MacOS/CehoProxyTray</string><string>--background</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><false/>
   <key>LimitLoadToSessionType</key><string>Aqua</string>

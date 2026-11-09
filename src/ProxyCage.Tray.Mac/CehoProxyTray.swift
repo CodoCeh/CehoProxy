@@ -132,6 +132,23 @@ final class PanelLink {
         return parts.count > 2 ? Int(parts[2]).map { "http://127.0.0.1:\($0)/light" } : nil
     }
 
+    /// Что открывать по запуску приложения: ask, web или light (четвёртое слово в panel.port).
+    var openTarget: String {
+        guard let text = try? String(contentsOfFile: root + "/panel.port", encoding: .utf8) else { return "ask" }
+        let parts = text.split(whereSeparator: { $0 == " " || $0 == "\n" })
+        guard parts.count > 3 else { return "ask" }
+        let word = String(parts[3]).lowercased()
+        return word == "web" || word == "light" ? word : "ask"
+    }
+
+    func pick(_ nonce: String, _ done: @escaping (String) -> Void) {
+        guard let base = url, let target = URL(string: "\(base)/open-pick?n=\(nonce)") else { return done("") }
+        session.dataTask(with: URLRequest(url: target, timeoutInterval: 3)) { data, _, _ in
+            let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            done(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        }.resume()
+    }
+
     private func post(_ path: String, _ body: String, _ type: String, _ password: String?,
                       _ done: @escaping (Int, Data?, String?) -> Void) {
         guard let base = url, let target = URL(string: base + path) else {
@@ -229,19 +246,25 @@ final class PanelLink {
 }
 
 final class LightWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSWindowDelegate {
-    private let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
-    private let window = NSWindow(
-        contentRect: NSRect(x: 0, y: 0, width: 1120, height: 800),
-        styleMask: [.titled, .closable, .miniaturizable, .resizable],
-        backing: .buffered, defer: false)
-    private var loaded: URL?
+    private static var visibleCount = 0
 
-    override init() {
+    private let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+    private let window: NSWindow
+    private var loaded: URL?
+    private var counted = false
+    var onClose: (() -> Void)?
+
+    init(title: String = "CehoProxy Light", size: NSSize = NSSize(width: 1120, height: 800),
+         autosave: String? = "CehoProxyLight", resizable: Bool = true) {
+        window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: resizable ? [.titled, .closable, .miniaturizable, .resizable] : [.titled, .closable],
+            backing: .buffered, defer: false)
         super.init()
-        window.title = "CehoProxy Light"
+        window.title = title
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 380, height: 520)
-        window.setFrameAutosaveName("CehoProxyLight")
+        if resizable { window.minSize = NSSize(width: 380, height: 520) }
+        if let autosave { window.setFrameAutosaveName(autosave) }
         window.contentView = web
         window.delegate = self
         web.navigationDelegate = self
@@ -252,6 +275,8 @@ final class LightWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloa
     func show(_ url: URL) {
         if loaded != url { loaded = url; web.load(URLRequest(url: url)) }
         if !window.isVisible && window.frameAutosaveName.isEmpty == false { window.center() }
+        if !window.isVisible { window.center() }
+        if !counted { counted = true; LightWindow.visibleCount += 1 }
         NSApp.setActivationPolicy(.regular)
         NSApp.mainMenu = LightWindow.mainMenu()
         window.makeKeyAndOrderFront(nil)
@@ -259,8 +284,14 @@ final class LightWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloa
     }
 
     func windowWillClose(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        if counted { counted = false; LightWindow.visibleCount -= 1 }
+        if LightWindow.visibleCount <= 0 { NSApp.setActivationPolicy(.accessory) }
+        onClose?()
     }
+
+    var currentURL: URL? { loaded }
+
+    func close() { window.close() }
 
     static func mainMenu() -> NSMenu {
         let main = NSMenu()
@@ -703,6 +734,51 @@ final class Tray: NSObject, NSMenuDelegate {
         NSWorkspace.shared.open(target)
     }
 
+    private var chooserWindow: LightWindow?
+    private var chooserTimer: Timer?
+
+    /// Запуск приложения с Dock/Finder: открыть то, что выбрано в настройках, или спросить.
+    func openPreferred() {
+        switch link.openTarget {
+        case "web": openPanel()
+        case "light": openLight()
+        default: choose()
+        }
+    }
+
+    private func choose() {
+        if let existing = chooserWindow { existing.show(existing.currentURL ?? URL(string: "about:blank")!); return }
+        guard let base = link.url else { return }
+        let nonce = ProcessInfo.processInfo.environment["CEHOPROXY_CHOOSER_NONCE"]
+            ?? (0..<12).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+        guard let page = URL(string: "\(base)/open?n=\(nonce)") else { return }
+        let window = LightWindow(title: "CehoProxy", size: NSSize(width: 460, height: 420), autosave: nil, resizable: false)
+        chooserWindow = window
+        window.onClose = { [weak self] in self?.finishChoosing() }
+        window.show(page)
+        let started = Date()
+        chooserTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            if Date().timeIntervalSince(started) > 600 { self.finishChoosing(); return }
+            self.link.pick(nonce) { answer in
+                guard answer == "web" || answer == "light" else { return }
+                DispatchQueue.main.async {
+                    self.finishChoosing()
+                    if answer == "light" { self.openLight() } else { self.openPanel() }
+                }
+            }
+        }
+    }
+
+    private func finishChoosing() {
+        chooserTimer?.invalidate()
+        chooserTimer = nil
+        let window = chooserWindow
+        chooserWindow = nil
+        window?.onClose = nil
+        window?.close()
+    }
+
     @objc func quit() {
         NSApp.terminate(nil)
     }
@@ -713,4 +789,21 @@ let root = ProcessInfo.processInfo.environment["CEHOPROXY_HOME"]
 let application = NSApplication.shared
 application.setActivationPolicy(.accessory)
 let tray = Tray(root: root)
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        tray.openPreferred()
+        return true
+    }
+}
+
+let delegate = AppDelegate()
+application.delegate = delegate
+
+// Автозапуск при входе (launchd) окон не открывает; запуск человеком из Finder или Dock — открывает.
+let launchedByLaunchd = ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"] == "ru.codoceh.cehoproxy.tray"
+    || CommandLine.arguments.contains("--background")
+if !launchedByLaunchd {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { tray.openPreferred() }
+}
 application.run()
