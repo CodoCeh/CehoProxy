@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
     private var minimizePending = false
     private var launchRequest by mutableStateOf<String?>(null)
     private var clipboardOffer by mutableStateOf<String?>(null)
+    private var whatsNew by mutableStateOf<List<ru.cebers.cehoproxy.core.WhatsNew.Item>>(emptyList())
     private var receiveUrl by mutableStateOf<String?>(null)
     private var receiver: ShareReceiver? = null
     private var incomingShare by mutableStateOf<SubscriptionShare.Incoming?>(null)
@@ -174,6 +175,12 @@ class MainActivity : ComponentActivity() {
         profile = store.read()
         val hasExistingSetup = profile.nodes.isNotEmpty() || !profile.importedConfig.isNullOrBlank() || profile.apps.isNotEmpty()
         onboardingCompleted = getSharedPreferences("onboarding", MODE_PRIVATE).getBoolean("completed", hasExistingSetup)
+        run {
+            val prefs = getSharedPreferences("whats_new", MODE_PRIVATE)
+            val seen = prefs.getString("seen", null)
+            whatsNew = ru.cebers.cehoproxy.core.WhatsNew.pending(seen, BuildConfig.VERSION_NAME, !hasExistingSetup && !getSharedPreferences("onboarding", MODE_PRIVATE).contains("completed"))
+            prefs.edit().putString("seen", BuildConfig.VERSION_NAME).apply()
+        }
         ExpiryReminderScheduler.reconcile(this, profile)
         refreshVpnStatus()
         ContextCompat.registerReceiver(this, statusReceiver, IntentFilter(CehoVpnService.ACTION_STATUS), ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -342,6 +349,24 @@ class MainActivity : ComponentActivity() {
                         },
                         onSend = { keys, url -> sendRequest = null; sendToDevice(keys, url) },
                         onDismiss = { sendRequest = null },
+                    )
+                }
+                if (whatsNew.isNotEmpty()) {
+                    AlertDialog(
+                        onDismissRequest = { whatsNew = emptyList() },
+                        title = { Column { Text("ОБНОВЛЕНИЕ ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary); Text("Что нового в CehoProxy") } },
+                        text = {
+                            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                whatsNew.forEach { item ->
+                                    Column {
+                                        Text(item.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                                        Text(item.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                                        item.where?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp)) }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = { QuietTextButton(onClick = { whatsNew = emptyList() }, modifier = Modifier.testTag("whats-new-ok")) { Text("Понятно") } },
                     )
                 }
                 clipboardOffer?.let { offer ->
