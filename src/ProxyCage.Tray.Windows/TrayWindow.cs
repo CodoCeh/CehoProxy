@@ -190,7 +190,7 @@ internal sealed class TrayWindow : IDisposable
             case Win32.WM_TRAY:
                 var click = (int)lParam;
                 if (click is Win32.WM_RBUTTONUP or Win32.WM_CONTEXTMENU) ShowMenu();
-                else if (click == Win32.WM_LBUTTONDBLCLK) OpenLight();
+                else if (click == Win32.WM_LBUTTONDBLCLK) OpenPreferred();
                 return IntPtr.Zero;
 
             case Win32.WM_COMMAND:
@@ -310,6 +310,8 @@ internal sealed class TrayWindow : IDisposable
             finally { Interlocked.Exchange(ref _working, 0); }
         });
     }
+
+    private void OpenPreferred() => _ = Task.Run(() => PanelLauncher.OpenAsync(_root));
 
     private void OpenLight()
     {

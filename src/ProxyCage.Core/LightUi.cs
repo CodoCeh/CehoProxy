@@ -125,4 +125,38 @@ public static class LightUi
           .Append("<span class=rate>↓ <b data-down>0,0</b> ↑ <b data-up>0,0</b><small>").Append(ru ? "Мбит/с" : "Mbit/s").Append("</small></span>")
           .Append("<svg viewBox=\"0 0 300 56\" preserveAspectRatio=none aria-hidden=true><path class=base d=\"M0 54H300\"/><path data-line d=\"\"/></svg></section>");
     }
+
+    public const string ChooserCss = """
+    :root{--bg:#f6f2e9;--card:#fffdf7;--ink:#26231c;--muted:#6d675a;--line:#d9d2c2;--accent:#52654c;--on:#fff}
+    @media (prefers-color-scheme:dark){:root{--bg:#1b1a16;--card:#24221d;--ink:#ece7da;--muted:#a59f90;--line:#38352c;--accent:#a9c29a;--on:#1b1a16}}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;display:grid;min-height:100vh;place-items:center}
+    main{width:min(420px,100% - 32px);padding:24px 0}
+    h1{font:600 26px/1.2 Georgia,"Times New Roman",serif;margin:0 0 18px}
+    .choice{display:block;width:100%;text-align:left;margin:0 0 12px;padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);cursor:pointer;font:inherit}
+    .choice b{display:block;font-size:18px}
+    .choice span{display:block;color:var(--muted);font-size:14px;margin-top:2px}
+    .choice:hover,.choice:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:0}
+    .remember{display:flex;gap:10px;align-items:center;margin:16px 2px 6px;cursor:pointer}
+    .remember input{width:18px;height:18px;accent-color:var(--accent)}
+    .note{color:var(--muted);font-size:13px;margin:6px 2px 0}
+    #done{font-size:18px;margin:12px 2px}
+    main.busy .choice,main.busy .remember,main.busy .note{display:none}
+    """;
+
+    public const string ChooserScript = """
+    (function(){
+      var main=document.querySelector('main');
+      function pick(target){
+        if(main.classList.contains('busy'))return;
+        main.classList.add('busy');
+        document.getElementById('done').hidden=false;
+        var body='n='+encodeURIComponent(n)+'&target='+target+(document.getElementById('remember').checked?'&remember=1':'');
+        fetch('/open-pick',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+          .then(function(){setTimeout(function(){try{window.close()}catch(e){}},1500)})
+          .catch(function(){main.classList.remove('busy');document.getElementById('done').hidden=true});
+      }
+      document.querySelectorAll('.choice').forEach(function(b){b.addEventListener('click',function(){pick(b.dataset.target)})});
+    })();
+    """;
 }

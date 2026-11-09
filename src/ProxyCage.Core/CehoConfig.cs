@@ -97,6 +97,20 @@ public sealed class CehoConfig
 
     public string? PanelMode { get; set; }
 
+    public const string OpenAsk = "ask";
+
+    public const string OpenWeb = "web";
+
+    public const string OpenLight = "light";
+
+    /// <summary>Что открывает ярлык на рабочем столе: ask — спросить, web — веб-панель, light — окно CehoProxy Light.</summary>
+    public string? OpenTarget { get; set; }
+
+    public static string NormalizeOpenTarget(string? value) =>
+        string.Equals(value, OpenWeb, StringComparison.OrdinalIgnoreCase) ? OpenWeb
+        : string.Equals(value, OpenLight, StringComparison.OrdinalIgnoreCase) ? OpenLight
+        : OpenAsk;
+
     [JsonIgnore]
     public bool SimplePanel => string.Equals(PanelMode, PanelModeSimple, StringComparison.OrdinalIgnoreCase);
 
@@ -204,6 +218,7 @@ public sealed class CehoConfig
         cfg.PanelMode = string.Equals(cfg.PanelMode, PanelModeSimple, StringComparison.OrdinalIgnoreCase)
             ? PanelModeSimple
             : PanelModePro;
+        if (cfg.OpenTarget is not null) cfg.OpenTarget = NormalizeOpenTarget(cfg.OpenTarget);
 
         if (cfg.Apps is not null)
             foreach (var app in cfg.Apps)

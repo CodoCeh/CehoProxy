@@ -80,6 +80,24 @@ public static class LightWindow
         }
     }
 
+    /// <summary>Маленькое окно выбора «Веб-интерфейс или Light». Свой профиль браузера, чтобы закрыть его можно было, не трогая окно Light.</summary>
+    public static Process? OpenChooser(string url)
+    {
+        var exe = Find(Os.Kind, Environment.GetEnvironmentVariable, FromPath, File.Exists);
+        if (exe is null) return null;
+        try
+        {
+            var info = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
+            info.ArgumentList.Add($"--app={url}");
+            info.ArgumentList.Add($"--user-data-dir={Path.Combine(Path.GetDirectoryName(Profile())!, "choose-profile")}");
+            info.ArgumentList.Add("--window-size=460,420");
+            info.ArgumentList.Add("--no-first-run");
+            info.ArgumentList.Add("--no-default-browser-check");
+            return Process.Start(info);
+        }
+        catch { return null; }
+    }
+
     private static string Profile() =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CehoProxy", "light-profile");
 

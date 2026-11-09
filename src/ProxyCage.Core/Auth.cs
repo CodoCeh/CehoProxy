@@ -230,13 +230,15 @@ public static class Auth
         }
     }
 
-    public static void WritePanelPointer(string root, int panelPort, int proxyPort, int? lightPort = null)
+    public static void WritePanelPointer(string root, int panelPort, int proxyPort, int? lightPort = null, string? openTarget = null)
     {
         try
         {
             Directory.CreateDirectory(root);
             var file = Path.Combine(root, "panel.port");
-            File.WriteAllText(file, lightPort is { } light ? $"{panelPort} {proxyPort} {light}" : $"{panelPort} {proxyPort}");
+            File.WriteAllText(file, lightPort is { } light
+                ? $"{panelPort} {proxyPort} {light}" + (openTarget is null ? "" : " " + CehoConfig.NormalizeOpenTarget(openTarget))
+                : $"{panelPort} {proxyPort}");
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
         }
@@ -248,6 +250,19 @@ public static class Auth
     public static int? ReadProxyPointer(string root) => ReadPointer(root, 1);
 
     public static int? ReadLightPointer(string root) => ReadPointer(root, 2);
+
+    /// <summary>Что открывать по ярлыку: пользовательские процессы не читают закрытый конфиг, поэтому выбор лежит рядом с портом.</summary>
+    public static string? ReadOpenTarget(string root)
+    {
+        try
+        {
+            var file = Path.Combine(root, "panel.port");
+            if (!File.Exists(file)) return null;
+            var parts = File.ReadAllText(file).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length > 3 ? CehoConfig.NormalizeOpenTarget(parts[3].Trim()) : null;
+        }
+        catch { return null; }
+    }
 
     private static int? ReadPointer(string root, int index)
     {

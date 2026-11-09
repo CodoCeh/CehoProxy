@@ -81,6 +81,13 @@ public sealed partial class WebServer
 
     [ThreadStatic] private static bool _lightRequest;
 
+    private int _port;
+
+    private void WritePointer(CehoConfig cfg)
+    {
+        if (_port > 0) Auth.WritePanelPointer(Root, _port, cfg.MixedPort, _port, CehoConfig.NormalizeOpenTarget(cfg.OpenTarget));
+    }
+
     private const string SkinCookie = "ceho-skin";
 
     public void Start(int port)
@@ -88,7 +95,8 @@ public sealed partial class WebServer
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
         _listener.Start();
-        Auth.WritePanelPointer(Root, port, CehoConfig.Load(_configPath).MixedPort, port);
+        _port = port;
+        WritePointer(CehoConfig.Load(_configPath));
         _log(Strings.T(CehoConfig.Load(_configPath).Language, "panel_at", $"http://127.0.0.1:{port}"));
         _ = Task.Run(() => LoopAsync(_listener));
     }
@@ -142,6 +150,18 @@ public sealed partial class WebServer
             ctx.Response.StatusCode = 302;
             ctx.Response.Headers["Location"] = "/";
             ctx.Response.Close();
+            return;
+        }
+
+        if (path == "/open" && ctx.Request.HttpMethod == "GET")
+        {
+            await WriteHtmlAsync(ctx, RenderChooser(cfg, ctx.Request.QueryString["n"] ?? ""));
+            return;
+        }
+
+        if (path == "/open-pick")
+        {
+            await HandleOpenPickAsync(ctx, cfg);
             return;
         }
 
@@ -381,6 +401,70 @@ public sealed partial class WebServer
     }
 
     private static readonly HttpClient SpeedHttp = new() { Timeout = TimeSpan.FromSeconds(3) };
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Target, DateTime At)> Picks = new();
+
+    /// <summary>
+    /// Страница выбора открывается из ярлыка до входа: в ней нет данных, а выбор записывает не она, а процесс пользователя,
+    /// который её открыл и ждёт ответ по одноразовому коду.
+    /// </summary>
+    private async Task HandleOpenPickAsync(HttpListenerContext ctx, CehoConfig cfg)
+    {
+        foreach (var old in Picks.Where(p => DateTime.UtcNow - p.Value.At > TimeSpan.FromMinutes(15)).Select(p => p.Key).ToList())
+            Picks.TryRemove(old, out _);
+
+        if (ctx.Request.HttpMethod == "POST")
+        {
+            var form = await ReadFormAsync(ctx.Request);
+            var nonce = form.GetValueOrDefault("n", "");
+            var target = form.GetValueOrDefault("target", "");
+            if (nonce.Length is < 8 or > 64 || target is not (CehoConfig.OpenWeb or CehoConfig.OpenLight))
+            {
+                ctx.Response.StatusCode = 400;
+                ctx.Response.Close();
+                return;
+            }
+            Picks[nonce] = (target, DateTime.UtcNow);
+            if (form.ContainsKey("remember"))
+            {
+                cfg.OpenTarget = target;
+                Save(cfg);
+                WritePointer(cfg);
+            }
+            ctx.Response.StatusCode = 204;
+            ctx.Response.Close();
+            return;
+        }
+
+        var key = ctx.Request.QueryString["n"] ?? "";
+        var answer = Picks.TryRemove(key, out var picked) ? picked.Target : "";
+        var bytes = Encoding.UTF8.GetBytes(answer);
+        ctx.Response.ContentType = "text/plain; charset=utf-8";
+        ctx.Response.Headers.Add("Cache-Control", "no-store");
+        ctx.Response.ContentLength64 = bytes.Length;
+        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.Close();
+    }
+
+    private static string RenderChooser(CehoConfig cfg, string nonce)
+    {
+        string S(string key) => E(Strings.T(cfg.Language, key));
+        var sb = new StringBuilder();
+        sb.Append("<!doctype html><html lang=").Append(E(cfg.Language)).Append("><head><meta charset=utf-8>")
+          .Append("<meta name=viewport content=\"width=device-width,initial-scale=1\"><title>CehoProxy</title><style>")
+          .Append(LightUi.ChooserCss).Append("</style></head><body><main>");
+        sb.Append("<h1>").Append(S("open_choose_title")).Append("</h1>");
+        sb.Append("<button class=choice data-target=light autofocus><b>").Append(S("open_choose_light")).Append("</b><span>")
+          .Append(S("open_choose_light_hint")).Append("</span></button>");
+        sb.Append("<button class=choice data-target=web><b>").Append(S("open_choose_web")).Append("</b><span>")
+          .Append(S("open_choose_web_hint")).Append("</span></button>");
+        sb.Append("<label class=remember><input type=checkbox id=remember> ").Append(S("open_choose_remember")).Append("</label>");
+        sb.Append("<p class=note>").Append(S("open_choose_note")).Append("</p>");
+        sb.Append("<p id=done hidden>").Append(S("open_choose_opening")).Append("</p></main><script>")
+          .Append("var n=").Append(System.Text.Json.JsonSerializer.Serialize(nonce)).Append(";")
+          .Append(LightUi.ChooserScript).Append("</script></body></html>");
+        return sb.ToString();
+    }
 
     private long _speedDown, _speedUp;
     private long _speedAtTicks;
@@ -1239,6 +1323,15 @@ public sealed partial class WebServer
                     cfg.Language = Strings.Normalize(f.GetValueOrDefault("lang", "ru"));
                     cfg.SaveSubscriptionStatus(_configPath);
                     return (Strings.T(cfg.Language, "lang_set", cfg.Language), false, null);
+                }
+
+                case "/open-target":
+                {
+                    cfg.OpenTarget = CehoConfig.NormalizeOpenTarget(f.GetValueOrDefault("open", ""));
+                    Save(cfg);
+                    WritePointer(cfg);
+                    return (Strings.T(cfg.Language, "open_target_saved",
+                        Strings.T(cfg.Language, "open_target_" + cfg.OpenTarget)), false, null);
                 }
 
                 case "/password":
@@ -3673,6 +3766,15 @@ public sealed partial class WebServer
             sb.Append("<option value=").Append(l).Append(cfg.Language == l ? " selected" : "").Append('>')
               .Append(l == "ru" ? "Русский" : "English").Append("</option>");
         sb.Append("</select><button>").Append(E(S("btn_save", []))).Append("</button></form></section>");
+
+        sb.Append("<section><h2>").Append(E(S("open_target_title", []))).Append("</h2>");
+        sb.Append("<form class=row method=post action=/open-target><input type=hidden name=tab value=").Append(tab).Append(">");
+        sb.Append("<select name=open style=\"flex:0 0 260px\">");
+        foreach (var (value, key) in new[] { (CehoConfig.OpenAsk, "open_target_ask"), (CehoConfig.OpenLight, "open_target_light"), (CehoConfig.OpenWeb, "open_target_web") })
+            sb.Append("<option value=").Append(value).Append(CehoConfig.NormalizeOpenTarget(cfg.OpenTarget) == value ? " selected" : "").Append('>')
+              .Append(E(S(key, []))).Append("</option>");
+        sb.Append("</select><button>").Append(E(S("btn_save", []))).Append("</button></form>");
+        sb.Append("<p class=hint>").Append(E(S("open_target_hint", []))).Append("</p></section>");
 
         sb.Append("<section><h2>").Append(E(S("uninstall_title", []))).Append("</h2>");
         sb.Append("<p class=hint>").Append(E(S("uninstall_hint", []))).Append("</p>");

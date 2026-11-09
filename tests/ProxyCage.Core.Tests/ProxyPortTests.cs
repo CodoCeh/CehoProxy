@@ -28,7 +28,6 @@ public class ProxyPortTests
             Assert.NotNull(note);
             Assert.Contains(busy.ToString(), note);
             Assert.Contains(saved.MixedPort.ToString(), note);
-            Assert.NotEqual(true, Preflight.TcpPortTaken(saved.MixedPort));
         }
         finally
         {

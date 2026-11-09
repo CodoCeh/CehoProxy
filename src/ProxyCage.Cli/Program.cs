@@ -343,8 +343,10 @@ if (cmd == "open")
     var url = $"http://127.0.0.1:{port}";
     if (!DaemonControl.IsRunning(Ceho.Root))
         Console.Error.WriteLine(Cli.S(cfg0, "panel_not_running", Os.IsWindows ? "" : "sudo "));
-    Os.OpenInBrowser(url);
     Console.WriteLine(url);
+    // chp open [web|light]: без слова — как выбрано в настройках (или спросить).
+    var asked = args.Skip(1).FirstOrDefault(a => a is "web" or "light" or "ask");
+    if (await PanelLauncher.OpenAsync(Ceho.Root, asked) != 0) Os.OpenInBrowser(url);
     return 0;
 }
 

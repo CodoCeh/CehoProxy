@@ -293,7 +293,7 @@ internal sealed class TrayItem : IDisposable
 
             case (ItemInterface, "Activate"):
             case (ItemInterface, "SecondaryActivate"):
-                if (_link.Url is { } url) Os.OpenInBrowser(url);
+                _ = Task.Run(() => PanelLauncher.OpenAsync(_root));
                 ReplyEmpty(context);
                 return ValueTask.CompletedTask;
 

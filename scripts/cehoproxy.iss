@@ -113,6 +113,7 @@ Source: "..\publish\libcronet.dll"; DestDir: "{app}"; Flags: ignoreversion skipi
 
 [Icons]
 Name: "{group}\Панель CehoProxy"; Filename: "{app}\cehoproxy.exe"; Parameters: "open"
+Name: "{group}\CehoProxy Light"; Filename: "{app}\cehoproxy.exe"; Parameters: "open light"
 Name: "{group}\Значок CehoProxy"; Filename: "{app}\cehoproxy-tray.exe"
 Name: "{commonstartup}\CehoProxy"; Filename: "{app}\cehoproxy-tray.exe"; Tasks: trayautostart
 Name: "{commondesktop}\CehoProxy"; Filename: "{app}\cehoproxy.exe"; Parameters: "open"; Tasks: desktopicon

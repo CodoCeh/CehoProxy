@@ -163,6 +163,8 @@ public sealed class NodeCountryService
         return Convert.ToHexString(bytes);
     }
 
+    private static readonly TimeSpan StaleKeep = TimeSpan.FromDays(30);
+
     private void LoadCache()
     {
         try
@@ -182,7 +184,8 @@ public sealed class NodeCountryService
             var directory = Path.GetDirectoryName(_cachePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
             var temp = _cachePath + ".tmp";
-            var current = _cache.Where(p => DateTimeOffset.UtcNow - p.Value.VerifiedAtUtc <= CacheLifetime(p.Value))
+            // Просроченные ответы держим на диске долго: ими запуск пользуется, пока свежая проверка идёт уже при работающем туннеле.
+            var current = _cache.Where(p => DateTimeOffset.UtcNow - p.Value.VerifiedAtUtc <= StaleKeep)
                 .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
             await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(current), cancellationToken);
             File.Move(temp, _cachePath, overwrite: true);
