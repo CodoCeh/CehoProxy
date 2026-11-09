@@ -190,4 +190,26 @@ public class LightPanelTests : IDisposable
         request.Headers.Add("Cookie", "ceho-skin=light; " + cookie);
         return await (await http.SendAsync(request)).Content.ReadAsStringAsync();
     }
+
+    [Fact]
+    public async Task Light_subscription_tab_has_the_android_style_card_and_the_plain_panel_does_not()
+    {
+        var light = await _skin.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=subs");
+        var panel = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=subs");
+
+        Assert.Contains("id=light-paste", light);
+        Assert.Contains("id=light-add", light);
+        Assert.DoesNotContain("light-paste", panel);
+    }
+
+    [Fact]
+    public async Task Subscription_added_without_a_name_gets_the_host_name()
+    {
+        var reply = await _http.PostAsync($"http://127.0.0.1:{_panelPort}/subs/add",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["kind"] = "sub", ["url"] = "https://www.sub.example.com/path?t=1" }));
+        await reply.Content.ReadAsStringAsync();
+
+        var cfg = CehoConfig.Load(Path.Combine(_root, "config.json"));
+        Assert.Contains(cfg.Subscriptions, s => s.Name == "sub.example.com");
+    }
 }

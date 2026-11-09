@@ -1026,7 +1026,7 @@ public sealed partial class WebServer
                 case "/subs/add":
                 {
                     var name = f.GetValueOrDefault("name", "").Trim();
-                    if (name.Length == 0) name = $"sub{cfg.Subscriptions.Count + 1}";
+                    if (name.Length == 0) name = DefaultSubscriptionName(cfg, f.GetValueOrDefault("url", ""));
                     if (cfg.Subscriptions.Any(s => s.Name == name))
                         return (S("err_sub_exists", name), true, null);
 
@@ -2174,7 +2174,19 @@ public sealed partial class WebServer
           .Append("</h2><p class=lede>")
           .Append(E(step == 3 ? T("Подписка, туннель и трафик программы проверяются отдельно.", "The subscription, tunnel and app traffic are checked separately.") : S($"wiz_hint{step}", []))).Append("</p>");
 
-        if (step == 1)
+        if (step == 1 && _lightRequest)
+        {
+            RenderLightSubscriptionAdd(sb, cfg, "state", S, "/?tab=apps");
+            sb.Append("<details id=light-manual-box class=light-manual><summary>").Append(E(S("subs_light_manual", []))).Append("</summary>");
+            sb.Append("<form class=row method=post action=/subs/add><input type=hidden name=tab value=state>")
+              .Append("<input type=hidden name=kind value=sub><input type=hidden name=wizard value=2>")
+              .Append("<label class=sr-only for=wiz-url>").Append(E(S("wiz_title1", []))).Append("</label>")
+              .Append("<input id=wiz-url type=url name=url required placeholder=\"https://…\">")
+              .Append("<button>").Append(E(S("wiz_next", []))).Append("</button></form></details>");
+            if (cfg.Subscriptions.Count > 0)
+                sb.Append("<p><a href=\"/?tab=subs\">").Append(E(T("Включить существующую подписку", "Enable an existing subscription"))).Append("</a></p>");
+        }
+        else if (step == 1)
         {
             sb.Append("<form class=row method=post action=/subs/add><input type=hidden name=tab value=state>")
               .Append("<input type=hidden name=kind value=sub><input type=hidden name=wizard value=2>")
@@ -3251,8 +3263,18 @@ public sealed partial class WebServer
           .Append("<button class=ghost>").Append(E(S("sub_check", []))).Append("</button></form>");
         sb.Append("<p class=hint>").Append(E(S("sub_checking", []))).Append("</p>");
 
-        sb.Append("<h3>").Append(E(S("subs_add_title", []))).Append("</h3>");
-        RenderSubForm(sb, S, "/subs/add", "btn_add_sub", null, null, editPassword: false, inModal: false, cfg.Language, cfg.SimplePanel);
+        if (_lightRequest)
+        {
+            RenderLightSubscriptionAdd(sb, cfg, "subs", S, "/?tab=apps");
+            sb.Append("<details id=light-manual-box class=light-manual><summary>").Append(E(S("subs_light_manual", []))).Append("</summary>");
+            RenderSubForm(sb, S, "/subs/add", "btn_add_sub", null, null, editPassword: false, inModal: false, cfg.Language, cfg.SimplePanel);
+            sb.Append("</details>");
+        }
+        else
+        {
+            sb.Append("<h3>").Append(E(S("subs_add_title", []))).Append("</h3>");
+            RenderSubForm(sb, S, "/subs/add", "btn_add_sub", null, null, editPassword: false, inModal: false, cfg.Language, cfg.SimplePanel);
+        }
 
         sb.Append("<form class=row method=post action=/subs/timeout style=\"margin-top:16px\"><input type=hidden name=tab value=subs>");
         sb.Append("<span style=\"align-self:center\">").Append(E(S("timeout_label", []))).Append(":</span>");
@@ -3438,6 +3460,54 @@ public sealed partial class WebServer
         sb.Append("<form method=post action=/browser/test class=row>");
         sb.Append("<button type=submit>").Append(E(S("btn_naive_test", []))).Append("</button>");
         sb.Append("</form></section>");
+    }
+
+    /// <summary>Добавление подписки как в приложении для телефона: вставить из буфера, «Другое», предложение из буфера.</summary>
+    private static void RenderLightSubscriptionAdd(
+        StringBuilder sb, CehoConfig cfg, string tab, Func<string, object[], string> S, string laterHref)
+    {
+        var existing = System.Text.Json.JsonSerializer.Serialize(cfg.Subscriptions.Select(x => x.Url).ToArray());
+        sb.Append("<section id=light-add class=light-add data-tab=").Append(E(tab)).Append(" data-existing=\"").Append(E(existing)).Append("\">");
+        if (tab != "state")
+        {
+            sb.Append("<h3>").Append(E(S("subs_light_title", []))).Append("</h3>");
+            sb.Append("<p class=lede>").Append(E(S("subs_light_hint", []))).Append("</p>");
+        }
+        sb.Append("<div class=light-add-actions>");
+        sb.Append("<button type=button id=light-paste class=primary>").Append(E(S("subs_light_paste", []))).Append("</button>");
+        sb.Append("<div class=light-more><button type=button id=light-other class=ghost aria-haspopup=menu aria-expanded=false>")
+          .Append(E(S("subs_light_other", []))).Append(" ▾</button>");
+        sb.Append("<div id=light-other-menu class=light-menu role=menu hidden>");
+        sb.Append("<button type=button role=menuitem id=light-file>").Append(E(S("subs_light_file", []))).Append("</button>");
+        sb.Append("<button type=button role=menuitem id=light-manual>").Append(E(S("subs_light_manual", []))).Append("</button>");
+        sb.Append("</div></div></div>");
+        sb.Append("<p id=light-add-note class=hint role=status aria-live=polite></p>");
+        sb.Append("<input type=file id=light-file-input hidden accept=\".txt,.json,.yaml,.yml,.conf,text/plain\">");
+        sb.Append("<form id=light-add-form method=post action=/subs/add hidden><input type=hidden name=tab value=").Append(E(tab))
+          .Append("><input type=hidden name=kind value=sub><input type=hidden name=url id=light-add-url></form>");
+        sb.Append("<div id=light-offer class=light-offer role=region hidden><span>").Append(E(S("subs_light_offer", []))).Append("</span>")
+          .Append("<button type=button id=light-offer-add class=primary>").Append(E(S("subs_light_offer_add", []))).Append("</button>")
+          .Append("<button type=button id=light-offer-skip class=ghost>").Append(E(S("subs_light_offer_skip", []))).Append("</button></div>");
+        if (cfg.Subscriptions.Count == 0)
+            sb.Append("<p><a class=quiet href=\"").Append(E(laterHref)).Append("\">").Append(E(S("subs_light_later", []))).Append("</a></p>");
+        sb.Append("<script>var LIGHT_ADD_TEXT=").Append(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            emptyClip = S("subs_light_empty_clip", []),
+            denied = S("subs_light_clip_denied", []),
+            big = S("subs_light_file_big", []),
+            adding = S("subs_light_adding", []),
+        })).Append(";").Append(LightUi.SubscriptionAddScript).Append("</script></section>");
+    }
+
+    private static string DefaultSubscriptionName(CehoConfig cfg, string url)
+    {
+        var fallback = $"sub{cfg.Subscriptions.Count + 1}";
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return fallback;
+        var host = uri.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? uri.Host[4..] : uri.Host;
+        if (host.Length == 0) return fallback;
+        var name = host;
+        for (var n = 2; cfg.Subscriptions.Any(x => x.Name == name); n++) name = $"{host} {n}";
+        return name;
     }
 
     private static bool TryBuildSubUrl(
