@@ -47,6 +47,8 @@ public sealed partial class WebServer
 
     public Func<IStageReport, Task<string?>>? OnStart { get; set; }
     public Func<Task<string?>>? OnStop { get; set; }
+    /// <summary>Сбросить старые соединения выбранных программ (папки через «|»); возвращает текст для пользователя.</summary>
+    public Func<IReadOnlyList<string>, string>? OnFixLeaks { get; set; }
     public Func<IStageReport, Task<string?>>? OnRestart { get; set; }
     public Func<IStageReport, Task<string>>? OnApply { get; set; }
     public Func<bool, DateTime?, IStageReport, Task<string>>? OnRestoreVerified { get; set; }
@@ -186,6 +188,24 @@ public sealed partial class WebServer
         if (path == "/speed")
         {
             await HandleSpeedAsync(ctx, cfg);
+            return;
+        }
+
+        if (path is "/receive/start" or "/receive/status" or "/receive/cancel")
+        {
+            await HandleReceiveAsync(ctx, path);
+            return;
+        }
+
+        if (path is "/light-qr.js" or "/light-qrgen.js")
+        {
+            await using var stream = typeof(WebServer).Assembly.GetManifestResourceStream(
+                path == "/light-qr.js" ? "ProxyCage.Core.Assets.jsQR.js" : "ProxyCage.Core.Assets.qrcode.js");
+            if (stream is null) { ctx.Response.StatusCode = 404; ctx.Response.Close(); return; }
+            ctx.Response.ContentType = "text/javascript; charset=utf-8";
+            ctx.Response.Headers["Cache-Control"] = "private, max-age=86400";
+            await stream.CopyToAsync(ctx.Response.OutputStream);
+            ctx.Response.Close();
             return;
         }
 
@@ -469,6 +489,67 @@ public sealed partial class WebServer
     private long _speedDown, _speedUp;
     private long _speedAtTicks;
     private int _speedBusy;
+
+    private LanReceiver? _lan;
+    private readonly object _lanGate = new();
+
+    private async Task HandleReceiveAsync(HttpListenerContext ctx, string path)
+    {
+        object reply;
+        lock (_lanGate)
+        {
+            if (path == "/receive/cancel" && ctx.Request.HttpMethod == "POST")
+            {
+                _lan?.Dispose();
+                _lan = null;
+            }
+            else if (path == "/receive/start" && ctx.Request.HttpMethod == "POST")
+            {
+                _lan?.Dispose();
+                var fresh = new LanReceiver(Environment.MachineName);
+                if (fresh.Start(_log)) _lan = fresh;
+                else { _lan = null; fresh.Dispose(); }
+                if (_lan is null)
+                {
+                    ctx.Response.StatusCode = 200;
+                    reply = new { state = "nolan" };
+                    goto send;
+                }
+            }
+            reply = ReceiveStatus();
+        }
+        send:
+        var bytes = Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(reply));
+        ctx.Response.ContentType = "application/json; charset=utf-8";
+        ctx.Response.Headers.Add("Cache-Control", "no-store");
+        ctx.Response.ContentLength64 = bytes.Length;
+        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.Close();
+    }
+
+    private object ReceiveStatus()
+    {
+        var lan = _lan;
+        if (lan is null) return new { state = "idle" };
+        var payload = lan.Payload;
+        if (payload is not null)
+        {
+            var items = LanReceiver.ExtractLinks(payload).Select(DescribeLink).ToArray();
+            return new { state = items.Length > 0 ? "got" : "empty", items };
+        }
+        if (!lan.Active) return new { state = "idle" };
+        return new
+        {
+            state = "waiting", url = lan.Url, name = lan.Name,
+            seconds = Math.Max(0, (int)(lan.ExpiresUtc - DateTime.UtcNow).TotalSeconds),
+        };
+    }
+
+    private static string DescribeLink(string link)
+    {
+        if (!Uri.TryCreate(link, UriKind.Absolute, out var uri)) return "?";
+        return uri.Scheme is "http" or "https" ? uri.Host : uri.Scheme + "://" + uri.Host;
+    }
 
     private async Task HandleSpeedAsync(HttpListenerContext ctx, CehoConfig cfg)
     {
@@ -902,6 +983,15 @@ public sealed partial class WebServer
                     return CheckApp(cfg, app);
                 }
 
+                case "/apps/fix":
+                {
+                    if (OnFixLeaks is null) return (S("fix_unavailable", []), true, null);
+                    var folders = f.GetValueOrDefault("folders", "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    var chosen = cfg.Apps.Where(a => a.Enabled && folders.Any(x => AppIdentity.SameConfiguredPath(a.Folder, x))).Select(a => a.Folder).ToList();
+                    if (chosen.Count == 0) return (S("app_tunnel_missing"), true, null);
+                    return (OnFixLeaks(chosen), false, null);
+                }
+
                 case "/apps/rename":
                 {
                     var folder = f.GetValueOrDefault("folder", "");
@@ -1038,6 +1128,29 @@ public sealed partial class WebServer
                     Save(cfg);
                     _pool = null;
                     return (S("sub_added", name), false, ApplyOrDefer(cfg));
+                }
+
+                case "/receive/confirm":
+                {
+                    var payload = _lan?.Payload;
+                    if (payload is null) return (S("light_recv_none", []), true, null);
+                    var added = 0;
+                    foreach (var link in LanReceiver.ExtractLinks(payload))
+                    {
+                        if (cfg.Subscriptions.Any(s => s.Url == link)) continue;
+                        var linkName = DefaultSubscriptionName(cfg, link);
+                        if (linkName.StartsWith("sub", StringComparison.Ordinal) && !link.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                            linkName = DescribeLink(link) is { Length: > 3 } d && d != "?" ? d : linkName;
+                        for (var n = 2; cfg.Subscriptions.Any(s => s.Name == linkName); n++) linkName = $"{DescribeLink(link)} {n}";
+                        cfg.Subscriptions.Add(new SubscriptionEntry { Name = linkName, Url = link });
+                        cfg.ActiveSubscription ??= linkName;
+                        added++;
+                    }
+                    lock (_lanGate) { _lan?.Dispose(); _lan = null; }
+                    if (added == 0) return (S("light_recv_none", []), true, null);
+                    Save(cfg);
+                    _pool = null;
+                    return (S("light_recv_done", added), false, ApplyOrDefer(cfg));
                 }
 
                 case "/subs/save":
@@ -1744,11 +1857,15 @@ public sealed partial class WebServer
           .Append(" aria-label=\"").Append(E(S("mode_pro"))).Append("\"></button><span")
           .Append(!cfg.SimplePanel ? " class=selected" : "").Append('>').Append(E(S("mode_pro"))).Append("</span>");
         sb.Append("</form>");
+        if (light)
+            sb.Append("<button type=button id=light-plus class=light-plus aria-label=\"").Append(E(S("light_plus_label"))).Append("\" title=\"")
+              .Append(E(S("light_plus_label"))).Append("\">+</button>");
         sb.Append("<button type=button id=theme class=theme data-light=\"").Append(E(S("theme_to_light")))
           .Append("\" data-dark=\"").Append(E(S("theme_to_dark"))).Append("\">")
           .Append(WebUi.ThemeIcons).Append("</button>");
         sb.Append(WebUi.ThemeScript);
         sb.Append("</header>");
+        if (light) LightUi.AddSheet(sb, tab, S);
 
         var tabs = cfg.SimplePanel
             ? new (string Id, string Key)[] { ("state", "nav_state"), ("apps", "nav_apps"), ("subs", "nav_subs"), ("help", "nav_help") }
@@ -1827,7 +1944,7 @@ public sealed partial class WebServer
         if (tab == "access") sb.Append(WebUi.TransferPartsScript);
         if (tab is "state" or "doctor" or "apps") sb.Append(WebUi.StateRefreshScript);
         if (tab is "state" or "apps") sb.Append(TunnelUi.Script);
-        if (light && tab == "state") sb.Append(LightUi.SpeedScript);
+        if (light && tab == "state") sb.Append(LightUi.SpeedScript).Append(LightUi.VortexScript);
         sb.Append("</body></html>");
         return sb.ToString();
     }
@@ -1974,20 +2091,21 @@ public sealed partial class WebServer
             : ("off", T("Туннель выключен", "Tunnel is off"), T("Защитный барьер не подтверждён", "Guard is not confirmed"));
 
         sb.Append("<section data-live=hero><div class=\"hero ").Append(cls).Append("\" role=status aria-live=polite>");
-        if (_lightRequest) TunnelUi.LightVortex(sb, cfg, InstalledAppCatalog.Detect(cfg.Language), st.Running);
+        if (_lightRequest) TunnelUi.LightVortex(sb, cfg, InstalledAppCatalog.Detect(cfg.Language), st.Running, power is null && (st.Running || DaemonControl.IsRecovering(Root) || Os.IsElevated()));
         sb.Append("<span class=dot></span><div><h1>")
           .Append(E(title)).Append("</h1><p>").Append(E(detail)).Append("</p><p class=scope-note>")
           .Append(E(T("VPN предназначен только для выбранных программ. Их фактические соединения проверяются отдельно.",
               "VPN is configured for selected apps only. Their actual connections are checked separately."))).Append("</p></div>")
-          .Append("<form method=post><input type=hidden name=tab value=state>");
+          .Append(_lightRequest && power is null ? "<p class=light-tap>" + E(S(st.Running ? "light_tap_on" : "light_tap_off", [])) + "</p>" : "")
+          .Append(_lightRequest ? "<form id=light-power method=post>" : "<form method=post>").Append("<input type=hidden name=tab value=state>");
         if (power is not null) { }
         else if (st.Running || DaemonControl.IsRecovering(Root))
         {
-            sb.Append("<button type=submit formaction=\"/control/stop\" class=danger>").Append(E(S("btn_off", []))).Append("</button>");
+            if (!_lightRequest) sb.Append("<button type=submit formaction=\"/control/stop\" class=danger>").Append(E(S("btn_off", []))).Append("</button>");
             if (!cfg.SimplePanel && st.Running)
                 sb.Append("<button type=submit formaction=\"/control/restart\" class=ghost>").Append(E(S("btn_restart", []))).Append("</button>");
         }
-        else
+        else if (!_lightRequest)
             sb.Append("<button type=submit formaction=\"/control/start\" class=big").Append(Os.IsElevated() ? "" : " disabled").Append('>')
               .Append(E(S("btn_on", []))).Append("</button>");
         sb.Append("</form></div><details class=consequences><summary>")
@@ -2006,6 +2124,7 @@ public sealed partial class WebServer
               .Append("</p></div><a class=ghost href=\"/?tab=doctor\">")
               .Append(E(T("Проверить программы", "Check apps"))).Append("</a></div>");
         }
+        if (leaks.Count > 0) AppendLeakFix(sb, cfg, leaks.Select(a => a.App), "state");
         sb.Append("</section>");
         if (_lightRequest) LightUi.Speed(sb, cfg.Language == "ru");
         RenderLiveApps(sb, cfg, st, guarded, S);
@@ -2390,6 +2509,7 @@ public sealed partial class WebServer
             sb.Append("<b>").Append(E(app.Label)).Append("</b></div>");
             RenderAppObservation(sb, cfg, app, info, result, st);
             AppendAppRecheck(sb, cfg, app, tab);
+            if (result.Leak) AppendLeakFix(sb, cfg, new[] { app }, tab, compact: true);
             sb.Append("</li>");
         }
         sb.Append("</ul>")
@@ -2495,6 +2615,22 @@ public sealed partial class WebServer
         sb.Append("<section class=recommend><h2>").Append(E(S("rec_title", []))).Append("</h2><p class=lede>")
           .Append(E(S("rec_lede", [names]))).Append("</p><form method=post action=/apps/add-recommended><input type=hidden name=tab value=")
           .Append(E(tab)).Append("><button class=big>").Append(E(S("rec_btn", [todo.Count]))).Append("</button></form></section>");
+    }
+
+    private void AppendLeakFix(StringBuilder sb, CehoConfig cfg, IEnumerable<AppEntry> apps, string tab, bool compact = false)
+    {
+        if (OnFixLeaks is null) return;
+        var folders = string.Join('|', apps.Select(a => a.Folder));
+        if (folders.Length == 0) return;
+        string T(string ru, string en) => AppObservation.Text(cfg, ru, en);
+        sb.Append("<form class=\"app-actions leak-fix\" method=post action=/apps/fix><input type=hidden name=tab value=\"").Append(E(tab))
+          .Append("\"><input type=hidden name=folders value=\"").Append(E(folders)).Append("\"><button class=primary>")
+          .Append(E(T("Исправить: сбросить старые соединения", "Fix: reset old connections"))).Append("</button>");
+        if (!compact)
+            sb.Append("<p class=hint>").Append(E(T(
+                "Закроет уже открытые соединения программы мимо VPN, и она откроет их заново через туннель. Окно программы не закрывается; браузеру перезапустится сетевой процесс.",
+                "Closes the app's already open connections that bypass VPN; it reopens them through the tunnel. The app window stays open; a browser restarts its network process."))).Append("</p>");
+        sb.Append("</form>");
     }
 
     private static void AppendAppRecheck(StringBuilder sb, CehoConfig cfg, AppEntry app, string tab, string? wizard = null)

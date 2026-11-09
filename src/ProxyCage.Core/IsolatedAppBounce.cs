@@ -115,7 +115,7 @@ public static class IsolatedAppBounce
         return labels;
     }
 
-    public static Report ResetNetwork(CehoConfig cfg, Action<string>? log = null)
+    public static Report ResetNetwork(CehoConfig cfg, Action<string>? log = null, IReadOnlyCollection<string>? onlyFolders = null)
     {
         if (!Os.IsWindows) return new Report(0, Array.Empty<string>());
 
@@ -123,7 +123,7 @@ public static class IsolatedAppBounce
         var connections = 0;
         var labels = new List<string>();
 
-        foreach (var app in cfg.Apps.Where(a => a.Enabled && AppDetector.IsChromiumFamily(a)))
+        foreach (var app in cfg.Apps.Where(a => a.Enabled && AppDetector.IsChromiumFamily(a) && Wanted(a, onlyFolders)))
         {
             var before = killed;
             foreach (var name in ProcessNames(app))
@@ -150,7 +150,7 @@ public static class IsolatedAppBounce
         }
 
         var tunPrefix = TunPrefix(cfg.TunAddress);
-        foreach (var app in cfg.Apps.Where(UsesStickyTcpReset))
+        foreach (var app in cfg.Apps.Where(a => UsesStickyTcpReset(a) && Wanted(a, onlyFolders)))
         {
             var before = connections;
             var covered = ProcessInspector.PidsOf(app);
@@ -176,6 +176,9 @@ public static class IsolatedAppBounce
 
         return new Report(killed, labels, connections);
     }
+
+    private static bool Wanted(AppEntry app, IReadOnlyCollection<string>? only) =>
+        only is null || only.Any(f => AppIdentity.SameConfiguredPath(app.Folder, f));
 
     private static IReadOnlyList<string> ExeNamesOf(IReadOnlySet<int> pids)
     {

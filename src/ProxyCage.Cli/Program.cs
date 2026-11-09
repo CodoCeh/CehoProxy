@@ -2581,6 +2581,15 @@ if (cmd is "daemon" or "web")
             return new WebServer.AppLive(a.Folder, v.Processes, v.Tunneled, v.Direct, vpn, direct);
         }).ToList();
     };
+    if (Os.IsWindows) web.OnFixLeaks = folders =>
+    {
+        var c = CehoConfig.Load(Ceho.ConfigPath);
+        var report = IsolatedAppBounce.ResetNetwork(c, Log.Info, folders);
+        Log.Info($"исправление прямого трафика: процессы {report.Killed}, TCP {report.Connections}");
+        return report.Killed + report.Connections == 0
+            ? Strings.T(c.Language, "fix_none")
+            : Strings.T(c.Language, "fix_done", string.Join(", ", report.Labels), report.Killed, report.Connections);
+    };
     web.OnStop = () =>
     {
         Volatile.Write(ref stopRequested, true);

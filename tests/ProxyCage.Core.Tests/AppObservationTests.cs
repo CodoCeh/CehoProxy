@@ -188,6 +188,27 @@ public sealed class VerifiedPanelRenderTests : IDisposable
     }
 
     [Fact]
+    public void A_leak_offers_the_fix_and_a_clean_app_does_not()
+    {
+        _web.OnFixLeaks = _ => "done";
+        _samples = new[] { new WebServer.AppLive(_cfg.Apps[0].Folder, 1, 1, 2) };
+        var leaking = Render();
+        Assert.Contains("action=/apps/fix", leaking);
+        Assert.Contains("Fix: reset old connections", leaking);
+
+        _samples = new[] { new WebServer.AppLive(_cfg.Apps[0].Folder, 1, 2, 0, 2, 0) };
+        Refresh();
+        Assert.DoesNotContain("action=/apps/fix", Render());
+    }
+
+    [Fact]
+    public void Without_a_fix_hook_no_fix_button_is_shown()
+    {
+        _samples = new[] { new WebServer.AppLive(_cfg.Apps[0].Folder, 1, 1, 2) };
+        Assert.DoesNotContain("action=/apps/fix", Render());
+    }
+
+    [Fact]
     public void Quiet_app_is_neutral_and_not_counted_as_verified()
     {
         _samples = new[] { new WebServer.AppLive(_cfg.Apps[0].Folder, 1, 0, 0) };

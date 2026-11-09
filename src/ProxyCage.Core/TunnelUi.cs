@@ -94,6 +94,7 @@ public static partial class TunnelUi
 
     private const int VortexArms = 6;
     private const int VortexAppLimit = 5;
+    private const int VortexAppCap = 30;
     private const double VortexRadius = 88;
 
     // Same spiral as the Android home screen: t = 0 is the outer end of an arm, t = 1 is its centre.
@@ -104,11 +105,14 @@ public static partial class TunnelUi
         return (100 + Math.Cos(angle) * r, 100 + Math.Sin(angle) * r);
     }
 
-    internal static void LightVortex(StringBuilder sb, CehoConfig cfg, IReadOnlyList<InstalledAppCatalog.Entry> catalog, bool running)
+    internal static void LightVortex(StringBuilder sb, CehoConfig cfg, IReadOnlyList<InstalledAppCatalog.Entry> catalog, bool running, bool canToggle)
     {
-        sb.Append("<div class=\"light-vortex").Append(running ? " on" : "").Append("\" aria-hidden=true><div class=tunnel-portal>");
-        Vortex(sb, cfg.Apps.Where(a => a.Enabled).Take(VortexAppLimit).Select(a => (AppIcons.Source(a, catalog), a.Label)).ToList(), running);
-        sb.Append("</div></div>");
+        var label = Strings.T(cfg.Language, running ? "light_vortex_on" : "light_vortex_off", cfg.SimplePanel);
+        sb.Append("<button type=submit form=light-power formaction=\"").Append(running ? "/control/stop" : "/control/start")
+          .Append("\" class=\"light-vortex").Append(running ? " on" : "").Append("\" aria-label=\"").Append(E(label)).Append('"')
+          .Append(canToggle ? "" : " disabled").Append("><span class=tunnel-portal aria-hidden=true>");
+        Vortex(sb, cfg.Apps.Where(a => a.Enabled).Take(VortexAppCap).Select(a => (AppIcons.Source(a, catalog), a.Label)).ToList(), running);
+        sb.Append("</span></button>");
     }
 
     private static void Vortex(StringBuilder sb, IReadOnlyList<(string Path, string Label)> apps, bool running)
@@ -128,8 +132,8 @@ public static partial class TunnelUi
         sb.Append("<circle class=\"tunnel-core").Append(running ? " on" : "").Append("\" cx=100 cy=100 r=\"").Append(N(VortexRadius * .14)).Append("\"/></svg>");
         for (var i = 0; i < apps.Count; i++)
         {
-            var (x, y) = VortexPoint(0, i);
-            sb.Append("<span class=tunnel-orbit style=\"left:").Append(N(x / 2)).Append("%;top:").Append(N(y / 2)).Append("%\">");
+            var (x, y) = VortexPoint(0, i % VortexArms);
+            sb.Append("<span class=tunnel-orbit").Append(i >= VortexAppLimit ? " hidden" : "").Append(" style=\"left:").Append(N(x / 2)).Append("%;top:").Append(N(y / 2)).Append("%\">");
             Icon(sb, apps[i].Path, apps[i].Label);
             sb.Append("</span>");
         }

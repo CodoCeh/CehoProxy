@@ -51,3 +51,21 @@ Windows-сборка sing-box использует драйвер [Wintun](https
 получается через HTTPS-сервис `api.ipify.org`, после чего страна ищется локально в DB-IP Lite.
 Список узлов и их IP не отправляются в GeoIP API. Если нодовый выход или локальная база
 недоступны, страна остаётся неопределённой.
+
+## jsQR — чтение QR-кодов в CehoProxy Light
+
+Для кнопок «Камера: QR-код» и «QR-код из изображения» в окне Light используется
+[jsQR](https://github.com/cozmo/jsQR) 1.4.0 (`src/ProxyCage.Core/Assets/jsQR.js`), лицензия
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Файл включён без изменений,
+панель отдаёт его по адресу `/light-qr.js` только после входа и только тогда, когда окну нужно
+прочитать QR (если встроенного чтения QR в системе нет). Изображения и кадры камеры
+обрабатываются в самом окне и никуда не отправляются.
+
+## qrcode-generator — QR-код для приёма с телефона
+
+Окно «С другого устройства» в CehoProxy Light рисует QR-код с адресом приёма
+библиотекой [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4
+(`src/ProxyCage.Core/Assets/qrcode.js`, автор Kazuhiko Arase), лицензия MIT. Файл включён
+без изменений и отдаётся панелью по адресу `/light-qrgen.js` только после входа. «QR Code» —
+зарегистрированный товарный знак DENSO WAVE INCORPORATED.
+

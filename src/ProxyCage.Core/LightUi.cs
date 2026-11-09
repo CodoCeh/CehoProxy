@@ -107,6 +107,38 @@ public static class LightUi
     .light .light-manual{margin:0 0 22px}
     .light .light-manual>summary{cursor:pointer;color:var(--subtext);padding:8px 2px}
     .light a.quiet{color:var(--subtext)}
+    .light button.light-vortex{display:block;background:none;border:0;padding:0;color:inherit;cursor:pointer;border-radius:50%;font:inherit}
+    .light button.light-vortex:disabled{cursor:default;opacity:.7}
+    .light button.light-vortex:focus-visible{outline:3px solid var(--brand-ink);outline-offset:4px}
+    .light-vortex .tunnel-orbit[hidden]{display:none}
+    .light-vortex.moving .tunnel-portal svg{animation:none}
+    .light .light-tap{margin:2px 0 0;color:var(--subtext);font-size:16px}
+    .light button.light-plus{display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--brand-ink);font-size:26px;line-height:1;font-weight:400;cursor:pointer;margin-left:auto}
+    .light button.light-plus+button.theme{margin-left:0}
+    .light dialog.ls-sheet{width:min(560px,calc(100% - 28px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;border:1px solid var(--line);border-radius:24px;background:var(--bg);color:var(--text);box-shadow:0 20px 80px #0004}
+    .light dialog.ls-sheet::backdrop{background:#0c191a77}
+    .ls-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .ls-head h2{margin:0}
+    .ls-sheet textarea{width:100%;min-height:84px;padding:12px 14px;box-sizing:border-box;font:inherit;resize:vertical}
+    .ls-sheet .ls-submit{width:100%;min-height:48px;margin-top:10px}
+    .ls-sheet .ls-cap{margin:22px 0 4px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-family:inherit}
+    .ls-sheet .ls-rows{border-top:1px solid var(--line)}
+    .ls-sheet button.ls-row{display:flex;align-items:center;gap:14px;width:100%;min-height:60px;padding:8px 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);text-align:left;font-weight:500;cursor:pointer}
+    .ls-sheet button.ls-row:hover,.ls-sheet button.ls-row:focus-visible{background:var(--panel2)}
+    .ls-sheet .ls-ico{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;border-radius:50%;background:var(--panel2);color:var(--brand-ink);font-size:19px}
+    .ls-sheet .ls-row small{display:block;color:var(--muted);font-weight:400;font-size:13px}
+    .ls-sheet video{display:block;width:100%;max-height:280px;margin-top:12px;border-radius:16px;background:#000}
+    .ls-sheet video[hidden],.ls-sheet #ls-manual-form[hidden],.ls-sheet .ls-recv [hidden]{display:none}
+    .ls-sheet .ls-recv{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+    .ls-sheet .ls-recv[hidden]{display:none}
+    .ls-sheet .ls-qr{display:grid;place-items:center;width:min(240px,100%);aspect-ratio:1;margin:8px auto;padding:10px;border-radius:16px;background:#fff}
+    .ls-sheet .ls-qr svg{width:100%;height:100%;display:block}
+    .ls-sheet .ls-url{text-align:center;font-size:13px;color:var(--muted);overflow-wrap:anywhere;margin:4px 0}
+    .ls-sheet #ls-recv-items{margin:6px 0 12px;padding-left:20px}
+    .ls-sheet #ls-manual-form{display:grid;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+    .ls-sheet #ls-manual-form label{display:grid;gap:4px;font-size:14px;color:var(--subtext)}
+    .ls-sheet #ls-manual-form input,.ls-sheet #ls-manual-form select{min-height:44px;padding:0 12px;font:inherit}
+    .ls-sheet #ls-manual-form [hidden]{display:none}
     """;
 
     public const string SpeedScript = """
@@ -229,5 +261,206 @@ public static class LightUi
         try{localStorage.setItem(seenKey,norm(offer.dataset.link||''))}catch(e){}offer.hidden=true});
       checkOffer();window.addEventListener('focus',checkOffer);
     })();
+    """;
+    internal static void AddSheet(StringBuilder sb, string tab, Func<string, object[], string> S)
+    {
+        string E(string v) => System.Net.WebUtility.HtmlEncode(v);
+        string Row(string id, string glyph, string title, string sub) =>
+            $"<button type=button id={id} class=ls-row><span class=ls-ico aria-hidden=true>{glyph}</span><span>{E(S(title, []))}<small>{E(S(sub, []))}</small></span></button>";
+        sb.Append("<dialog id=ls-sheet class=ls-sheet aria-labelledby=ls-title><div class=ls-head><h2 id=ls-title>")
+          .Append(E(S("light_add_title", []))).Append("</h2><button type=button id=ls-close class=ghost aria-label=\"")
+          .Append(E(S("light_add_close", []))).Append("\">×</button></div><p class=lede>").Append(E(S("light_add_hint", []))).Append("</p>");
+        sb.Append("<form id=ls-form method=post action=/subs/add><input type=hidden name=tab value=\"").Append(E(tab))
+          .Append("\"><input type=hidden name=kind value=sub><label class=sr-only for=ls-url>").Append(E(S("light_add_field", [])))
+          .Append("</label><textarea id=ls-url name=url rows=3 autocomplete=off spellcheck=false placeholder=\"")
+          .Append(E(S("light_add_field", []))).Append("\"></textarea><button id=ls-submit class=\"primary ls-submit\" disabled>")
+          .Append(E(S("light_add_submit", []))).Append("</button></form><p id=ls-note class=hint role=status aria-live=polite></p>");
+        sb.Append("<h3 class=ls-cap>").Append(E(S("light_add_others", []))).Append("</h3><div class=ls-rows>")
+          .Append(Row("ls-paste", "⎘", "light_add_paste", "light_add_paste_sub"))
+          .Append(Row("ls-camera", "◉", "light_add_camera", "light_add_camera_sub"))
+          .Append(Row("ls-qrimg", "▦", "light_add_qrimg", "light_add_qrimg_sub"))
+          .Append(Row("ls-manual", "⚙", "light_add_manual", "light_add_manual_sub"))
+          .Append(Row("ls-device", "⇄", "light_add_device", "light_add_device_sub"))
+          .Append(Row("ls-file", "▤", "light_add_file", "light_add_file_sub"))
+          .Append("</div><video id=ls-video hidden playsinline muted></video>");
+        sb.Append("<section id=ls-recv class=ls-recv hidden aria-live=polite><h3>").Append(E(S("light_recv_title", []))).Append("</h3>")
+          .Append("<p class=lede>").Append(E(S("light_recv_steps", []))).Append("</p>")
+          .Append("<div id=ls-recv-wait hidden><div id=ls-qr class=ls-qr role=img aria-label=QR></div><p class=ls-url id=ls-recv-url></p>")
+          .Append("<p class=hint><span id=ls-recv-state>").Append(E(S("light_recv_waiting", []))).Append("</span> <span id=ls-recv-left></span></p></div>")
+          .Append("<div id=ls-recv-got hidden><p><b>").Append(E(S("light_recv_got", []))).Append("</b></p><ul id=ls-recv-items></ul>")
+          .Append("<form id=ls-recv-form method=post action=/receive/confirm><input type=hidden name=tab value=\"").Append(E(tab)).Append("\">")
+          .Append("<button class=\"primary ls-submit\">").Append(E(S("light_recv_confirm", []))).Append("</button>")
+          .Append("<button type=button id=ls-recv-cancel class=\"ghost ls-submit\">").Append(E(S("light_recv_cancel", []))).Append("</button></form></div>")
+          .Append("<p id=ls-recv-msg class=hint hidden></p></section>");
+        sb.Append("<form id=ls-manual-form method=post action=/subs/add hidden><input type=hidden name=tab value=\"").Append(E(tab))
+          .Append("\"><input type=hidden name=kind value=sub><input type=hidden name=name id=lm-name-out><input type=hidden name=url id=lm-url>")
+          .Append("<label>").Append(E(S("light_man_protocol", []))).Append("<select id=lm-proto><option value=vless>VLESS</option><option value=trojan>Trojan</option><option value=ss>Shadowsocks</option><option value=socks5>SOCKS5</option></select></label>")
+          .Append("<label>").Append(E(S("light_man_name", []))).Append("<input id=lm-name autocomplete=off></label>")
+          .Append("<label>").Append(E(S("light_man_host", []))).Append("<input id=lm-host autocomplete=off required></label>")
+          .Append("<label>").Append(E(S("light_man_port", []))).Append("<input id=lm-port inputmode=numeric autocomplete=off required></label>")
+          .Append("<label id=lm-user-l>").Append(E(S("light_man_user", []))).Append("<input id=lm-user autocomplete=off></label>")
+          .Append("<label id=lm-pass-l>").Append(E(S("light_man_pass", []))).Append("<input id=lm-pass type=password autocomplete=off></label>")
+          .Append("<label id=lm-sni-l>").Append(E(S("light_man_sni", []))).Append("<input id=lm-sni autocomplete=off></label>")
+          .Append("<label id=lm-method-l hidden>").Append(E(S("light_man_method", []))).Append("<select id=lm-method><option>chacha20-ietf-poly1305</option><option>aes-256-gcm</option><option>aes-128-gcm</option><option>2022-blake3-aes-256-gcm</option></select></label>")
+          .Append("<button class=\"primary ls-submit\">").Append(E(S("light_man_submit", []))).Append("</button></form>");
+        sb.Append("<input type=file id=ls-file-input hidden accept=\".txt,.json,.yaml,.yml,.conf,text/plain\">")
+          .Append("<input type=file id=ls-qr-input hidden accept=\"image/*\">");
+        sb.Append("<script>var LS_TEXT=").Append(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            bad = S("light_add_bad", []),
+            emptyClip = S("subs_light_empty_clip", []),
+            denied = S("subs_light_clip_denied", []),
+            big = S("subs_light_file_big", []),
+            adding = S("subs_light_adding", []),
+            qrNone = S("light_qr_none", []),
+            qrNoDecoder = S("light_qr_nodecoder", []),
+            scanning = S("light_qr_scanning", []),
+            camDenied = S("light_cam_denied", []),
+            manBad = S("light_man_bad", []),
+            recvLeft = S("light_recv_left", ["{0}"]),
+            recvNoLan = S("light_recv_nolan", []),
+            recvExpired = S("light_recv_expired", []),
+        })).Append(";").Append(AddSheetScript).Append("</script></dialog>");
+    }
+
+    public const string AddSheetScript = """
+    (function(){
+      var dlg=document.getElementById('ls-sheet'),plus=document.getElementById('light-plus');if(!dlg)return;
+      var T=LS_TEXT,$=function(i){return document.getElementById(i)};
+      var note=$('ls-note'),area=$('ls-url'),btn=$('ls-submit'),form=$('ls-form'),video=$('ls-video'),stream=null,timer=0;
+      var schemes=/^(vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|socks5?|naive\+https?|naive\+quic|wireguard|wg|anytls|juicity):\/\//i;
+      function say(t,bad){note.textContent=t||'';note.className='hint'+(bad?' bad':'')}
+      function candidate(text){var t=(text||'').trim();if(!t||t.length>8000)return null;
+        var lines=t.split(/\r?\n/).map(function(l){return l.trim()}).filter(Boolean);
+        if(lines.length>1)return lines.every(function(l){return schemes.test(l)})?lines.join('\n'):null;
+        if(schemes.test(t)||/^https?:\/\/\S+$/i.test(t))return t;
+        return null}
+      function submit(c){say(T.adding);area.value=c;form.submit()}
+      function stopCam(){clearInterval(timer);timer=0;if(stream){stream.getTracks().forEach(function(x){x.stop()});stream=null}video.hidden=true;video.srcObject=null}
+      function open(){if(dlg.open)return;if(dlg.showModal)dlg.showModal();else dlg.setAttribute('open','');say('');area.focus()}
+      function close(){stopCam();if(dlg.close)dlg.close();else dlg.removeAttribute('open')}
+      if(plus)plus.addEventListener('click',open);
+      $('ls-close').addEventListener('click',close);
+      dlg.addEventListener('close',stopCam);
+      area.addEventListener('input',function(){btn.disabled=!area.value.trim()});
+      form.addEventListener('submit',function(e){var c=candidate(area.value);if(!c){e.preventDefault();say(T.bad,true);return}area.value=c;say(T.adding)});
+      $('ls-paste').addEventListener('click',function(){
+        if(!navigator.clipboard||!navigator.clipboard.readText){say(T.denied,true);area.focus();return}
+        navigator.clipboard.readText().then(function(text){var c=candidate(text);if(!c){say(T.emptyClip,true);return}submit(c)})
+          .catch(function(){say(T.denied,true);area.focus()})});
+      var fileIn=$('ls-file-input');
+      $('ls-file').addEventListener('click',function(){fileIn.value='';fileIn.click()});
+      fileIn.addEventListener('change',function(){var f=fileIn.files&&fileIn.files[0];if(!f)return;
+        if(f.size>8*1024*1024){say(T.big,true);return}
+        var r=new FileReader();r.onload=function(){var c=candidate(String(r.result));if(!c){say(T.emptyClip,true);return}submit(c)};r.readAsText(f)});
+      var libLoad=null;
+      function lib(){if(window.jsQR)return Promise.resolve();
+        if(!libLoad)libLoad=new Promise(function(ok,no){var el=document.createElement('script');el.src='/light-qr.js';
+          el.onload=ok;el.onerror=function(){libLoad=null;no('nodecoder')};document.head.appendChild(el)});
+        return libLoad}
+      function viaLib(src,w,h){return lib().then(function(){
+        var cv=document.createElement('canvas');cv.width=w;cv.height=h;var cx=cv.getContext('2d',{willReadFrequently:true});cx.drawImage(src,0,0,w,h);
+        var d=cx.getImageData(0,0,w,h),r=window.jsQR(d.data,w,h);return r?r.data:null})}
+      function decode(src,w,h){
+        if(window.BarcodeDetector){
+          return new BarcodeDetector({formats:['qr_code']}).detect(src).then(function(r){return r.length?r[0].rawValue:viaLib(src,w,h)}).catch(function(){return viaLib(src,w,h)})}
+        return viaLib(src,w,h)}
+      function fromQr(text){var c=candidate(text);if(!c){say(T.bad,true);return false}submit(c);return true}
+      var qrIn=$('ls-qr-input');
+      $('ls-qrimg').addEventListener('click',function(){qrIn.value='';qrIn.click()});
+      qrIn.addEventListener('change',function(){var f=qrIn.files&&qrIn.files[0];if(!f)return;
+        createImageBitmap(f).then(function(bmp){return decode(bmp,bmp.width,bmp.height)})
+          .then(function(text){if(!text){say(T.qrNone,true);return}fromQr(text)})
+          .catch(function(e){say(e==='nodecoder'?T.qrNoDecoder:T.qrNone,true)})});
+      $('ls-camera').addEventListener('click',function(){
+        stopCam();
+        if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say(T.camDenied,true);return}
+        navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(s){
+          stream=s;video.srcObject=s;video.hidden=false;video.play();say(T.scanning);
+          var busy=false;timer=setInterval(function(){
+            if(busy||!video.videoWidth)return;busy=true;
+            decode(video,video.videoWidth,video.videoHeight).then(function(text){if(text){var ok=candidate(text);if(ok){stopCam();submit(ok)}}})
+              .catch(function(){}).finally(function(){busy=false})},300)})
+          .catch(function(){say(T.camDenied,true)})});
+      var recv=$('ls-recv'),rWait=$('ls-recv-wait'),rGot=$('ls-recv-got'),rMsg=$('ls-recv-msg'),poll=0,asked=false,shownUrl='';
+      function rShow(which,msg){rWait.hidden=which!=='wait';rGot.hidden=which!=='got';rMsg.hidden=!msg;rMsg.textContent=msg||''}
+      function rStop(send){clearInterval(poll);poll=0;if(send&&asked){fetch('/receive/cancel',{method:'POST',credentials:'same-origin'}).catch(function(){})}asked=false;shownUrl=''}
+      function drawQr(url){var box=$('ls-qr');box.textContent='';
+        var go=function(){try{var q=qrcode(0,'M');q.addData(url);q.make();box.innerHTML=q.createSvgTag(5,2)}catch(e){}};
+        if(window.qrcode)go();else{var el=document.createElement('script');el.src='/light-qrgen.js';el.onload=go;document.head.appendChild(el)}}
+      function fmt(sec){var m=Math.floor(sec/60),s=sec%60;return m+':'+(s<10?'0':'')+s}
+      function render(st){
+        if(st.state==='waiting'){
+          rShow('wait');$('ls-recv-url').textContent=st.url;
+          if(shownUrl!==st.url){shownUrl=st.url;drawQr(st.url)}
+          $('ls-recv-left').textContent=T.recvLeft.replace('{0}',fmt(st.seconds))}
+        else if(st.state==='got'){
+          rStop(false);rShow('got');var ul=$('ls-recv-items');ul.textContent='';
+          st.items.forEach(function(x){var li=document.createElement('li');li.textContent=x;ul.appendChild(li)})}
+        else if(st.state==='nolan'){rStop(false);rShow('',T.recvNoLan)}
+        else{rStop(false);rShow('',T.recvExpired)}}
+      $('ls-device').addEventListener('click',function(){
+        stopCam();recv.hidden=false;rShow('');asked=true;
+        fetch('/receive/start',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(st){
+          render(st);setTimeout(function(){recv.scrollIntoView({block:'start',behavior:'smooth'})},50);
+          if(st.state==='waiting')poll=setInterval(function(){
+            fetch('/receive/status',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(render).catch(function(){})},1500)})
+          .catch(function(){rShow('',T.recvNoLan)});
+        recv.scrollIntoView({block:'nearest'})});
+      $('ls-recv-cancel').addEventListener('click',function(){rStop(true);recv.hidden=true});
+      dlg.addEventListener('close',function(){rStop(true);recv.hidden=true});
+      var man=$('ls-manual-form'),proto=$('lm-proto');
+      function layout(){var p=proto.value;
+        $('lm-user-l').hidden=!(p==='vless'||p==='socks5');
+        $('lm-pass-l').hidden=p==='vless';
+        $('lm-sni-l').hidden=!(p==='vless'||p==='trojan');
+        $('lm-method-l').hidden=p!=='ss'}
+      proto.addEventListener('change',layout);layout();
+      $('ls-manual').addEventListener('click',function(){man.hidden=!man.hidden;if(!man.hidden)$('lm-host').focus()});
+      function build(){
+        var p=proto.value,name=$('lm-name').value.trim(),host=$('lm-host').value.trim(),port=$('lm-port').value.trim(),
+            user=$('lm-user').value.trim(),pass=$('lm-pass').value,sni=$('lm-sni').value.trim(),e=encodeURIComponent;
+        if(!host||!/^\d{1,5}$/.test(port)||+port<1||+port>65535)return null;
+        var h=host.indexOf(':')>=0&&host.charAt(0)!=='['?'['+host+']':host,tag=name?'#'+e(name):'';
+        if(p==='vless')return user?'vless://'+e(user)+'@'+h+':'+port+'?encryption=none&security=tls'+(sni?'&sni='+e(sni):'')+tag:null;
+        if(p==='trojan')return pass?'trojan://'+e(pass)+'@'+h+':'+port+'?security=tls'+(sni?'&sni='+e(sni):'')+tag:null;
+        if(p==='ss'){if(!pass)return null;return 'ss://'+btoa($('lm-method').value+':'+pass).replace(/=+$/,'')+'@'+h+':'+port+tag}
+        return 'socks5://'+(user?e(user)+(pass?':'+e(pass):'')+'@':'')+h+':'+port+tag}
+      man.addEventListener('submit',function(ev){var u=build();if(!u){ev.preventDefault();say(T.manBad,true);return}
+        $('lm-url').value=u;$('lm-name-out').value=$('lm-name').value.trim();say(T.adding)});
+    })();
+    """;
+
+    public const string VortexScript = """
+    <script>
+    (function(){
+      var ARMS=6,LIMIT=5,R=88,phase=0,batch=0,last=0,reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+      function pt(t,arm,turn){var a=t*Math.PI*4+arm*2*Math.PI/ARMS+turn,r=R*(.88-.70*t);return[100+Math.cos(a)*r,100+Math.sin(a)*r]}
+      function place(v,moving){
+        var all=[].slice.call(v.querySelectorAll('.tunnel-orbit')),n=all.length,svg=v.querySelector('svg'),
+            turn=moving?phase*2*Math.PI:0;
+        if(svg)svg.style.transform=moving?'rotate('+(turn*180/Math.PI)+'deg)':'';
+        v.classList.toggle('moving',moving);
+        all.forEach(function(o,i){
+          var k=moving?((i-batch*LIMIT)%n+n)%n:i;
+          if(k>=LIMIT||k>=n){o.hidden=true;return}
+          o.hidden=false;
+          var t=moving?phase:0,p=pt(t,k,turn);
+          o.style.left=(p[0]/2)+'%';o.style.top=(p[1]/2)+'%';
+          var a=moving?Math.min(t/.06,1)*Math.min((1-t)/.12,1):1;
+          o.style.opacity=String(a);
+          o.style.transform='translate(-50%,-50%) scale('+(moving?1-t*.6:1)+')'})}
+      function frame(ts){
+        var v=document.querySelector('.light-vortex');
+        if(v){
+          var on=v.classList.contains('on')&&!reduce&&!document.hidden;
+          if(on){if(last){phase+=Math.min(ts-last,100)/32*.009}
+            if(phase>=1){phase%=1;batch++}
+          }else{phase=0;batch=0}
+          place(v,on)}
+        last=ts;requestAnimationFrame(frame)}
+      requestAnimationFrame(frame);
+    })();
+    </script>
     """;
 }

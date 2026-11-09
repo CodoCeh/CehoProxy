@@ -51,6 +51,34 @@ public class LightPanelTests : IDisposable
     }
 
     [Fact]
+    public async Task Light_has_a_plus_sheet_with_every_way_to_add_and_the_vortex_is_the_power_button()
+    {
+        var light = await _skin.GetStringAsync($"http://127.0.0.1:{_panelPort}/");
+        var panel = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/");
+
+        Assert.Contains("id=light-plus", light);
+        foreach (var id in new[] { "ls-paste", "ls-camera", "ls-qrimg", "ls-manual", "ls-device", "ls-file", "ls-url" })
+            Assert.Contains("id=" + id, light);
+        Assert.Contains("<button type=submit form=light-power formaction=\"/control/start\" class=\"light-vortex", light);
+        Assert.Contains("id=light-power", light);
+        Assert.DoesNotContain("<button type=submit formaction=\"/control/start\" class=big", light);
+        Assert.DoesNotContain("light-plus", panel);
+        Assert.DoesNotContain("ls-sheet", panel);
+        Assert.Contains("<button type=submit formaction=\"/control/start\" class=big", panel);
+    }
+
+    [Fact]
+    public async Task The_qr_reader_script_is_served_from_the_bundle()
+    {
+        var script = await _skin.GetStringAsync($"http://127.0.0.1:{_panelPort}/light-qr.js");
+
+        Assert.Contains("jsQR", script);
+        Assert.True(script.Length > 100_000);
+        var generator = await _skin.GetStringAsync($"http://127.0.0.1:{_panelPort}/light-qrgen.js");
+        Assert.Contains("qrcode", generator);
+    }
+
+    [Fact]
     public async Task The_light_path_sets_the_skin_cookie_and_returns_to_the_panel()
     {
         using var handler = new HttpClientHandler { AllowAutoRedirect = false };
