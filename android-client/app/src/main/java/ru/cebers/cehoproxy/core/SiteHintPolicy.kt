@@ -13,8 +13,26 @@ internal object SiteHintPolicy {
         return known.none { site == it || site.endsWith(".$it") }
     }
 
+    /** An application can be sent around the tunnel only in the mode where the list holds the excluded applications. */
+    fun appApplies(excludeSelectedApps: Boolean, listed: List<String>, packageName: String): Boolean =
+        excludeSelectedApps && packageName !in listed
+
     fun due(snoozedUntil: Long, lastOfferMillis: Long, nowMillis: Long): Boolean =
         nowMillis >= snoozedUntil && nowMillis - lastOfferMillis >= MIN_GAP_MILLIS
+
+    /** Connection that went directly and closed without a single byte coming back from the site. */
+    fun failedDirect(outboundType: String, downloaded: Long, uploaded: Long): Boolean =
+        outboundType == "direct" && downloaded == 0L && uploaded > 0L
+
+    /** The offer makes sense when the site goes around the tunnel now and the tunnel has a server to carry it. */
+    fun tunnelApplies(onlySites: Boolean, listed: List<String>, routed: Set<String>, hasNodes: Boolean, site: String): Boolean {
+        if (!hasNodes) return false
+        val known = listed.map(RoutingConfig::normalizeDomain)
+        val covered = known.any { site == it || site.endsWith(".$it") }
+        val assigned = routed.map(RoutingConfig::normalizeDomain).any { site == it || site.endsWith(".$it") }
+        if (assigned) return false
+        return if (onlySites) !covered else true
+    }
 
     /** Connection that closed without a single byte coming back from the site. */
     fun failed(outboundType: String, downloaded: Long, uploaded: Long): Boolean =

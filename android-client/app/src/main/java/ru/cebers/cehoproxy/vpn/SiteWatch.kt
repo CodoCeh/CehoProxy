@@ -15,6 +15,8 @@ import io.nekohasekai.libbox.OutboundGroupItemIterator
 import io.nekohasekai.libbox.OutboundGroupIterator
 import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.libbox.StringIterator
+import ru.cebers.cehoproxy.core.AppFailurePolicy
+import ru.cebers.cehoproxy.core.BypassOffer
 import ru.cebers.cehoproxy.core.ProfileStore
 import ru.cebers.cehoproxy.core.SiteFailurePolicy
 import ru.cebers.cehoproxy.core.SiteHintPolicy
@@ -25,6 +27,8 @@ import java.util.concurrent.Executors
 /** Watches finished connections; a site that keeps failing through the tunnel but answers directly is offered for the exceptions list. */
 internal class SiteWatch(private val context: Context, private val directOpen: () -> Boolean) {
     private val policy = SiteFailurePolicy()
+    private val appPolicy = AppFailurePolicy()
+    private val directPolicy = SiteFailurePolicy()
     private val hints = SiteHintStore(context)
     private val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "ceho-site-watch").apply { isDaemon = true } }
     @Volatile private var client: CommandClient? = null
@@ -49,10 +53,22 @@ internal class SiteWatch(private val context: Context, private val directOpen: (
                 if (event.type.toLong() != Libbox.ConnectionEventClosed) continue
                 val connection = event.connection ?: continue
                 val host = connection.domain.orEmpty()
-                if (host.isEmpty() || connection.outboundType in setOf("direct", "block", "dns")) continue
-                val failed = SiteHintPolicy.failed(connection.outboundType.orEmpty(), connection.downlinkTotal, connection.uplinkTotal)
+                val type = connection.outboundType.orEmpty()
+                if (host.isEmpty() || !connection.network.equals("tcp", ignoreCase = true) || type in setOf("block", "dns")) continue
+                val now = System.currentTimeMillis()
+                if (type == "direct") {
+                    if (SiteHintPolicy.failedDirect(type, connection.downlinkTotal, connection.uplinkTotal)) {
+                        directPolicy.record(host, false, now)?.let { site -> runCatching { executor.execute { offerTunnel(site) } } }
+                    } else if (connection.downlinkTotal > 0L) directPolicy.record(host, true, now)
+                    continue
+                }
+                val failed = SiteHintPolicy.failed(type, connection.downlinkTotal, connection.uplinkTotal)
                 if (!failed && connection.downlinkTotal == 0L) continue
-                val site = policy.record(host, !failed, System.currentTimeMillis()) ?: continue
+                if (!failed) directPolicy.record(host, true, now)
+                val owner = runCatching { connection.processInfo?.userName }.getOrNull().orEmpty()
+                    .takeIf { it != context.packageName && it != "android" && it != "root" }.orEmpty()
+                if (owner.isNotEmpty()) appPolicy.record(owner, host, !failed, now)?.let { app -> runCatching { executor.execute { offerApp(app) } } }
+                val site = policy.record(host, !failed, now) ?: continue
                 runCatching { executor.execute { offer(site) } }
             }
         }
@@ -79,6 +95,8 @@ internal class SiteWatch(private val context: Context, private val directOpen: (
         runCatching { executor.execute { runCatching { current?.disconnect() } } }
         runCatching { executor.shutdown() }
         policy.reset()
+        appPolicy.reset()
+        directPolicy.reset()
     }
 
     private fun offer(site: String) {
@@ -89,7 +107,33 @@ internal class SiteWatch(private val context: Context, private val directOpen: (
         if (!SiteHintPolicy.due(hints.snoozedUntil(site), hints.lastOffer(), now)) return
         if (!reachesDirect(site)) return
         hints.offered(site, now)
-        notifyOffer(context, site)
+        notifyOffer(context, BypassOffer.Kind.SITE, site, site)
+    }
+
+    private fun offerTunnel(site: String) {
+        if (stopped || !directOpen()) return
+        val profile = ProfileStore(context).read()
+        if (!SiteHintPolicy.tunnelApplies(profile.onlySites, profile.sites, profile.siteNodeRoutes.keys, profile.nodes.isNotEmpty(), site)) return
+        val key = BypassOffer.hintKey(BypassOffer.Kind.TUNNEL, site)
+        val now = System.currentTimeMillis()
+        if (!SiteHintPolicy.due(hints.snoozedUntil(key), hints.lastOffer(), now)) return
+        hints.offered(key, now)
+        notifyOffer(context, BypassOffer.Kind.TUNNEL, site, site)
+    }
+
+    private fun offerApp(app: AppFailurePolicy.Failure) {
+        if (stopped || !directOpen()) return
+        val profile = ProfileStore(context).read()
+        if (!SiteHintPolicy.appApplies(profile.excludeSelectedApps, profile.apps, app.packageName)) return
+        val key = "app:${app.packageName}"
+        val now = System.currentTimeMillis()
+        if (!SiteHintPolicy.due(hints.snoozedUntil(key), hints.lastOffer(), now)) return
+        if (app.sites.none { reachesDirect(it) }) return
+        val label = runCatching {
+            context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(app.packageName, 0)).toString()
+        }.getOrDefault(app.packageName)
+        hints.offered(key, now)
+        notifyOffer(context, BypassOffer.Kind.APP, app.packageName, label)
     }
 
     private fun reachesDirect(site: String): Boolean = try {
@@ -101,33 +145,51 @@ internal class SiteWatch(private val context: Context, private val directOpen: (
 
     companion object {
         const val ACTION_EXCLUDE_SITE = "ru.cebers.cehoproxy.EXCLUDE_SITE"
+        const val ACTION_TUNNEL_SITE = "ru.cebers.cehoproxy.TUNNEL_SITE"
+        const val ACTION_EXCLUDE_APP = "ru.cebers.cehoproxy.EXCLUDE_APP"
         const val ACTION_HINT_NEVER = "ru.cebers.cehoproxy.HINT_NEVER"
-        const val EXTRA_SITE = "site"
+        const val ACTION_BYPASS_OFFER = "ru.cebers.cehoproxy.BYPASS_OFFER"
+        const val EXTRA_KIND = "kind"
+        const val EXTRA_TARGET = "target"
+        const val EXTRA_LABEL = "label"
         const val SITE_CHANNEL = "cehoproxy-site"
         private const val DIRECT_TIMEOUT_MILLIS = 2_500
         private const val NOTIFICATION_BASE = 100
 
-        fun notificationId(site: String): Int = NOTIFICATION_BASE + (site.hashCode() and 0x7fff)
+        fun notificationId(key: String): Int = NOTIFICATION_BASE + (key.hashCode() and 0x7fff)
 
-        fun cancel(context: Context, site: String) =
-            context.getSystemService(NotificationManager::class.java).cancel(notificationId(site))
+        fun cancel(context: Context, kind: BypassOffer.Kind, target: String) =
+            context.getSystemService(NotificationManager::class.java).cancel(notificationId(BypassOffer.hintKey(kind, target)))
 
-        private fun notifyOffer(context: Context, site: String) {
+        private fun notifyOffer(context: Context, kind: BypassOffer.Kind, target: String, label: String) {
             CehoVpnService.ensureChannels(context)
-            fun action(name: String) = PendingIntent.getService(
-                context, notificationId(site) + name.hashCode() and 0xffff,
-                Intent(context, CehoVpnService::class.java).setAction(name).putExtra(EXTRA_SITE, site),
+            val id = notificationId(BypassOffer.hintKey(kind, target))
+            val text = BypassOffer.text(kind, label)
+            fun service(name: String) = PendingIntent.getService(
+                context, id + name.hashCode() and 0xffff,
+                Intent(context, CehoVpnService::class.java).setAction(name).putExtra(EXTRA_KIND, kind.wire).putExtra(EXTRA_TARGET, target),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
-            val text = "Сайт не отвечает через VPN, а напрямую открывается. Открывать его мимо VPN?"
+            val open = PendingIntent.getActivity(
+                context, id,
+                Intent(context, ru.cebers.cehoproxy.MainActivity::class.java).setAction(ACTION_BYPASS_OFFER)
+                    .putExtra(EXTRA_KIND, kind.wire).putExtra(EXTRA_TARGET, target).putExtra(EXTRA_LABEL, label)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val confirm = when (kind) { BypassOffer.Kind.APP -> ACTION_EXCLUDE_APP; BypassOffer.Kind.TUNNEL -> ACTION_TUNNEL_SITE; BypassOffer.Kind.SITE -> ACTION_EXCLUDE_SITE }
+            val sender = androidx.core.app.Person.Builder().setName("CehoProxy").setImportant(true).build()
+            val message = NotificationCompat.MessagingStyle(sender).setConversationTitle(text.title)
+                .addMessage(text.title + "\n" + text.body, System.currentTimeMillis(), sender)
             val note = NotificationCompat.Builder(context, SITE_CHANNEL).setSmallIcon(ru.cebers.cehoproxy.R.drawable.ic_ceho_whirlpool)
-                .setContentTitle("$site не открывается").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION).setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setAutoCancel(true).setOnlyAlertOnce(true)
-                .addAction(0, "Открывать напрямую", action(ACTION_EXCLUDE_SITE))
-                .addAction(0, "Не предлагать", action(ACTION_HINT_NEVER))
+                .setContentTitle(text.title).setContentText(text.body).setStyle(message)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE).setPriority(NotificationCompat.PRIORITY_HIGH).setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC).setWhen(System.currentTimeMillis()).setShowWhen(true)
+                .setAutoCancel(true).setOnlyAlertOnce(true).setContentIntent(open)
+                .addAction(0, text.confirm, service(confirm))
+                .addAction(0, text.never, service(ACTION_HINT_NEVER))
                 .build()
-            context.getSystemService(NotificationManager::class.java).notify(notificationId(site), note)
+            context.getSystemService(NotificationManager::class.java).notify(id, note)
         }
     }
 }

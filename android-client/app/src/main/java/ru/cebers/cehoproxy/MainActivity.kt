@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
     private var minimizePending = false
     private var launchRequest by mutableStateOf<String?>(null)
     private var clipboardOffer by mutableStateOf<String?>(null)
+    private var bypassOffer by mutableStateOf<Triple<BypassOffer.Kind, String, String>?>(null)
     private var whatsNew by mutableStateOf<List<ru.cebers.cehoproxy.core.WhatsNew.Item>>(emptyList())
     private var receiveUrl by mutableStateOf<String?>(null)
     private var receiver: ShareReceiver? = null
@@ -351,6 +352,16 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { sendRequest = null },
                     )
                 }
+                bypassOffer?.let { (kind, target, label) ->
+                    fun send(action: String) = startService(Intent(this@MainActivity, CehoVpnService::class.java).setAction(action)
+                        .putExtra(ru.cebers.cehoproxy.vpn.SiteWatch.EXTRA_KIND, kind.wire).putExtra(ru.cebers.cehoproxy.vpn.SiteWatch.EXTRA_TARGET, target))
+                    BypassOfferSheet(
+                        text = BypassOffer.text(kind, label),
+                        onConfirm = { send(when (kind) { BypassOffer.Kind.APP -> ru.cebers.cehoproxy.vpn.SiteWatch.ACTION_EXCLUDE_APP; BypassOffer.Kind.TUNNEL -> ru.cebers.cehoproxy.vpn.SiteWatch.ACTION_TUNNEL_SITE; BypassOffer.Kind.SITE -> ru.cebers.cehoproxy.vpn.SiteWatch.ACTION_EXCLUDE_SITE }); bypassOffer = null },
+                        onNever = { send(ru.cebers.cehoproxy.vpn.SiteWatch.ACTION_HINT_NEVER); bypassOffer = null },
+                        onDismiss = { bypassOffer = null },
+                    )
+                }
                 if (whatsNew.isNotEmpty()) {
                     AlertDialog(
                         onDismissRequest = { whatsNew = emptyList() },
@@ -400,6 +411,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun consumeIncomingIntent(intent: Intent?) {
+        if (intent?.action == ru.cebers.cehoproxy.vpn.SiteWatch.ACTION_BYPASS_OFFER) {
+            val kind = BypassOffer.Kind.from(intent.getStringExtra(ru.cebers.cehoproxy.vpn.SiteWatch.EXTRA_KIND))
+            val target = intent.getStringExtra(ru.cebers.cehoproxy.vpn.SiteWatch.EXTRA_TARGET).orEmpty()
+            if (kind != null && target.isNotEmpty()) {
+                bypassOffer = Triple(kind, target, intent.getStringExtra(ru.cebers.cehoproxy.vpn.SiteWatch.EXTRA_LABEL) ?: target)
+                ru.cebers.cehoproxy.vpn.SiteWatch.cancel(this, kind, target)
+            }
+            return
+        }
         if (intent?.action == ACTION_SHORTCUT_SERVERS || intent?.action == ACTION_SHORTCUT_SPEED_TEST) {
             launchRequest = intent.action
             return
@@ -2427,4 +2447,17 @@ internal fun formatBytes(bytes: Long): String {
 
 @Composable private fun EmptyInstruction(title: String, body: String) {
     Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(title, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium); Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp)) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BypassOfferSheet(text: BypassOffer.Text, onConfirm: () -> Unit, onNever: () -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp).testTag("bypass-offer")) {
+            Text(text.title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(text.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
+            QuietButton(text.confirm, onConfirm, Modifier.fillMaxWidth().padding(top = 20.dp).testTag("bypass-confirm"))
+            QuietButton(text.never, onNever, Modifier.fillMaxWidth().padding(top = 8.dp).testTag("bypass-never"), primary = false)
+        }
+    }
 }

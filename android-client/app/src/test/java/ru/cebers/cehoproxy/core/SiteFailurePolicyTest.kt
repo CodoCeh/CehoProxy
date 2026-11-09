@@ -62,4 +62,60 @@ class SiteFailurePolicyTest {
         assertFalse(SiteHintPolicy.failed("direct", 0, 500))
         assertFalse(SiteHintPolicy.failed("vless", 0, 0))
     }
+
+    @Test fun appFailingOnSeveralSitesWhileOthersWorkIsOffered() {
+        val policy = AppFailurePolicy()
+        policy.record("other.app", "ok.example", true, 1_000)
+        assertNull(policy.record("bank.app", "api.bank.ru", false, 2_000))
+        assertNull(policy.record("bank.app", "api.bank.ru", false, 3_000))
+        assertNull(policy.record("bank.app", "cdn.bank.ru", false, 4_000))
+        assertNull(policy.record("bank.app", "api.bank.ru", false, 5_000))
+        val offer = policy.record("bank.app", "auth.other.ru", false, 6_000)
+        assertEquals("bank.app", offer?.packageName)
+        assertEquals(setOf("bank.ru", "other.ru"), offer?.sites)
+    }
+
+    @Test fun appWithOneBrokenSiteIsLeftToTheSitePolicy() {
+        val policy = AppFailurePolicy()
+        policy.record("other.app", "ok.example", true, 1_000)
+        repeat(8) { assertNull(policy.record("browser", "blocked.com", false, 2_000L + it)) }
+    }
+
+    @Test fun appThatSometimesWorksOrWithNoWorkingNeighboursIsNotOffered() {
+        val policy = AppFailurePolicy()
+        repeat(6) { assertNull(policy.record("a", if (it % 2 == 0) "x.ru" else "y.ru", false, 1_000L + it)) }
+        val mixed = AppFailurePolicy()
+        mixed.record("b", "ok.example", true, 0)
+        mixed.record("a", "x.ru", false, 1_000); mixed.record("a", "y.ru", false, 1_100)
+        mixed.record("a", "x.ru", true, 1_200)
+        assertNull(mixed.record("a", "y.ru", false, 1_300))
+    }
+
+    @Test fun appExceptionAppliesOnlyInExcludeMode() {
+        assertTrue(SiteHintPolicy.appApplies(true, listOf("x"), "bank.app"))
+        assertFalse(SiteHintPolicy.appApplies(false, emptyList(), "bank.app"))
+        assertFalse(SiteHintPolicy.appApplies(true, listOf("bank.app"), "bank.app"))
+    }
+
+    @Test fun directFailuresAreTheirOwnKind() {
+        assertTrue(SiteHintPolicy.failedDirect("direct", 0, 500))
+        assertFalse(SiteHintPolicy.failedDirect("vless", 0, 500))
+        assertFalse(SiteHintPolicy.failedDirect("direct", 20, 500))
+    }
+
+    @Test fun tunnelOfferNeedsServersAndAnUnroutedSite() {
+        assertTrue(SiteHintPolicy.tunnelApplies(false, listOf("yandex.ru"), emptySet(), true, "chatgpt.com"))
+        assertTrue(SiteHintPolicy.tunnelApplies(false, listOf("chatgpt.com"), emptySet(), true, "chatgpt.com"))
+        assertFalse(SiteHintPolicy.tunnelApplies(false, emptyList(), emptySet(), false, "chatgpt.com"))
+        assertFalse(SiteHintPolicy.tunnelApplies(false, emptyList(), setOf("chatgpt.com"), true, "chatgpt.com"))
+        assertFalse(SiteHintPolicy.tunnelApplies(true, listOf("chatgpt.com"), emptySet(), true, "api.chatgpt.com"))
+        assertTrue(SiteHintPolicy.tunnelApplies(true, emptyList(), emptySet(), true, "chatgpt.com"))
+    }
+
+    @Test fun everyKindHasItsOwnWordingAndHintKey() {
+        val keys = BypassOffer.Kind.entries.map { BypassOffer.hintKey(it, "x.ru") }
+        assertEquals(3, keys.toSet().size)
+        assertTrue(BypassOffer.text(BypassOffer.Kind.TUNNEL, "chatgpt.com").confirm.contains("через VPN"))
+        assertTrue(BypassOffer.text(BypassOffer.Kind.APP, "Банк").title.contains("«Банк»"))
+    }
 }

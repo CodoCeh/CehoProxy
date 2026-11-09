@@ -78,7 +78,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(NotificationChannel(CHANNEL, "CehoProxy VPN", NotificationManager.IMPORTANCE_LOW))
             manager.createNotificationChannel(NotificationChannel(ALERT_CHANNEL, "Проблемы с VPN", NotificationManager.IMPORTANCE_HIGH))
-            manager.createNotificationChannel(NotificationChannel(SiteWatch.SITE_CHANNEL, "Сайты не открываются", NotificationManager.IMPORTANCE_DEFAULT))
+            manager.createNotificationChannel(NotificationChannel(SiteWatch.SITE_CHANNEL, "Сайты и приложения не работают", NotificationManager.IMPORTANCE_HIGH).apply { enableVibration(true); lockscreenVisibility = Notification.VISIBILITY_PUBLIC })
         }
 
         fun notifyProblem(context: Context, text: String) {
@@ -169,7 +169,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == SiteWatch.ACTION_EXCLUDE_SITE || intent?.action == SiteWatch.ACTION_HINT_NEVER) return handleSiteAction(intent, startId)
+        if (intent?.action in setOf(SiteWatch.ACTION_EXCLUDE_SITE, SiteWatch.ACTION_EXCLUDE_APP, SiteWatch.ACTION_TUNNEL_SITE, SiteWatch.ACTION_HINT_NEVER)) return handleBypassAction(intent!!, startId)
         latestStartId = startId
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(DESIRED_KEY, intent?.action != ACTION_STOP).apply()
         if (intent?.action == ACTION_STOP) {
@@ -187,18 +187,34 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         return START_STICKY
     }
 
-    private fun handleSiteAction(intent: Intent, startId: Int): Int {
-        val site = intent.getStringExtra(SiteWatch.EXTRA_SITE).orEmpty()
-        SiteWatch.cancel(this, site)
-        if (site.isEmpty()) { if (commandServer == null) stopSelf(startId); return START_NOT_STICKY }
+    private fun handleBypassAction(intent: Intent, startId: Int): Int {
+        val kind = BypassOffer.Kind.from(intent.getStringExtra(SiteWatch.EXTRA_KIND)) ?: BypassOffer.Kind.SITE
+        val target = intent.getStringExtra(SiteWatch.EXTRA_TARGET).orEmpty()
+        val running = commandServer != null
+        SiteWatch.cancel(this, kind, target)
+        if (target.isEmpty()) { if (!running) stopSelf(startId); return if (running) START_STICKY else START_NOT_STICKY }
         if (intent.action == SiteWatch.ACTION_HINT_NEVER) {
-            SiteHintStore(this).never(site)
-            if (commandServer == null) { stopSelf(startId); return START_NOT_STICKY }
+            SiteHintStore(this).never(BypassOffer.hintKey(kind, target))
+            if (!running) { stopSelf(startId); return START_NOT_STICKY }
             return START_STICKY
         }
-        ProfileStore(this).update { current -> if (site in current.sites) current else current.copy(sites = current.sites + site, importedConfig = null) }
-        EventLog.append(this, "сайт $site не открывался через VPN: добавлен в исключения, открывается напрямую")
-        if (commandServer == null) { stopSelf(startId); return START_NOT_STICKY }
+        if (kind == BypassOffer.Kind.TUNNEL) {
+            ProfileStore(this).update { current ->
+                when {
+                    current.onlySites -> if (target in current.sites) current else current.copy(sites = current.sites + target, importedConfig = null)
+                    target in current.sites -> current.copy(sites = current.sites - target, importedConfig = null)
+                    else -> current.selectedNode?.routeId?.let { route -> current.copy(siteNodeRoutes = current.siteNodeRoutes + (target to route), importedConfig = null) } ?: current
+                }
+            }
+            EventLog.append(this, "сайт $target не открывался напрямую: теперь открывается через VPN")
+        } else if (kind == BypassOffer.Kind.APP) {
+            ProfileStore(this).update { current -> if (!current.excludeSelectedApps || target in current.apps) current else current.copy(apps = current.apps + target, importedConfig = null) }
+            EventLog.append(this, "приложение $target не работало через VPN: добавлено в исключения, работает напрямую")
+        } else {
+            ProfileStore(this).update { current -> if (target in current.sites) current else current.copy(sites = current.sites + target, importedConfig = null) }
+            EventLog.append(this, "сайт $target не открывался через VPN: добавлен в исключения, открывается напрямую")
+        }
+        if (!running) { stopSelf(startId); return START_NOT_STICKY }
         latestStartId = startId
         requestStart(startId, recovering = false)
         return START_STICKY
