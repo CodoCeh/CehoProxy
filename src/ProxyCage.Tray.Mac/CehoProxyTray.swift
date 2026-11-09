@@ -129,7 +129,7 @@ final class PanelLink {
     var lightURL: String? {
         guard let text = try? String(contentsOfFile: root + "/panel.port", encoding: .utf8) else { return nil }
         let parts = text.split(whereSeparator: { $0 == " " || $0 == "\n" })
-        return parts.count > 2 ? Int(parts[2]).map { "http://localhost:\($0)" } : nil
+        return parts.count > 2 ? Int(parts[2]).map { "http://127.0.0.1:\($0)/light" } : nil
     }
 
     private func post(_ path: String, _ body: String, _ type: String, _ password: String?,

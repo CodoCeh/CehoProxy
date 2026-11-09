@@ -30,7 +30,7 @@ public sealed class PanelLink : IDisposable
 
     public string? Url => Port is { } port ? $"http://127.0.0.1:{port}" : null;
 
-    public string? LightUrl => Auth.ReadLightPointer(_root) is { } port ? $"http://localhost:{port}" : null;
+    public string? LightUrl => Auth.ReadLightPointer(_root) is { } port ? $"http://127.0.0.1:{port}/light" : null;
 
     public async Task<Reading> StatusAsync(bool quick)
     {

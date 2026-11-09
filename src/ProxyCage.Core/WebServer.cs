@@ -79,28 +79,16 @@ public sealed partial class WebServer
 
     private string Root => Path.GetDirectoryName(_configPath) ?? ".";
 
-    private bool _lightHost;
-
     [ThreadStatic] private static bool _lightRequest;
+
+    private const string SkinCookie = "ceho-skin";
 
     public void Start(int port)
     {
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-        _listener.Prefixes.Add($"http://localhost:{port}/");
-        try
-        {
-            _listener.Start();
-            _lightHost = true;
-        }
-        catch (HttpListenerException)
-        {
-            _listener.Close();
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            _listener.Start();
-        }
-        Auth.WritePanelPointer(Root, port, CehoConfig.Load(_configPath).MixedPort, _lightHost ? port : null);
+        _listener.Start();
+        Auth.WritePanelPointer(Root, port, CehoConfig.Load(_configPath).MixedPort, port);
         _log(Strings.T(CehoConfig.Load(_configPath).Language, "panel_at", $"http://127.0.0.1:{port}"));
         _ = Task.Run(() => LoopAsync(_listener));
     }
@@ -126,7 +114,7 @@ public sealed partial class WebServer
 
     private async Task ServeAsync(HttpListenerContext ctx)
     {
-        try { await HandleAsync(ctx, string.Equals(ctx.Request.Url?.Host, "localhost", StringComparison.OrdinalIgnoreCase)); }
+        try { await HandleAsync(ctx, ctx.Request.Cookies[SkinCookie]?.Value == "light"); }
         catch (HttpListenerException ex) when (ex.ErrorCode is 64 or 995 or 1229) { }
         catch (Exception ex)
         {
@@ -147,6 +135,15 @@ public sealed partial class WebServer
         ctx.Response.Headers["X-Frame-Options"] = "DENY";
         var path = ctx.Request.Url?.AbsolutePath ?? "/";
         var cfg = CehoConfig.Load(_configPath);
+
+        if (path == "/light" && ctx.Request.HttpMethod == "GET")
+        {
+            ctx.Response.Headers.Add("Set-Cookie", $"{SkinCookie}=light; Path=/; Max-Age=31536000; SameSite=Strict");
+            ctx.Response.StatusCode = 302;
+            ctx.Response.Headers["Location"] = "/";
+            ctx.Response.Close();
+            return;
+        }
 
         if (path == "/api")
         {
