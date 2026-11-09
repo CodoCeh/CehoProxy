@@ -6,7 +6,13 @@ object WhatsNew {
 
     data class Release(val version: String, val items: List<Item>)
 
-    val releases: List<Release> = emptyList()
+    val releases: List<Release> = listOf(
+        Release("0.1.19", listOf(
+            Item("Сайт не открылся — предложим исключение",
+                "Если сайт не отвечает через VPN, а напрямую открывается, в уведомлении появится кнопка «Открывать напрямую». Сайт попадёт в исключения, и страница загрузится сразу.",
+                "Правила подключения → Сайты → Исключения"),
+        )),
+    )
 
     /** Пункты между просмотренной и установленной версией, свежее сверху. */
     fun since(seen: String, current: String, source: List<Release> = releases): List<Item> =

@@ -78,6 +78,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(NotificationChannel(CHANNEL, "CehoProxy VPN", NotificationManager.IMPORTANCE_LOW))
             manager.createNotificationChannel(NotificationChannel(ALERT_CHANNEL, "Проблемы с VPN", NotificationManager.IMPORTANCE_HIGH))
+            manager.createNotificationChannel(NotificationChannel(SiteWatch.SITE_CHANNEL, "Сайты не открываются", NotificationManager.IMPORTANCE_DEFAULT))
         }
 
         fun notifyProblem(context: Context, text: String) {
@@ -149,6 +150,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     @Volatile private var destroyed = false
     private var acceptTun = false
     private var commandServer: CommandServer? = null
+    private var siteWatch: SiteWatch? = null
     private var tunnel: ParcelFileDescriptor? = null
     @Volatile private var physicalNetwork: Network? = null
     private val interfaceMonitors = ConcurrentHashMap<InterfaceUpdateListener, ConnectivityManager.NetworkCallback>()
@@ -167,6 +169,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == SiteWatch.ACTION_EXCLUDE_SITE || intent?.action == SiteWatch.ACTION_HINT_NEVER) return handleSiteAction(intent, startId)
         latestStartId = startId
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(DESIRED_KEY, intent?.action != ACTION_STOP).apply()
         if (intent?.action == ACTION_STOP) {
@@ -181,6 +184,23 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         else startForeground(NOTIFICATION_ID, notification)
         // A start by the system (reboot, update, killed process) waits for the network and is judged as gently as a reconnect after a network change.
         requestStart(startId, recovering = intent == null || intent.getBooleanExtra(EXTRA_RESUME, false))
+        return START_STICKY
+    }
+
+    private fun handleSiteAction(intent: Intent, startId: Int): Int {
+        val site = intent.getStringExtra(SiteWatch.EXTRA_SITE).orEmpty()
+        SiteWatch.cancel(this, site)
+        if (site.isEmpty()) { if (commandServer == null) stopSelf(startId); return START_NOT_STICKY }
+        if (intent.action == SiteWatch.ACTION_HINT_NEVER) {
+            SiteHintStore(this).never(site)
+            if (commandServer == null) { stopSelf(startId); return START_NOT_STICKY }
+            return START_STICKY
+        }
+        ProfileStore(this).update { current -> if (site in current.sites) current else current.copy(sites = current.sites + site, importedConfig = null) }
+        EventLog.append(this, "сайт $site не открывался через VPN: добавлен в исключения, открывается напрямую")
+        if (commandServer == null) { stopSelf(startId); return START_NOT_STICKY }
+        latestStartId = startId
+        requestStart(startId, recovering = false)
         return START_STICKY
     }
 
@@ -251,6 +271,8 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             server.start()
             server.startOrReloadService(config, OverrideOptions())
             readyGeneration = generation
+            siteWatch?.stop()
+            siteWatch = SiteWatch(this) { directState == DirectReachability.State.OPEN }.also { it.start() }
             val checkNode = candidates.isNotEmpty() && profile.importedConfig == null
             val published = startGeneration.runIfCurrent(generation) {
                 if (!checkNode) {
@@ -688,6 +710,8 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         synchronized(tunnelLock) { acceptTun = false }
         xrayProcess?.destroy()
         xrayProcess = null
+        siteWatch?.stop()
+        siteWatch = null
         val server = commandServer
         commandServer = null
         runCatching { server?.closeService() }
