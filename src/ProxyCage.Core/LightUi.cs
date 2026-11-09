@@ -107,7 +107,7 @@ public static class LightUi
       }
       function tick(){
         if(document.hidden||busy)return;busy=true;
-        fetch('/speed',{cache:'no-store'}).then(function(r){return r.json()}).then(function(s){
+        fetch('/speed',{cache:'no-store'}).then(function(r){if(r.status===401){location.reload();throw 0}return r.json()}).then(function(s){
           down.textContent=fmt(s.down);up.textContent=fmt(s.up);
           samples.push(s.down);if(samples.length>max)samples.shift();draw();
         }).catch(function(){}).finally(function(){busy=false});

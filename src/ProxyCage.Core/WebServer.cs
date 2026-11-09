@@ -153,6 +153,12 @@ public sealed partial class WebServer
 
         if (!Authorized(ctx, cfg))
         {
+            if (path == "/speed")
+            {
+                ctx.Response.StatusCode = 401;
+                ctx.Response.Close();
+                return;
+            }
             await HandleGateAsync(ctx, cfg, path, light);
             return;
         }
