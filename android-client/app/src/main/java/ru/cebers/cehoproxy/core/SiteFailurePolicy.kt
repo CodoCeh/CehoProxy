@@ -4,6 +4,7 @@ package ru.cebers.cehoproxy.core
 internal class SiteFailurePolicy(
     private val windowMillis: Long = WINDOW_MILLIS,
     private val failuresNeeded: Int = FAILURES_NEEDED,
+    private val minSpanMillis: Long = MIN_SPAN_MILLIS,
 ) {
     private class Entry { val failures = ArrayDeque<Long>(); var lastSuccess = 0L }
 
@@ -24,7 +25,7 @@ internal class SiteFailurePolicy(
         while (entry.failures.isNotEmpty() && nowMillis - entry.failures.first() > windowMillis) entry.failures.removeFirst()
         if (entries.size > MAX_SITES) entries.entries.removeAll { it.value.failures.isEmpty() || nowMillis - it.value.failures.last() > windowMillis }
         val tunnelWorks = lastAnySuccess != Long.MIN_VALUE && nowMillis - lastAnySuccess <= windowMillis
-        if (entry.failures.size >= failuresNeeded && tunnelWorks) {
+        if (entry.failures.size >= failuresNeeded && tunnelWorks && nowMillis - entry.failures.first() >= minSpanMillis) {
             entries.remove(site)
             return site
         }
@@ -36,6 +37,8 @@ internal class SiteFailurePolicy(
     companion object {
         const val WINDOW_MILLIS = 90_000L
         const val FAILURES_NEEDED = 3
+        /** A page load cancels several parallel connections at once; a really blocked site keeps failing over time. */
+        const val MIN_SPAN_MILLIS = 10_000L
         private const val MAX_SITES = 200
         private val secondLevel = setOf("co", "com", "org", "net", "gov", "edu", "ac")
         private val ipv4 = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")

@@ -45,6 +45,7 @@ object ProfileBackup {
                 excludeSelectedApps = incoming.excludeSelectedApps,
                 importedConfig = incoming.importedConfig,
                 expiryRemindersEnabled = incoming.expiryRemindersEnabled,
+                siteHintsEnabled = incoming.siteHintsEnabled,
             )
             ProfileExportScope.SUBSCRIPTIONS -> current.copy(nodes = incoming.nodes, selected = incoming.selected.coerceAtMost((incoming.nodes.size - 1).coerceAtLeast(0)), subscriptionUrls = incoming.subscriptionUrls.ifEmpty { current.subscriptionUrls })
             ProfileExportScope.ALL -> incoming

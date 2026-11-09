@@ -19,9 +19,36 @@ class SiteFailurePolicyTest {
         val policy = SiteFailurePolicy()
         assertNull(policy.record("ok.example", true, 1_000))
         assertNull(policy.record("a.blocked.com", false, 2_000))
-        assertNull(policy.record("b.blocked.com", false, 3_000))
-        assertEquals("blocked.com", policy.record("blocked.com", false, 4_000))
-        assertNull(policy.record("blocked.com", false, 5_000))
+        assertNull(policy.record("b.blocked.com", false, 8_000))
+        assertEquals("blocked.com", policy.record("blocked.com", false, 14_000))
+        assertNull(policy.record("blocked.com", false, 15_000))
+    }
+
+    @Test fun aBurstOfCancelledConnectionsIsNotABlockedSite() {
+        val policy = SiteFailurePolicy()
+        policy.record("ok.example", true, 1_000)
+        assertNull(policy.record("a.yandex.ru", false, 2_000))
+        assertNull(policy.record("b.yandex.ru", false, 2_100))
+        assertNull(policy.record("c.yandex.ru", false, 2_200))
+        assertNull(policy.record("d.yandex.ru", false, 3_000))
+    }
+
+    @Test fun aListedSiteOrItsParentOrSubdomainIsNeverOffered() {
+        assertFalse(SiteHintPolicy.applies(false, listOf("https://yandex.ru/"), "yandex.ru"))
+        assertFalse(SiteHintPolicy.applies(false, listOf("mail.yandex.ru"), "yandex.ru"))
+        assertTrue(SiteHintPolicy.applies(false, listOf("yandex.ru"), "other.ru"))
+        for (only in listOf(false, true)) {
+            assertFalse(SiteHintPolicy.tunnelApplies(only, listOf("yandex.ru"), emptySet(), true, "yandex.ru"))
+            assertFalse(SiteHintPolicy.tunnelApplies(only, listOf("yandex.ru"), emptySet(), true, "mc.yandex.ru"))
+            assertFalse(SiteHintPolicy.tunnelApplies(only, emptyList(), setOf("blocked.com"), true, "blocked.com"))
+        }
+        assertTrue(SiteHintPolicy.tunnelApplies(true, listOf("yandex.ru"), emptySet(), true, "blocked.com"))
+        assertFalse(SiteHintPolicy.tunnelApplies(true, emptyList(), emptySet(), false, "blocked.com"))
+    }
+
+    @Test fun anOfferIsNotRepeatedForAWeek() {
+        assertFalse(SiteHintPolicy.due(SiteHintPolicy.SNOOZE_MILLIS, 0, SiteHintPolicy.SNOOZE_MILLIS - 1))
+        assertTrue(SiteHintPolicy.SNOOZE_MILLIS >= 7L * 24 * 60 * 60 * 1000)
     }
 
     @Test fun nothingIsOfferedWhenNoSiteWorksAtAll() {
@@ -105,7 +132,7 @@ class SiteFailurePolicyTest {
 
     @Test fun tunnelOfferNeedsServersAndAnUnroutedSite() {
         assertTrue(SiteHintPolicy.tunnelApplies(false, listOf("yandex.ru"), emptySet(), true, "chatgpt.com"))
-        assertTrue(SiteHintPolicy.tunnelApplies(false, listOf("chatgpt.com"), emptySet(), true, "chatgpt.com"))
+        assertFalse(SiteHintPolicy.tunnelApplies(false, listOf("chatgpt.com"), emptySet(), true, "chatgpt.com"))
         assertFalse(SiteHintPolicy.tunnelApplies(false, emptyList(), emptySet(), false, "chatgpt.com"))
         assertFalse(SiteHintPolicy.tunnelApplies(false, emptyList(), setOf("chatgpt.com"), true, "chatgpt.com"))
         assertFalse(SiteHintPolicy.tunnelApplies(true, listOf("chatgpt.com"), emptySet(), true, "api.chatgpt.com"))

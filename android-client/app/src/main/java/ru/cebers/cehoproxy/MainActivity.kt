@@ -280,6 +280,7 @@ class MainActivity : ComponentActivity() {
                     onSaveRouteSettings = { next -> update(next, explicitSelection = next.selected != profile.selected); if (VpnHomeAction.shouldStop(connected, CehoVpnService.hasLiveServiceInstance())) connect() },
                     onConnect = requestConnect, onStop = { startService(Intent(this, CehoVpnService::class.java).setAction(CehoVpnService.ACTION_STOP)); notice = "VPN отключается" },
                     onAlwaysOn = { openVpnSettings() },
+                    onSiteHints = { enabled -> update(profile.copy(siteHintsEnabled = enabled)) },
                     onExpiryReminders = { enabled ->
                         if (!enabled) update(profile.copy(expiryRemindersEnabled = false))
                         else if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -850,7 +851,7 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, launchRequest: String?, onLaunchRequestHandled: () -> Unit, onReceiveFromPhone: () -> Unit, receiverFirst: Boolean, onSendToDevice: (Set<String>) -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
+@Composable private fun ClientScreen(profile: ClientProfile, connected: Boolean, connectedSince: Long, serviceRunning: Boolean, blocked: Boolean, measurements: VpnMeasurements, notificationsBlocked: Boolean, onOpenNotificationSettings: () -> Unit, launchRequest: String?, onLaunchRequestHandled: () -> Unit, onReceiveFromPhone: () -> Unit, receiverFirst: Boolean, onSendToDevice: (Set<String>) -> Unit, onCheckNode: (String) -> Unit, onCheckNodes: (List<String>) -> Unit, onCancelNodeCheck: () -> Unit, notice: String?, result: UiResult?, onDismissResult: () -> Unit, importing: Boolean, importRevision: Int, themePreference: ThemePreference, onThemePreference: (ThemePreference) -> Unit, onboardingCompleted: Boolean, onCompleteOnboarding: () -> Unit, onRestartOnboarding: () -> Unit, appChoices: List<AppChoice>, onNotice: (String) -> Unit, onImportFile: () -> Unit, onImportClipboard: () -> Unit, onScanQr: () -> Unit, onImportQrImage: () -> Unit, onExport: (ProfileExportScope) -> Unit, onTextImport: (String) -> Unit, onConfigImport: (String) -> Unit, onSelectNode: (Int) -> Unit, onApps: (String) -> Unit, onExcludeSelectedApps: (Boolean) -> Unit, onSites: (String) -> Unit, onOnlySites: (Boolean) -> Unit, onDirectCountry: (String) -> Unit, onSaveRouteSettings: (ClientProfile) -> Unit, onConnect: () -> Unit, onStop: () -> Unit, onAlwaysOn: () -> Unit, onSiteHints: (Boolean) -> Unit, onExpiryReminders: (Boolean) -> Unit, onSubscriptionRefreshHours: (Int) -> Unit, onOpenSubscriptionLink: (String) -> Unit, onRefreshSubscription: (String) -> Unit, onRemoveSubscription: (String) -> Unit, onRefreshAllSubscriptions: () -> Unit, refreshingSubscriptions: Set<String>) {
     val clipboardContext = LocalContext.current
     if (!BuildConfig.PLAY) ObserveAutomaticUpdates()
     var pendingNodeCheck by remember { mutableStateOf<String?>(null) }
@@ -1410,6 +1411,12 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                                 Text("Android включит VPN сам после перезагрузки телефона.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
                                 QuietButton("Открыть настройки Android", onAlwaysOn, Modifier.fillMaxWidth().padding(bottom = 12.dp), primary = false)
                             }
+                            QuietDivider()
+                            QuietRow(
+                                "Подсказки по сайтам и приложениям", subtitle = "Предлагать открыть сайт или приложение мимо VPN или через VPN, если они не работают",
+                                leading = { QuietBadge { HelpGlyph(primary) } },
+                                trailing = { Switch(checked = profile.siteHintsEnabled, onCheckedChange = onSiteHints, modifier = Modifier.testTag("settings-site-hints").semantics { contentDescription = "Подсказки по сайтам и приложениям" }) },
+                            )
                             QuietDivider()
                             BatteryExemptionRow()
                             LaunchBehaviorRows()

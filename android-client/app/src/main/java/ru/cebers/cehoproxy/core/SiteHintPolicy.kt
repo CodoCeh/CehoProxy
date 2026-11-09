@@ -2,16 +2,19 @@ package ru.cebers.cehoproxy.core
 
 /** Decides whether a failing site may be offered for the exceptions list. */
 internal object SiteHintPolicy {
-    const val SNOOZE_MILLIS = 6L * 60 * 60 * 1000
+    const val SNOOZE_MILLIS = 7L * 24 * 60 * 60 * 1000
     const val MIN_GAP_MILLIS = 10L * 60 * 1000
     const val NEVER = Long.MAX_VALUE
 
     /** The offer makes sense only when the list of exceptions is what sends a site around the tunnel. */
     fun applies(onlySites: Boolean, listed: List<String>, site: String): Boolean {
         if (onlySites) return false
-        val known = listed.map(RoutingConfig::normalizeDomain)
-        return known.none { site == it || site.endsWith(".$it") }
+        return !isListed(listed, site)
     }
+
+    /** The site, its parent domain or one of its subdomains is already in the list: nothing to offer. */
+    fun isListed(listed: List<String>, site: String): Boolean =
+        listed.map(RoutingConfig::normalizeDomain).any { it.isNotEmpty() && (site == it || site.endsWith(".$it") || it.endsWith(".$site")) }
 
     /** An application can be sent around the tunnel only in the mode where the list holds the excluded applications. */
     fun appApplies(excludeSelectedApps: Boolean, listed: List<String>, packageName: String): Boolean =
@@ -27,11 +30,8 @@ internal object SiteHintPolicy {
     /** The offer makes sense when the site goes around the tunnel now and the tunnel has a server to carry it. */
     fun tunnelApplies(onlySites: Boolean, listed: List<String>, routed: Set<String>, hasNodes: Boolean, site: String): Boolean {
         if (!hasNodes) return false
-        val known = listed.map(RoutingConfig::normalizeDomain)
-        val covered = known.any { site == it || site.endsWith(".$it") }
-        val assigned = routed.map(RoutingConfig::normalizeDomain).any { site == it || site.endsWith(".$it") }
-        if (assigned) return false
-        return if (onlySites) !covered else true
+        if (isListed(listed, site) || isListed(routed.toList(), site)) return false
+        return true
     }
 
     /** Connection that closed without a single byte coming back from the site. */

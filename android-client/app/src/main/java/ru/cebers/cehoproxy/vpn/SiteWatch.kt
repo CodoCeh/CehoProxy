@@ -102,28 +102,34 @@ internal class SiteWatch(private val context: Context, private val directOpen: (
     private fun offer(site: String) {
         if (stopped || !directOpen()) return
         val profile = ProfileStore(context).read()
+        if (!profile.siteHintsEnabled) return
         if (!SiteHintPolicy.applies(profile.onlySites, profile.sites, site)) return
         val now = System.currentTimeMillis()
         if (!SiteHintPolicy.due(hints.snoozedUntil(site), hints.lastOffer(), now)) return
         if (!reachesDirect(site)) return
         hints.offered(site, now)
+        hints.offered(BypassOffer.hintKey(BypassOffer.Kind.TUNNEL, site), now)
         notifyOffer(context, BypassOffer.Kind.SITE, site, site)
     }
 
     private fun offerTunnel(site: String) {
         if (stopped || !directOpen()) return
         val profile = ProfileStore(context).read()
+        if (!profile.siteHintsEnabled) return
         if (!SiteHintPolicy.tunnelApplies(profile.onlySites, profile.sites, profile.siteNodeRoutes.keys, profile.nodes.isNotEmpty(), site)) return
         val key = BypassOffer.hintKey(BypassOffer.Kind.TUNNEL, site)
         val now = System.currentTimeMillis()
         if (!SiteHintPolicy.due(hints.snoozedUntil(key), hints.lastOffer(), now)) return
+        if (opensDirectly(site)) return
         hints.offered(key, now)
+        hints.offered(site, now)
         notifyOffer(context, BypassOffer.Kind.TUNNEL, site, site)
     }
 
     private fun offerApp(app: AppFailurePolicy.Failure) {
         if (stopped || !directOpen()) return
         val profile = ProfileStore(context).read()
+        if (!profile.siteHintsEnabled) return
         if (!SiteHintPolicy.appApplies(profile.excludeSelectedApps, profile.apps, app.packageName)) return
         val key = "app:${app.packageName}"
         val now = System.currentTimeMillis()
@@ -134,6 +140,25 @@ internal class SiteWatch(private val context: Context, private val directOpen: (
         }.getOrDefault(app.packageName)
         hints.offered(key, now)
         notifyOffer(context, BypassOffer.Kind.APP, app.packageName, label)
+    }
+
+    /** A site that answers a TLS handshake without the tunnel is not blocked: the failed connections were only cancelled ones. */
+    private fun opensDirectly(site: String): Boolean {
+        for (host in listOf(site, "www.$site")) {
+            try {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, 443), DIRECT_TIMEOUT_MILLIS)
+                    socket.soTimeout = DIRECT_TIMEOUT_MILLIS
+                    val tls = (javax.net.ssl.SSLSocketFactory.getDefault() as javax.net.ssl.SSLSocketFactory).createSocket(socket, host, 443, false) as javax.net.ssl.SSLSocket
+                    try { tls.startHandshake() } finally { runCatching { tls.close() } }
+                }
+                return true
+            } catch (_: javax.net.ssl.SSLException) {
+                return true
+            } catch (_: Exception) {
+            }
+        }
+        return false
     }
 
     private fun reachesDirect(site: String): Boolean = try {

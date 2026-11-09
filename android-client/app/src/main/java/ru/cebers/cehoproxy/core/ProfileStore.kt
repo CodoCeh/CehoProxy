@@ -15,6 +15,7 @@ data class ClientProfile(
     val importedConfig: String? = null,
     val excludeSelectedApps: Boolean = false,
     val expiryRemindersEnabled: Boolean = false,
+    val siteHintsEnabled: Boolean = true,
     val appNodeRoutes: Map<String, String> = emptyMap(),
     val siteNodeRoutes: Map<String, String> = emptyMap(),
     val autoRotationEnabled: Boolean = false,
@@ -58,7 +59,7 @@ object ProfileCodec {
             .put("directCountryCode", CountryRouting.normalize(profile.directCountryCode))
             .put("localDpiApps", JSONArray(LocalDpiPolicy.normalize(profile.localDpiApps)))
             .put("onlySites", profile.onlySites).put("config", profile.importedConfig ?: "")
-            .put("excludeSelectedApps", profile.excludeSelectedApps).put("expiryRemindersEnabled", profile.expiryRemindersEnabled)
+            .put("excludeSelectedApps", profile.excludeSelectedApps).put("expiryRemindersEnabled", profile.expiryRemindersEnabled).put("siteHintsEnabled", profile.siteHintsEnabled)
             .put("appNodeRoutes", JSONObject(profile.appNodeRoutes)).put("siteNodeRoutes", JSONObject(profile.siteNodeRoutes))
             .put("aiMode", profile.aiMode).put("autoRotationEnabled", profile.autoRotationEnabled).put("autoRotationIntervalSeconds", profile.autoRotationIntervalSeconds.coerceIn(60, 3600))
             .put("autoExcludedRouteIds", JSONArray(profile.autoExcludedRouteIds.distinct()))
@@ -101,6 +102,7 @@ object ProfileCodec {
             importedConfig = json.optString("config").takeIf(String::isNotBlank),
             excludeSelectedApps = json.optBoolean("excludeSelectedApps"),
             expiryRemindersEnabled = json.optBoolean("expiryRemindersEnabled"),
+            siteHintsEnabled = json.optBoolean("siteHintsEnabled", true),
             appNodeRoutes = json.objectMap("appNodeRoutes"),
             siteNodeRoutes = json.objectMap("siteNodeRoutes"),
             autoRotationEnabled = json.optBoolean("autoRotationEnabled"),
