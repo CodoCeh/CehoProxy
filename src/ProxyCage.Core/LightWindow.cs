@@ -53,6 +53,7 @@ public static class LightWindow
     {
         lock (Gate)
         {
+            if (_open is null || Exited(_open)) _open = FindRunning();
             if (_open is { } live && !Exited(live))
             {
                 if (Raise(live)) return true;
@@ -100,6 +101,43 @@ public static class LightWindow
 
     private static string Profile() =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CehoProxy", "light-profile");
+
+    /// <summary>
+    /// Окно Light могло быть открыто другим запуском (ярлыком, значком, командой): ищем браузер с нашим профилем,
+    /// иначе второй запуск открыл бы второе окно.
+    /// </summary>
+    private static Process? FindRunning()
+    {
+        var profile = Profile();
+        foreach (var name in new[] { "msedge", "chrome", "chromium", "chromium-browser", "brave", "brave-browser", "google-chrome", "microsoft-edge" })
+        {
+            Process[] processes;
+            try { processes = Process.GetProcessesByName(name); }
+            catch { continue; }
+            Process? found = null;
+            foreach (var process in processes)
+            {
+                if (found is null && CommandLineOf(process.Id) is { } line
+                    && line.Contains(profile, StringComparison.OrdinalIgnoreCase)
+                    && !line.Contains("--type=", StringComparison.Ordinal))
+                    found = process;
+                else process.Dispose();
+            }
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private static string? CommandLineOf(int pid)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows()) return WindowsProcessInfo.CommandLine(pid);
+            if (OperatingSystem.IsLinux()) return File.ReadAllText($"/proc/{pid}/cmdline").Replace('\0', ' ');
+        }
+        catch { }
+        return null;
+    }
 
     private static bool Exited(Process process)
     {
