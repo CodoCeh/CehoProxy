@@ -618,7 +618,7 @@ internal sealed class TrayItem : IDisposable
             case IdOff when TrayState.ShowsControls(_snapshot): Command(_link.TurnOffAsync); break;
             case IdSignIn: _ = Task.Run(SignInAsync); break;
             case IdLight:
-                if (_link.LightUrl is { } lightUrl) LightWindow.Open(_root, lightUrl);
+                if (_link.LightUrl is { } lightUrl) LightWindow.Open(lightUrl);
                 break;
             case IdPanel:
                 if (_link.Url is { } url) Os.OpenInBrowser(url);

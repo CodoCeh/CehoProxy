@@ -379,26 +379,23 @@ public sealed partial class WebServer
 
     private static readonly HttpClient SpeedHttp = new() { Timeout = TimeSpan.FromSeconds(3) };
 
+    private long _speedDown, _speedUp;
+    private long _speedAtTicks;
+    private int _speedBusy;
+
     private async Task HandleSpeedAsync(HttpListenerContext ctx, CehoConfig cfg)
     {
         long down = 0, up = 0;
         if (_state().Running)
         {
-            try
+            var age = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - Interlocked.Read(ref _speedAtTicks));
+            if (age > TimeSpan.FromMilliseconds(1500) && Interlocked.Exchange(ref _speedBusy, 1) == 0)
+                _ = Task.Run(() => SampleSpeedAsync(cfg.ClashApiPort));
+            if (age < TimeSpan.FromSeconds(5))
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                using var response = await SpeedHttp.GetAsync($"http://127.0.0.1:{cfg.ClashApiPort}/traffic",
-                    HttpCompletionOption.ResponseHeadersRead, cts.Token);
-                using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cts.Token));
-                var first = await reader.ReadLineAsync(cts.Token);
-                if (!string.IsNullOrWhiteSpace(first))
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(first);
-                    down = doc.RootElement.TryGetProperty("down", out var d) && d.TryGetInt64(out var dv) ? dv : 0;
-                    up = doc.RootElement.TryGetProperty("up", out var u) && u.TryGetInt64(out var uv) ? uv : 0;
-                }
+                down = Interlocked.Read(ref _speedDown);
+                up = Interlocked.Read(ref _speedUp);
             }
-            catch { }
         }
         var bytes = Encoding.UTF8.GetBytes($"{{\"down\":{down},\"up\":{up}}}");
         ctx.Response.ContentType = "application/json; charset=utf-8";
@@ -406,6 +403,27 @@ public sealed partial class WebServer
         ctx.Response.ContentLength64 = bytes.Length;
         await ctx.Response.OutputStream.WriteAsync(bytes);
         ctx.Response.Close();
+    }
+
+    private async Task SampleSpeedAsync(int clashPort)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            using var response = await SpeedHttp.GetAsync($"http://127.0.0.1:{clashPort}/traffic",
+                HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cts.Token));
+            var first = await reader.ReadLineAsync(cts.Token);
+            if (!string.IsNullOrWhiteSpace(first))
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(first);
+                Interlocked.Exchange(ref _speedDown, doc.RootElement.TryGetProperty("down", out var d) && d.TryGetInt64(out var dv) ? dv : 0);
+                Interlocked.Exchange(ref _speedUp, doc.RootElement.TryGetProperty("up", out var u) && u.TryGetInt64(out var uv) ? uv : 0);
+                Interlocked.Exchange(ref _speedAtTicks, DateTime.UtcNow.Ticks);
+            }
+        }
+        catch { }
+        finally { Interlocked.Exchange(ref _speedBusy, 0); }
     }
 
     private async Task HandleJobAsync(HttpListenerContext ctx)

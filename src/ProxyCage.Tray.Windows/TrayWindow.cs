@@ -313,7 +313,7 @@ internal sealed class TrayWindow : IDisposable
 
     private void OpenLight()
     {
-        if (_link.LightUrl is { } url) LightWindow.Open(_root, url);
+        if (_link.LightUrl is { } url) LightWindow.Open(url);
         else OpenPanel();
     }
 
