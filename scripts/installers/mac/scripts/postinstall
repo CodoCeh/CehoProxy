@@ -66,11 +66,19 @@ if [ ! -f "$ROOT/config.json" ] || ! grep -q '"SetupDone": *true' "$ROOT/config.
       [ -n "$ROW" ] && ARGS+=(--app "${ROW##* — }")
     done <<< "$PICKED"
   fi
-  [ -n "$LINK" ] && ARGS+=(--autostart)
+  ARGS+=(--autostart)
 
   "$BIN" "${ARGS[@]}" >>"$LOG" 2>&1
 fi
 
 PORT="$(awk '{print $1}' "$ROOT/panel.port" 2>/dev/null)"
+if ! curl -s -m 3 -o /dev/null "http://127.0.0.1:${PORT:-8899}/" 2>/dev/null; then
+  "$BIN" autostart on >>"$LOG" 2>&1
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    PORT="$(awk '{print $1}' "$ROOT/panel.port" 2>/dev/null)"
+    curl -s -m 2 -o /dev/null "http://127.0.0.1:${PORT:-8899}/" 2>/dev/null && break
+    sleep 1
+  done
+fi
 as_user open "http://127.0.0.1:${PORT:-8899}" >/dev/null 2>&1
 exit 0
