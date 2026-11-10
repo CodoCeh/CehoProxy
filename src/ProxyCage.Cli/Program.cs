@@ -2951,9 +2951,10 @@ if (cmd is "daemon" or "web")
         {
             await Task.Delay(1000);
             shuttingDown = true;
+            Log.Detach();
             StopTunnel();
             StopGuard();
-            Autostart.Purge();
+            if (Os.IsWindows) Autostart.Purge();
             TunCleanup.KillOurProcesses(guardConfigPath, _ => {});
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, _ => {});
             TunCleanup.KillOurProcesses(Installer.BinaryPath(Ceho.Root) + " daemon", _ => {});
@@ -3004,6 +3005,14 @@ if (cmd is "daemon" or "web")
                         Directory.Delete(Ceho.Root);
                 }
                 catch { }
+            }
+            // На macOS и Linux снятие службы завершает этот же процесс, поэтому оно последнее.
+            if (!Os.IsWindows)
+            {
+                foreach (var name in new[] { "engine.lock", "cehoproxy.log", "cehoproxy.log.1" })
+                    try { File.Delete(Path.Combine(Ceho.Root, name)); } catch { }
+                try { if (Directory.Exists(Ceho.Root) && Directory.GetFileSystemEntries(Ceho.Root).Length == 0) Directory.Delete(Ceho.Root); } catch { }
+                Autostart.PurgeFromInside();
             }
             Environment.Exit(0);
         });

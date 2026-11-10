@@ -88,6 +88,9 @@ public static class Log
         catch { }
     }
 
+    /// <summary>Перестать писать на диск: при удалении программы журнал не должен появляться снова.</summary>
+    public static void Detach() => _root = null;
+
     public static void Info(string message) => Write("info", _component, message);
 
     public static void Warn(string message) => Write("warn", _component, message);

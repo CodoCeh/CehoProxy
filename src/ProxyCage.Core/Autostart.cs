@@ -86,6 +86,26 @@ public static class Autostart
         }
     }
 
+    /// <summary>Снять службу из неё самой: сначала файлы автозапуска, остановка последней, потому что она завершает этот процесс.</summary>
+    public static void PurgeFromInside()
+    {
+        if (Os.IsWindows) { Purge(); return; }
+        try
+        {
+            if (Os.IsLinux)
+            {
+                Os.Run("systemctl", $"disable {ServiceName}");
+                if (File.Exists(UnitPath)) File.Delete(UnitPath);
+                if (Directory.Exists(DropInDir)) Directory.Delete(DropInDir, recursive: true);
+                Os.Run("systemctl", "daemon-reload");
+            }
+            else if (File.Exists(PlistPath)) File.Delete(PlistPath);
+        }
+        catch { }
+        if (Os.IsLinux) Os.Run("systemctl", $"stop {ServiceName}");
+        else Os.Run("launchctl", $"bootout system/{LaunchdLabel}");
+    }
+
     public static void Purge()
     {
         StopService();

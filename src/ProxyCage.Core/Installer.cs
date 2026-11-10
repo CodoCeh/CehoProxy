@@ -506,6 +506,15 @@ public static class Installer
                 RemoveUserAlias(Path.Combine(home, "bin", "chp"), "/usr/local/bin/chp", root);
             foreach (var link in new[] { "/usr/local/bin/chp", "/usr/local/bin/cehoproxy" })
                 RemoveOwnedAlias(link, root);
+            RemoveInstallerCopy(StagedBinary, log);
+            if (File.Exists("/usr/local/bin/chp") && new FileInfo("/usr/local/bin/chp").LinkTarget is { } chpTarget
+                && ResolveLinkTargetPath("/usr/local/bin/chp", chpTarget) == StagedBinary && !File.Exists(StagedBinary))
+                try { File.Delete("/usr/local/bin/chp"); } catch { }
+            if (Os.IsMac)
+            {
+                Os.Run("pkgutil", "--forget ru.codoceh.cehoproxy");
+                try { File.Delete("/var/log/cehoproxy-install.log"); } catch { }
+            }
         }
 
         // На Windows chp.cmd читает сама команда, которая сейчас удаляет программу: убрать его на ходу нельзя
@@ -517,6 +526,23 @@ public static class Installer
                 if (File.Exists(f)) File.Delete(f);
             }
             catch { }
+    }
+
+    private const string StagedBinary = "/usr/local/bin/cehoproxy";
+
+    /// <summary>Установщик macOS и install.sh кладут в /usr/local/bin обычную копию программы, а не ссылку.</summary>
+    internal static void RemoveInstallerCopy(string path, Action<string> log)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists || info.LinkTarget is not null) return;
+            var (code, output) = Os.Run(path, "version", 10000);
+            if (code != 0 || !output.Contains("CehoProxy", StringComparison.OrdinalIgnoreCase)) return;
+            File.Delete(path);
+            log($"удалён: {path}");
+        }
+        catch { }
     }
 
     internal static void RemoveOwnedAlias(string link, string root)
@@ -638,7 +664,7 @@ public static class Installer
                      ".write-probe", ".write-test",
                      ".ceho-private-*", "config.import.json", "controller.lock", "restart.request", "starting",
                      "update-helper.started", "update-was-protected", "keep-engine", "stopped-by-user", "cehoproxy-support.txt",
-                     "guard.json", "cehoproxy.pid", "panel.port",
+                     "guard.json", "cehoproxy.pid", "panel.port", "engine.lock", "node-country-cache.json*", "sub-*.txt",
                      "cehoproxy-tray.exe", "cehoproxy-tray.exe.old", "cehoproxy-tray.exe.new", "debug.log",
                      "rolled-back-*", "LICENSE", "README.md", "THIRD-PARTY.md",
                  })
@@ -650,7 +676,7 @@ public static class Installer
                 try { File.Delete(file); } catch { }
         }
 
-        foreach (var name in new[] { "geo-probes", "geoip", "engine-tmp", "engine-new" })
+        foreach (var name in new[] { "geo-probes", "geoip", "engine-tmp", "engine-new", "country-rules" })
         {
             var path = Path.Combine(root, name);
             try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch { }
