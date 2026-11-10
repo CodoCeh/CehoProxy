@@ -29,6 +29,22 @@ public static class WhatsNew
                 "Проверка стран больше не задерживает подключение: перезапуск и переподключение после смены сети занимают секунды, а не минуты.",
                 "Country checks no longer delay connecting: restart and reconnect after a network change take seconds, not minutes."),
         }),
+        new("1.2.186", new[]
+        {
+            new Item("Ваша страна", "Your country",
+                "На вкладке «Программы» можно выбрать свою страну, как в приложении для Android: её сайты открываются напрямую, остальное идёт через VPN.",
+                "On the Apps tab you can pick your country, as in the Android app: its sites open directly, everything else uses the VPN."),
+            new Item("Кнопка обновления", "Update button",
+                "Когда выходит новая версия, в шапке рядом с переключателем «Простой / Для профи» появляется кнопка «Обновить до …».",
+                "When a new version is out, an Update to … button appears in the header next to the Simple / Pro switch."),
+            new Item("Программа, которой ещё нет", "An app that is not installed yet",
+                "Программу можно добавить по полному пути заранее: правило начнёт работать, когда она появится.",
+                "You can add an app by its full path in advance: the rule starts working once the app is there."),
+            new Item("Подписка с телефона без приложения", "Subscription from a phone without the app",
+                "QR-код приёма открывает в браузере телефона страницу, где можно вставить ссылку на подписку. Подходит и для iPhone. Понимает ссылки happ://add и karing://install-config.",
+                "The receive QR code opens a page in the phone browser where you can paste a subscription link. Works on iPhone too. Understands happ://add and karing://install-config links.",
+                "subs"),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);

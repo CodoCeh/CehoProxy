@@ -54,6 +54,7 @@ public sealed partial class WebServer
     public Func<bool, DateTime?, IStageReport, Task<string>>? OnRestoreVerified { get; set; }
 
     public Func<bool, IStageReport, Task<string>>? OnUpdate { get; set; }
+    public bool WatchUpdates { get; set; }
 
     public Func<Task<string?>>? OnElevate { get; set; }
 
@@ -1868,7 +1869,7 @@ public sealed partial class WebServer
         sb.Append("<header>");
         AppendProductLogo(sb);
         sb.Append("<span class=mark>Ceho<span>Proxy</span></span>");
-        UpdateWatch.RefreshInBackground(cfg.UpdateRepo);
+        if (WatchUpdates) UpdateWatch.RefreshInBackground(cfg.UpdateRepo);
         if (UpdateWatch.Available is { } newer && job?.Kind != JobUpdate)
             sb.Append("<form class=upd-pill-form method=post action=/update><input type=hidden name=tab value=\"").Append(E(tab))
               .Append("\"><input type=hidden name=install value=1><button type=submit class=upd-pill title=\"")

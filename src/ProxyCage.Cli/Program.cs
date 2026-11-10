@@ -2879,6 +2879,7 @@ if (cmd is "daemon" or "web")
     }
 
     web.OnUpdate = UpdateAsync;
+    web.WatchUpdates = true;
 
     web.OnElevate = () =>
     {
