@@ -203,7 +203,7 @@ public static class TrayInstaller
         try { if (Directory.Exists(unpacked)) Directory.Delete(unpacked, true); } catch { }
         Directory.CreateDirectory(unpacked);
         var (code, output) = Os.Run("ditto", $"-x -k \"{download}\" \"{unpacked}\"");
-        var app = Path.Combine(unpacked, Path.GetFileName(Installer.TrayAppPath));
+        var app = Path.Combine(unpacked, Installer.TrayBundleName);
         if (code != 0 || !Directory.Exists(app)) throw new InvalidOperationException(output.Trim());
 
         var user = Os.Run("stat", "-f %Su /dev/console").Output.Trim();
@@ -212,6 +212,7 @@ public static class TrayInstaller
         Os.Run("pkill", "-f CehoProxyTray");
 
         if (Directory.Exists(Installer.TrayAppPath)) Directory.Delete(Installer.TrayAppPath, true);
+        try { if (Directory.Exists(Installer.LegacyTrayAppPath)) Directory.Delete(Installer.LegacyTrayAppPath, true); } catch { }
         Directory.Move(app, Installer.TrayAppPath);
         try { Directory.Delete(unpacked, true); } catch { }
         Os.Run("xattr", $"-dr com.apple.quarantine \"{Installer.TrayAppPath}\"");

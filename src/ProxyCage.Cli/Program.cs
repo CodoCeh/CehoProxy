@@ -108,10 +108,11 @@ if (cmd == "install")
     // Обновление не должно оставлять машину без защиты: что работало — включаем обратно.
     // irm|iex / install.ps1 гасит процесс ДО «install --no-setup», поэтому WasRunning
     // часто false — тогда поднимаем демон, если есть сохранённые настройки.
+    var offerSaved = SavedSettings.Exists(Ceho.Root) && !File.Exists(Ceho.ConfigPath);
     var resume = previous.WasRunning
         || previous.AutostartWasOn
         || (args.Contains("--no-setup") && File.Exists(Ceho.ConfigPath));
-    if (previous.AutostartWasOn)
+    if (previous.AutostartWasOn || offerSaved)
     {
         var err = Autostart.Enable(Installer.BinaryPath(Ceho.Root), Ceho.Root);
         Console.WriteLine("  " + (err ?? Strings.T(cfg0.Language, "inst_autostart_back")));
@@ -1570,6 +1571,7 @@ switch (cmd)
     case "uninstal":
     {
         var cfg = CehoConfig.Load(Ceho.ConfigPath);
+        var keep = args.Contains("--keep-settings");
         if (!args.Contains("--yes"))
         {
             if (Assistant.Interactive && Cli.AskYes("  " + Cli.S(cfg, "uninstall_confirm_ask"), false))
@@ -1585,6 +1587,11 @@ switch (cmd)
             }
         }
 
+        if (keep)
+        {
+            try { SavedSettings.Save(Ceho.Root); }
+            catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
+        }
         Autostart.Purge();
         if (DaemonControl.RequestStop(Ceho.Root))
             await Task.Delay(TimeSpan.FromSeconds(8));
@@ -1626,7 +1633,8 @@ switch (cmd)
                 catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
         }
 
-        Console.WriteLine(Cli.S(cfg, "uninstall_done"));
+        Installer.FinishUninstall(Ceho.Root, keep, Console.WriteLine);
+        Console.WriteLine(Cli.S(cfg, keep ? "uninstall_done_keep" : "uninstall_done"));
 
         if (Os.IsWindows)
         {
@@ -1634,7 +1642,7 @@ switch (cmd)
             {
                 var binary = Installer.BinaryPath(Ceho.Root);
                 var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe",
-                    $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & del /f /q \"{Path.Combine(Ceho.Root, "chp.cmd")}\" & rmdir /q \"{Ceho.Root}\"")
+                    $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & del /f /q \"{Path.Combine(Ceho.Root, "chp.cmd")}\" {(keep ? "" : SavedSettings.IsOwnRoot(Ceho.Root) ? $" & rmdir /s /q \"{Ceho.Root}\"" : $" & rmdir /q \"{Ceho.Root}\"")}")
                 {
                     CreateNoWindow = true,
                     UseShellExecute = false,
@@ -2945,13 +2953,15 @@ if (cmd is "daemon" or "web")
         return await Ceho.RefreshNodeCountriesAsync(nodes, report, cfg.Language);
     };
 
-    web.OnUninstall = () =>
+    web.OnUninstall = keep =>
     {
         _ = Task.Run(async () =>
         {
             await Task.Delay(1000);
             shuttingDown = true;
             Log.Detach();
+            EngineMutex.Uninstalling = true;
+            if (keep) try { SavedSettings.Save(Ceho.Root); } catch { }
             StopTunnel();
             StopGuard();
             if (Os.IsWindows) Autostart.Purge();
@@ -2978,13 +2988,14 @@ if (cmd is "daemon" or "web")
                 if (File.Exists(file))
                     try { File.Delete(file); } catch { }
             }
+            Installer.FinishUninstall(Ceho.Root, keep, _ => {});
             if (Os.IsWindows)
             {
                 try
                 {
                     var binary = Installer.BinaryPath(Ceho.Root);
                     var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe",
-                        $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & del /f /q \"{Path.Combine(Ceho.Root, "chp.cmd")}\" & rmdir /q \"{Ceho.Root}\"")
+                        $"/c ping 127.0.0.1 -n 3 >nul & del /f /q \"{binary}\" & del /f /q \"{Path.Combine(Ceho.Root, "chp.cmd")}\" {(keep ? "" : SavedSettings.IsOwnRoot(Ceho.Root) ? $" & rmdir /s /q \"{Ceho.Root}\"" : $" & rmdir /q \"{Ceho.Root}\"")}")
                     {
                         CreateNoWindow = true,
                         UseShellExecute = false,
@@ -2997,26 +3008,12 @@ if (cmd is "daemon" or "web")
             }
             else
             {
-                try
-                {
-                    var self = Installer.BinaryPath(Ceho.Root);
-                    if (File.Exists(self)) File.Delete(self);
-                    if (Directory.Exists(Ceho.Root) && Directory.GetFileSystemEntries(Ceho.Root).Length == 0)
-                        Directory.Delete(Ceho.Root);
-                }
-                catch { }
-            }
-            // На macOS и Linux снятие службы завершает этот же процесс, поэтому оно последнее.
-            if (!Os.IsWindows)
-            {
-                foreach (var name in new[] { "engine.lock", "cehoproxy.log", "cehoproxy.log.1" })
-                    try { File.Delete(Path.Combine(Ceho.Root, name)); } catch { }
-                try { if (Directory.Exists(Ceho.Root) && Directory.GetFileSystemEntries(Ceho.Root).Length == 0) Directory.Delete(Ceho.Root); } catch { }
+                // На macOS и Linux снятие службы завершает этот же процесс, поэтому оно последнее.
                 Autostart.PurgeFromInside();
             }
             Environment.Exit(0);
         });
-        return Task.FromResult(Strings.T(cfg.Language, "uninstall_done"));
+        return Task.FromResult(Strings.T(cfg.Language, keep ? "uninstall_done_keep" : "uninstall_done"));
     };
 
     web.OnApiCommand = async argv =>

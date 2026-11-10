@@ -338,7 +338,12 @@ public static class Installer
         var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
         if (!string.IsNullOrWhiteSpace(sudoUser) && sudoUser != "root")
             return HomeOf(sudoUser);
-        if (Os.IsElevated()) return null;
+        if (Os.IsElevated())
+        {
+            if (!Os.IsMac) return null;
+            var console = Os.Run("stat", "-f %Su /dev/console").Output.Trim();
+            return console.Length > 0 && console != "root" ? HomeOf(console) : null;
+        }
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return string.IsNullOrEmpty(home) ? null : home;
     }
@@ -391,7 +396,11 @@ public static class Installer
 
     public const string TrayLaunchAgentLabel = "ru.codoceh.cehoproxy.tray";
 
-    public const string TrayAppPath = "/Applications/CehoProxy Tray.app";
+    public const string TrayAppPath = "/Applications/CehoProxy.app";
+
+    public const string TrayBundleName = "CehoProxy Tray.app";
+
+    public const string LegacyTrayAppPath = "/Applications/" + TrayBundleName;
 
     public const string TrayWindowsFileName = "cehoproxy-tray.exe";
 
@@ -448,8 +457,9 @@ public static class Installer
             }
             catch { }
 
-        try { if (Directory.Exists(TrayAppPath)) Directory.Delete(TrayAppPath, true); }
-        catch { }
+        foreach (var app in new[] { TrayAppPath, LegacyTrayAppPath })
+            try { if (Directory.Exists(app)) Directory.Delete(app, true); }
+            catch { }
     }
 
     public static void Remove(string root, Action<string> log, string lang = "ru")
@@ -470,8 +480,11 @@ public static class Installer
                     try { File.Delete(leftover); }
                     catch { DeleteAtReboot(leftover, log, lang); }
                 }
-                try { Directory.Delete(root); }
-                catch { DeleteAtReboot(root, log, lang); }
+                if (!SavedSettings.Exists(root))
+                {
+                    try { Directory.Delete(root); }
+                    catch { DeleteAtReboot(root, log, lang); }
+                }
             }
             catch { }
 
@@ -529,6 +542,59 @@ public static class Installer
     }
 
     private const string StagedBinary = "/usr/local/bin/cehoproxy";
+
+    /// <summary>
+    /// Последний шаг удаления на macOS и Linux. Полное удаление убирает папку программы целиком
+    /// (только если это наша папка CehoProxy) и данные значка в ~/Library; с сохранением остаются лишь сохранённые настройки.
+    /// </summary>
+    public static void FinishUninstall(string root, bool keep, Action<string> log)
+    {
+        if (!keep)
+        {
+            SavedSettings.Discard(root);
+            if (Os.IsMac) RemoveMacUserData(log);
+        }
+        if (Os.IsWindows || !Directory.Exists(root)) return;
+        try { File.Delete(BinaryPath(root)); } catch { }
+        if (SavedSettings.IsOwnRoot(root))
+        {
+            foreach (var entry in Directory.GetFileSystemEntries(root))
+            {
+                if (keep && Path.GetFileName(entry) == SavedSettings.FolderName) continue;
+                try
+                {
+                    if (Directory.Exists(entry) && new DirectoryInfo(entry).LinkTarget is null) Directory.Delete(entry, recursive: true);
+                    else File.Delete(entry);
+                }
+                catch (Exception ex) { log($"не удалось удалить {entry}: {ex.Message}"); }
+            }
+        }
+        try { if (Directory.GetFileSystemEntries(root).Length == 0) Directory.Delete(root); } catch { }
+    }
+
+    private static void RemoveMacUserData(Action<string> log)
+    {
+        var home = InvokingUserHome();
+        if (home is null) return;
+        var id = TrayLaunchAgentLabel;
+        foreach (var path in new[]
+                 {
+                     Path.Combine(home, "Library", "Preferences", id + ".plist"),
+                     Path.Combine(home, "Library", "WebKit", id),
+                     Path.Combine(home, "Library", "Caches", id),
+                     Path.Combine(home, "Library", "HTTPStorages", id),
+                     Path.Combine(home, "Library", "HTTPStorages", id + ".binarycookies"),
+                     Path.Combine(home, "Library", "Saved Application State", id + ".savedState"),
+                 })
+            try
+            {
+                if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                else if (File.Exists(path)) File.Delete(path);
+                else continue;
+                log($"удалён: {path}");
+            }
+            catch { }
+    }
 
     /// <summary>Установщик macOS и install.sh кладут в /usr/local/bin обычную копию программы, а не ссылку.</summary>
     internal static void RemoveInstallerCopy(string path, Action<string> log)

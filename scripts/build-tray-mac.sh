@@ -23,7 +23,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>CehoProxy Tray</string>
+  <key>CFBundleName</key><string>CehoProxy</string>
   <key>CFBundleDisplayName</key><string>CehoProxy</string>
   <key>CFBundleIdentifier</key><string>ru.codoceh.cehoproxy.tray</string>
   <key>CFBundleExecutable</key><string>CehoProxyTray</string>

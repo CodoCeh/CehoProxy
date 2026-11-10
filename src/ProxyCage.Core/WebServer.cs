@@ -61,7 +61,7 @@ public sealed partial class WebServer
     public Func<IStageReport, Task<string>>? OnEngineUpdate { get; set; }
 
     public Func<IStageReport, Task<string>>? OnCheckSubs { get; set; }
-    public Func<Task<string>>? OnUninstall { get; set; }
+    public Func<bool, Task<string>>? OnUninstall { get; set; }
 
     /// <summary>Спросить у выхода страну и адрес: нужно доктору, чтобы убедиться, что защита работает.</summary>
     public Func<Task<(string? Country, string? Ip)>>? OnExit { get; set; }
@@ -1109,6 +1109,17 @@ public sealed partial class WebServer
                     return (S("country_set", app.Label, nodes[0].CountryName ?? code), false, ApplyOrDefer(cfg, restartIfRunning: true));
                 }
 
+                case "/saved/restore":
+                {
+                    SavedSettings.Restore(Root);
+                    var restored = CehoConfig.Load(_configPath);
+                    return (S("saved_restored"), false, ApplyOrDefer(restored, restartIfRunning: true));
+                }
+
+                case "/saved/discard":
+                    SavedSettings.Discard(Root);
+                    return (S("saved_discarded"), false, null);
+
                 case "/home-country":
                 {
                     var code = CountryRules.Normalize(f.GetValueOrDefault("country", ""));
@@ -1628,7 +1639,7 @@ public sealed partial class WebServer
                 {
                     if (OnUninstall is not null)
                     {
-                        var msg = await OnUninstall();
+                        var msg = await OnUninstall(f.GetValueOrDefault("keep") == "1");
                         return (msg, false, null);
                     }
                     return ("no control", true, null);
@@ -2153,6 +2164,12 @@ public sealed partial class WebServer
         }
         if (leaks.Count > 0) AppendLeakFix(sb, cfg, leaks.Select(a => a.App), "state");
         sb.Append("</section>");
+        if (SavedSettings.Summary(Root) is { } saved)
+            sb.Append("<section class=\"flash\"><b>").Append(E(S("saved_found_title", []))).Append("</b> ")
+              .Append(E(S("saved_found_text", new object[] { saved.Subscriptions, saved.Apps })))
+              .Append("<div class=row><form method=post action=/saved/restore><input type=hidden name=tab value=state><button>")
+              .Append(E(S("saved_restore", []))).Append("</button></form><form method=post action=/saved/discard><input type=hidden name=tab value=state><button class=ghost>")
+              .Append(E(S("saved_discard", []))).Append("</button></form></div></section>");
         if (step is 1 or 2) RenderWizard(sb, cfg, st, step, S);
         if (_lightRequest) LightUi.Speed(sb, cfg.Language == "ru");
         RenderLiveApps(sb, cfg, st, guarded, S);
@@ -4041,11 +4058,15 @@ public sealed partial class WebServer
 
         sb.Append("<section><h2>").Append(E(S("uninstall_title", []))).Append("</h2>");
         sb.Append("<p class=hint>").Append(E(S("uninstall_hint", []))).Append("</p>");
-        sb.Append("<form class=row method=post action=/uninstall onsubmit=\"return confirm('")
+        sb.Append("<div class=row><form method=post action=/uninstall onsubmit=\"return confirm('")
+          .Append(E(S("uninstall_keep_confirm_js", [])))
+          .Append("');\"><input type=hidden name=tab value=").Append(tab).Append("><input type=hidden name=keep value=1>")
+          .Append("<button class=ghost>").Append(E(S("btn_uninstall_keep", [])))
+          .Append("</button></form><form method=post action=/uninstall onsubmit=\"return confirm('")
           .Append(E(S("uninstall_confirm_js", [])))
           .Append("');\"><input type=hidden name=tab value=").Append(tab).Append(">")
           .Append("<button class=danger>").Append(E(S("btn_uninstall", [])))
-          .Append("</button></form></section>");
+          .Append("</button></form></div></section>");
     }
 
     private static void AppendTransferParts(StringBuilder sb, Func<string, object[], string> S)

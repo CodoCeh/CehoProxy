@@ -127,14 +127,14 @@ Filename: "{app}\cehoproxy.exe"; Parameters: "install --no-setup --with-engine";
 Filename: "{app}\cehoproxy.exe"; Parameters: "{code:SetupParams}"; \
   StatusMsg: "{cm:StatusSetup}"; Flags: runhidden waituntilterminated; Check: HasSetupChoices
 Filename: "{app}\cehoproxy.exe"; Parameters: "open"; \
-  Description: "{cm:RunPanel}"; Flags: postinstall skipifsilent nowait; Check: HasSetupChoices
+  Description: "{cm:RunPanel}"; Flags: postinstall skipifsilent nowait; Check: HasSetupChoices or HasSavedSettings
 Filename: "{cmd}"; Parameters: "/k ""{app}\cehoproxy.exe"" setup"; \
-  Description: "{cm:RunSetup}"; Flags: postinstall skipifsilent; Check: not HasSetupChoices
+  Description: "{cm:RunSetup}"; Flags: postinstall skipifsilent; Check: not (HasSetupChoices or HasSavedSettings)
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM cehoproxy-tray.exe"; \
   Flags: runhidden waituntilterminated; RunOnceId: "cehoproxy_tray_stop"
-Filename: "{app}\cehoproxy.exe"; Parameters: "uninstall --yes"; \
+Filename: "{app}\cehoproxy.exe"; Parameters: "{code:UninstallArgs}"; \
   Flags: runhidden waituntilterminated; RunOnceId: "cehoproxy_cleanup"
 
 [UninstallDelete]
@@ -192,6 +192,7 @@ Type: files; Name: "{app}\.write-test"
 Type: filesandordirs; Name: "{app}\geo-probes"
 Type: filesandordirs; Name: "{app}\geoip"
 Type: filesandordirs; Name: "{app}\engine-tmp"
+Type: filesandordirs; Name: "{app}\country-rules"
 Type: dirifempty; Name: "{app}"
 
 [Code]
@@ -369,6 +370,11 @@ begin
     end;
 end;
 
+function HasSavedSettings: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\saved-settings\config.json'));
+end;
+
 function HasSetupChoices: Boolean;
 begin
   if WizardSilent then
@@ -443,11 +449,33 @@ end;
 // Сам деинсталлятор удалить себя не может: он в этот момент работает. Windows умеет
 // удалить файл при следующей перезагрузке — просим её об этом, иначе после «полного
 // удаления» в папке навсегда остаётся четырёхмегабайтный файл. Поймано живьём.
+var
+  KeepSettings: Boolean;
+
+function InitializeUninstall(): Boolean;
+begin
+  KeepSettings := False;
+  if not UninstallSilent then
+    KeepSettings := MsgBox('Сохранить подписки и программы CehoProxy для следующей установки?' + #13#10#13#10 +
+      'Да — удалить CehoProxy, но оставить настройки: новая установка предложит их вернуть.' + #13#10 +
+      'Нет — удалить всё полностью.', mbConfirmation, MB_YESNO) = IDYES;
+  Result := True;
+end;
+
+function UninstallArgs(Param: String): String;
+begin
+  if KeepSettings then
+    Result := 'uninstall --yes --keep-settings'
+  else
+    Result := 'uninstall --yes';
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
   begin
     RestartReplace(ExpandConstant('{uninstallexe}'), '');
-    RestartReplace(ExpandConstant('{app}'), '');
+    if not KeepSettings then
+      RestartReplace(ExpandConstant('{app}'), '');
   end;
 end;

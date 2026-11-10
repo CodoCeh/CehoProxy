@@ -4,7 +4,8 @@ set -eu
 
 FROM="${1:-$(dirname "$0")}"
 APP_SRC="$FROM/CehoProxy Tray.app"
-APP="/Applications/CehoProxy Tray.app"
+APP="/Applications/CehoProxy.app"
+LEGACY_APP="/Applications/CehoProxy Tray.app"
 LABEL=ru.codoceh.cehoproxy.tray
 
 [ "$(uname -s)" = "Darwin" ] || exit 0
@@ -24,7 +25,7 @@ USER_HOME="$(dscl . -read "/Users/${USER_NAME}" NFSHomeDirectory 2>/dev/null | a
 launchctl bootout "gui/${UID_NUM}/${LABEL}" >/dev/null 2>&1 || true
 pkill -f CehoProxyTray >/dev/null 2>&1 || true
 
-rm -rf "$APP"
+rm -rf "$APP" "$LEGACY_APP"
 cp -R "$APP_SRC" "$APP"
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 chown -R "$USER_NAME" "$APP" 2>/dev/null || true

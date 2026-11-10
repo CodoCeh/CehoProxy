@@ -46,8 +46,12 @@ public sealed class EngineMutex : IDisposable
     /// На macOS и Linux именованный Mutex .NET живёт в /tmp/.dotnet по сеансам и ломается,
     /// когда папку сеанса создал другой пользователь. Блокировка файла в папке программы общая для всех.
     /// </summary>
+    /// <summary>Во время удаления программы замок не создаётся заново: папка программы должна остаться пустой.</summary>
+    public static bool Uninstalling { get; set; }
+
     private static EngineMutex AcquireFile(string root)
     {
+        if (Uninstalling) return new EngineMutex((FileStream?)null);
         var dir = string.IsNullOrEmpty(root) ? Path.GetTempPath() : root;
         try { Directory.CreateDirectory(dir); }
         catch (UnauthorizedAccessException) { return new EngineMutex((FileStream?)null); }

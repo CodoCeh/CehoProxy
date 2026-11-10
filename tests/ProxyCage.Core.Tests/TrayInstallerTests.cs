@@ -4,6 +4,13 @@ namespace ProxyCage.Core.Tests;
 
 public class TrayInstallerTests
 {
+    private static string Repo()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(dir, "assets", "cehoproxy.png"))) dir = Path.GetDirectoryName(dir)!;
+        return dir;
+    }
+
     [Theory]
     [InlineData(OsKind.Windows, Architecture.X64, "cehoproxy-tray-win-x64.exe")]
     [InlineData(OsKind.Mac, Architecture.Arm64, "cehoproxy-tray-osx-arm64.zip")]
@@ -21,6 +28,19 @@ public class TrayInstallerTests
         Assert.Equal(
             "https://github.com/CodoCeh/CehoProxy/releases/download/v1.2.77/cehoproxy-tray-linux-x64",
             TrayInstaller.DownloadUrl("CodoCeh/CehoProxy", "1.2.77", "cehoproxy-tray-linux-x64"));
+    }
+
+    [Fact]
+    public void Mac_icon_is_installed_as_CehoProxy_app()
+    {
+        Assert.Equal("/Applications/CehoProxy.app", Installer.TrayAppPath);
+        Assert.Equal("/Applications/CehoProxy Tray.app", Installer.LegacyTrayAppPath);
+        Assert.Contains("<string>/Applications/CehoProxy.app/Contents/MacOS/CehoProxyTray</string>", TrayInstaller.MacLaunchAgent());
+        var script = File.ReadAllText(Path.Combine(Repo(), "scripts", "install-tray-mac.sh"));
+        Assert.Contains("APP=\"/Applications/CehoProxy.app\"", script);
+        Assert.Contains("rm -rf \"$APP\" \"$LEGACY_APP\"", script);
+        Assert.Contains("<key>CFBundleName</key><string>CehoProxy</string>",
+            File.ReadAllText(Path.Combine(Repo(), "scripts", "build-tray-mac.sh")));
     }
 
     [Fact]

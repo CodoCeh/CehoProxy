@@ -1328,17 +1328,32 @@ public static class Strings
             "Удаление CehoProxy с компьютера",
             "Uninstall CehoProxy from computer"),
         ["uninstall_hint"] = new(
-            "Полностью останавливает защиту, снимает автозапуск и удаляет настройки, движок sing-box и команду chp.",
-            "Completely stops protection, disables autostart, and removes settings, the sing-box engine, and the chp command."),
+            "Два варианта. «Удалить полностью» убирает всё: защиту, автозапуск, настройки, подписки, движок и команду chp, на компьютере ничего не остаётся. «Удалить, сохранив настройки» убирает программу, а подписки и программы оставляет: после новой установки CehoProxy предложит их вернуть.",
+            "Two options. Uninstall completely removes everything: protection, autostart, settings, subscriptions, the engine and the chp command; nothing stays on the computer. Uninstall and keep settings removes the program but keeps subscriptions and apps: after a new install CehoProxy offers to bring them back."),
         ["btn_uninstall"] = new(
-            "Удалить CehoProxy с ПК",
-            "Uninstall CehoProxy from PC"),
+            "Удалить полностью",
+            "Uninstall completely"),
+        ["btn_uninstall_keep"] = new(
+            "Удалить, сохранив настройки",
+            "Uninstall and keep settings"),
+        ["uninstall_keep_confirm_js"] = new(
+            "Удалить CehoProxy, но сохранить подписки и программы для следующей установки?",
+            "Uninstall CehoProxy but keep subscriptions and apps for the next install?"),
+        ["saved_found_title"] = new("Найдены настройки прошлой установки", "Settings from a previous install found"),
+        ["saved_found_text"] = new("Подписок: {0}, программ: {1}. Вернуть их?", "Subscriptions: {0}, apps: {1}. Bring them back?"),
+        ["saved_restore"] = new("Вернуть настройки", "Restore settings"),
+        ["saved_discard"] = new("Начать заново", "Start fresh"),
+        ["saved_restored"] = new("Прежние настройки возвращены.", "Previous settings restored."),
+        ["saved_discarded"] = new("Сохранённые настройки удалены.", "Saved settings deleted."),
         ["uninstall_confirm_js"] = new(
             "Вы действительно хотите полностью удалить CehoProxy с компьютера?",
             "Are you sure you want to completely uninstall CehoProxy from this computer?"),
         ["uninstall_done"] = new(
-            "Удалено: автозапуск, защита, настройки, подписки, правила, движок и короткая команда. Остался только файл самой программы — удалите его, когда он больше не нужен.",
-            "Removed: autostart, protection, settings, subscriptions, rules, the engine and the short command. Only the program file itself remains; delete it when you no longer need it."),
+            "CehoProxy удалён полностью: автозапуск, защита, настройки, подписки, движок и команда chp.",
+            "CehoProxy is fully removed: autostart, protection, settings, subscriptions, the engine and the chp command."),
+        ["uninstall_done_keep"] = new(
+            "CehoProxy удалён. Подписки и программы сохранены: после новой установки их можно будет вернуть.",
+            "CehoProxy is removed. Subscriptions and apps are kept: you can bring them back after a new install."),
         ["timeout_label"] = new(
             "Таймаут ожидания (сек)",
             "Wait timeout (sec)"),
