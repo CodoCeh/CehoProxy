@@ -344,6 +344,7 @@ public static class LightUi
       function open(){if(dlg.open)return;if(dlg.showModal)dlg.showModal();else dlg.setAttribute('open','');say('');area.focus()}
       function close(){stopCam();if(dlg.close)dlg.close();else dlg.removeAttribute('open')}
       if(plus)plus.addEventListener('click',open);
+      if(location.hash==='#add'){history.replaceState(null,'',location.pathname+location.search);open()}
       $('ls-close').addEventListener('click',close);
       dlg.addEventListener('close',stopCam);
       area.addEventListener('input',function(){btn.disabled=!area.value.trim()});

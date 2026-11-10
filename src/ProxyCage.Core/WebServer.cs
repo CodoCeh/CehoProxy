@@ -150,7 +150,7 @@ public sealed partial class WebServer
         {
             ctx.Response.Headers.Add("Set-Cookie", $"{SkinCookie}=light; Path=/; Max-Age=31536000; SameSite=Strict");
             ctx.Response.StatusCode = 302;
-            ctx.Response.Headers["Location"] = "/";
+            ctx.Response.Headers["Location"] = ctx.Request.QueryString["add"] == "1" ? "/#add" : "/";
             ctx.Response.Close();
             return;
         }

@@ -24,51 +24,10 @@ case "$(defaults read /Library/Preferences/.GlobalPreferences AppleLanguages 2>/
   *) LANG_CODE=en ;;
 esac
 
-if [ "$LANG_CODE" = ru ]; then
-  T_LINK="Вставьте ссылку на подписку от вашего VPN-сервиса. Её можно пропустить и добавить позже в панели."
-  T_SKIP="Пропустить"; T_NEXT="Продолжить"
-  T_APPS="Выберите программы, которым нужен VPN. Рекомендуемые отмечены. Остальные будут работать напрямую."
-else
-  T_LINK="Paste the subscription link from your VPN service. You can skip it and add it later in the panel."
-  T_SKIP="Skip"; T_NEXT="Continue"
-  T_APPS="Choose the programs that need the VPN. Recommended ones are ticked. The rest keep working directly."
-fi
-
+FIRST_RUN=0
 if [ ! -f "$ROOT/config.json" ] || ! grep -q '"SetupDone": *true' "$ROOT/config.json" 2>/dev/null; then
-  ARGS=(setup --lang "$LANG_CODE")
-
-  ANSWER="$(as_user osascript \
-    -e "set r to display dialog \"$T_LINK\" default answer \"\" with title \"CehoProxy\" buttons {\"$T_SKIP\", \"$T_NEXT\"} default button \"$T_NEXT\"" \
-    -e 'if button returned of r is "'"$T_NEXT"'" then return text returned of r' 2>/dev/null)"
-  LINK="$(printf '%s' "$ANSWER" | tr -d '"' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  [ -n "$LINK" ] && ARGS+=(--sub "$LINK")
-
-  ITEMS=()
-  while IFS=$'\t' read -r KIND NAME APP_PATH; do
-    [ -n "$APP_PATH" ] || continue
-    MARK=""; [ "$KIND" = R ] && MARK="*"
-    ITEMS+=("${MARK}${NAME} — ${APP_PATH}")
-  done < <("$BIN" detect-apps 2>/dev/null)
-
-  if [ "${#ITEMS[@]}" -gt 0 ]; then
-    PICKED="$(as_user osascript \
-      -e 'on run argv' \
-      -e 'set listItems to {}' -e 'set defs to {}' \
-      -e 'repeat with a in argv' -e 'set t to a as text' \
-      -e 'if t starts with "*" then' -e 'set t to text 2 thru -1 of t' -e 'set end of defs to t' -e 'end if' \
-      -e 'set end of listItems to t' -e 'end repeat' \
-      -e "set r to choose from list listItems with title \"CehoProxy\" with prompt \"$T_APPS\" default items defs with multiple selections allowed and empty selection allowed" \
-      -e 'if r is false then return ""' \
-      -e "set AppleScript's text item delimiters to linefeed" \
-      -e 'return r as text' -e 'end run' \
-      "${ITEMS[@]}" 2>/dev/null)"
-    while IFS= read -r ROW; do
-      [ -n "$ROW" ] && ARGS+=(--app "${ROW##* — }")
-    done <<< "$PICKED"
-  fi
-  ARGS+=(--autostart)
-
-  "$BIN" "${ARGS[@]}" >>"$LOG" 2>&1
+  FIRST_RUN=1
+  "$BIN" setup --lang "$LANG_CODE" --autostart >>"$LOG" 2>&1
 fi
 
 PORT="$(awk '{print $1}' "$ROOT/panel.port" 2>/dev/null)"
@@ -80,5 +39,7 @@ if ! curl -s -m 3 -o /dev/null "http://127.0.0.1:${PORT:-8899}/" 2>/dev/null; th
     sleep 1
   done
 fi
-as_user open "http://127.0.0.1:${PORT:-8899}" >/dev/null 2>&1
+PAGE=""
+[ "$FIRST_RUN" = 1 ] && PAGE="light?add=1"
+as_user open "http://127.0.0.1:${PORT:-8899}/$PAGE" >/dev/null 2>&1
 exit 0
