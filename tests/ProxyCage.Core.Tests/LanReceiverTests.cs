@@ -36,6 +36,15 @@ public class LanReceiverTests
     }
 
     [Fact]
+    public void Happ_and_karing_import_links_give_their_subscription_and_encrypted_happ_is_skipped()
+    {
+        var links = LanReceiver.ExtractLinks(
+            "happ://add/https://s.example/a\nkaring://install-config?url=https%3A%2F%2Fs.example%2Fb&name=x\nhapp://crypt3/abc\nvless://u@h:1");
+        Assert.Equal(new[] { "https://s.example/a", "https://s.example/b", "vless://u@h:1" }, links);
+        Assert.True(LanReceiver.IsEncryptedHapp(" happ://crypt4/zzz"));
+    }
+
+    [Fact]
     public void The_form_field_is_decoded_like_the_phone_page_sends_it()
         => Assert.Equal("https://s.example/a b", LanReceiver.FormField("x=1&link=https%3A%2F%2Fs.example%2Fa+b", "link"));
 
@@ -51,6 +60,9 @@ public class LanReceiverTests
         var html = await page.Content.ReadAsStringAsync();
         Assert.Contains("href=\"" + System.Net.WebUtility.HtmlEncode(receiver.AppLink) + "\"", html);
         Assert.Contains("<textarea name=\"link\"", html);
+        var crypt = await http.PostAsync(receiver.Url, new StringContent("happ://crypt3/abc"));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, crypt.StatusCode);
+        Assert.True(receiver.Active);
         Assert.StartsWith("cehoproxy://pair?u=http%3A%2F%2F", receiver.AppLink);
         var wrong = await http.GetAsync(receiver.Url[..^1] + (receiver.Url[^1] == '0' ? "1" : "0"));
         Assert.Equal(System.Net.HttpStatusCode.NotFound, wrong.StatusCode);

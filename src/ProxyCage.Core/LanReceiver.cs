@@ -215,6 +215,11 @@ public sealed class LanReceiver : IDisposable
             await RespondAsync(stream, 400, FormPage("Вставьте ссылку на подписку."), timeout.Token);
             return;
         }
+        if (IsEncryptedHapp(payload))
+        {
+            await RespondAsync(stream, 400, FormPage("Это зашифрованная ссылка Happ: её открывает только Happ. Попросите у провайдера обычную ссылку на подписку, она начинается с https://."), timeout.Token);
+            return;
+        }
 
         lock (_gate)
         {
@@ -243,6 +248,10 @@ public sealed class LanReceiver : IDisposable
         "<p>Приложение CehoProxy уже на телефоне? Откройте его кнопкой, оно само отправит подписки.</p>"
         + "<a class=\"app\" href=\"" + WebUtility.HtmlEncode(AppLink) + "\">Открыть в CehoProxy</a>"
         + "<p>Приложения нет, например на iPhone? Вставьте ссылку на подписку здесь:</p>"
+        + "<details class=\"tip\"><summary>Подписка уже в Happ или Karing?</summary><p>Эти приложения не отдают подписку другим программам. "
+        + "Возьмите ссылку там же, где получили её: в письме, Telegram-боте или личном кабинете провайдера. "
+        + "Подойдут и ссылки «добавить в Happ / Karing» (happ://add/…, karing://install-config…): CehoProxy достанет из них подписку. "
+        + "Зашифрованная ссылка happ://crypt… не подойдёт, её открывает только Happ.</p></details>"
         + (error is null ? "" : "<p class=\"error\">" + WebUtility.HtmlEncode(error) + "</p>")
         + "<form method=\"post\" action=\"/p/" + _token + "\"><textarea name=\"link\" rows=\"4\" placeholder=\"https://…\"></textarea>"
         + "<button type=\"submit\">Отправить на компьютер</button></form>");
@@ -255,6 +264,7 @@ public sealed class LanReceiver : IDisposable
         + "border-radius:14px;background:#a9c29a;color:#1f2a1b;font-size:16px;font-weight:600}"
         + "textarea{width:100%;box-sizing:border-box;padding:12px;border-radius:12px;border:1px solid #4a4a40;background:#26251f;color:#e9e6dc;font-size:15px}"
         + "a.app{display:block;box-sizing:border-box;margin:12px 0 24px;padding:14px;border-radius:14px;background:#a9c29a;color:#1f2a1b;font-size:16px;font-weight:600;text-align:center;text-decoration:none}"
+        + "details.tip{margin:0 0 12px;color:#c7c4b8}details.tip summary{cursor:pointer;color:#a9c29a}"
         + ".error{color:#f2b8b5}</style></head><body><h1>" + WebUtility.HtmlEncode(title) + "</h1>" + body + "</body></html>";
 
     private static async Task RespondAsync(NetworkStream stream, int status, string html, CancellationToken ct)
@@ -295,9 +305,28 @@ public sealed class LanReceiver : IDisposable
         else
         {
             foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                if (line.Contains("://", StringComparison.Ordinal)) result.Add(line);
+                if (line.Contains("://", StringComparison.Ordinal) && Unwrap(line) is { } link) result.Add(link);
         }
         return result.Distinct().Take(100).ToList();
+    }
+
+    public static bool IsEncryptedHapp(string text) =>
+        text.TrimStart().StartsWith("happ://crypt", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Ссылки «добавить в Happ / Karing» несут внутри обычную ссылку подписки: достаём её.</summary>
+    internal static string? Unwrap(string line)
+    {
+        var text = line.Trim();
+        if (IsEncryptedHapp(text)) return null;
+        if (text.StartsWith("happ://add/", StringComparison.OrdinalIgnoreCase))
+            return Uri.UnescapeDataString(text["happ://add/".Length..]).Trim();
+        foreach (var scheme in new[] { "karing://", "clash://" })
+        {
+            if (!text.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)) continue;
+            var query = text.IndexOf('?') is var q and >= 0 ? text[(q + 1)..] : "";
+            return FormField(query, "url");
+        }
+        return text;
     }
 }
 
