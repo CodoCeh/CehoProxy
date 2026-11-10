@@ -45,6 +45,15 @@ public static class WhatsNew
                 "The receive QR code opens a page in the phone browser where you can paste a subscription link. Works on iPhone too. Understands happ://add and karing://install-config links.",
                 "subs"),
         }),
+        new("1.2.187", new[]
+        {
+            new Item("Два способа удаления", "Two ways to uninstall",
+                "В настройках можно удалить CehoProxy полностью или сохранить подписки и программы. После повторной установки панель предложит вернуть их.",
+                "In settings you can remove CehoProxy completely or keep subscriptions and apps. After reinstalling, the panel offers to bring them back."),
+            new Item("Исправления на Mac", "Mac fixes",
+                "Кнопка «Удалить» убирает программу целиком, ошибка «CehoProxy.Engine» больше не появляется, значок в «Программах» называется CehoProxy.",
+                "The Uninstall button removes the app completely, the CehoProxy.Engine error no longer appears, and the icon in Applications is named CehoProxy."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
