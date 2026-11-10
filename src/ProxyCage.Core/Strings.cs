@@ -1908,7 +1908,7 @@ public static class Strings
         ["light_add_device"] = new("С другого устройства", "From another device"),
         ["light_add_device_sub"] = new("Телефон с CehoProxy отправит подписку по Wi-Fi", "A phone with CehoProxy sends the subscription over Wi-Fi"),
         ["light_recv_title"] = new("Получить с телефона", "Receive from a phone"),
-        ["light_recv_steps"] = new("На телефоне откройте CehoProxy: «Добавить подписку» → «Отправить на устройство» и выберите этот компьютер. Или наведите камеру телефона на QR-код.", "On the phone open CehoProxy: Add subscription → send to device, and pick this computer. Or point the phone camera at the QR code."),
+        ["light_recv_steps"] = new("На телефоне откройте CehoProxy: «Подписки» → «Отправить на устройство» и выберите этот компьютер. Или наведите камеру телефона на QR-код.", "On the phone open CehoProxy: Subscriptions → Send to device, and pick this computer. Or point the phone camera at the QR code."),
         ["light_recv_waiting"] = new("Ждём отправку с телефона…", "Waiting for the phone…"),
         ["light_recv_left"] = new("Осталось: {0}", "Left: {0}"),
         ["light_recv_nolan"] = new("Компьютер не подключён к домашней сети Wi-Fi или кабелю. Подключитесь к той же сети, что и телефон.", "This computer is not on a home Wi-Fi or wired network. Join the same network as the phone."),
