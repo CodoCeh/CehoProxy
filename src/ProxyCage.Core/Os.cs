@@ -608,6 +608,8 @@ public static class Os
         var list = new List<(int, string, string)>();
         if (!IsWindows) return list;
 
+        if (WindowsProcessQuery.Query(exeName) is { } direct) return direct;
+
         var filter = exeName.Replace("'", "''");
         var (code, output) = Run("powershell", "-NoProfile -Command " +
             $"\"Get-CimInstance Win32_Process -Filter \\\"name='{filter}'\\\" | ForEach-Object {{ " +

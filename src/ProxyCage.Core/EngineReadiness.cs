@@ -15,7 +15,7 @@ public static class EngineReadiness
     {
         var clock = timeProvider ?? TimeProvider.System;
         var limit = timeout ?? TimeSpan.FromSeconds(20);
-        var stable = settle ?? TimeSpan.FromMilliseconds(1500);
+        var stable = settle ?? TimeSpan.FromMilliseconds(600);
         var interval = poll ?? TimeSpan.FromMilliseconds(250);
         if (limit <= TimeSpan.Zero || stable < TimeSpan.Zero || interval <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(timeout));
