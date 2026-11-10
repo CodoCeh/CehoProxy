@@ -59,6 +59,23 @@ public sealed class AppAddAdmissionTests : IDisposable
     }
 
     [Fact]
+    public async Task An_app_that_is_not_installed_yet_can_be_added_by_full_path()
+    {
+        var exe = Path.Combine(_root, "Future Game", "game.exe");
+        var file = await Post("/apps/add", new() { ["path"] = exe });
+        Assert.False(file.IsError, file.Message);
+        Assert.Contains("Nothing is at this path yet", file.Message);
+        var folder = Path.Combine(_root, "Later Tool");
+        var dir = await Post("/apps/add", new() { ["path"] = folder });
+        Assert.False(dir.IsError, dir.Message);
+        var apps = CehoConfig.Load(ConfigPath).Apps;
+        Assert.Contains(apps, a => AppIdentity.SamePath(a.Folder, Path.Combine(_root, "Future Game")));
+        Assert.Contains(apps, a => AppIdentity.SamePath(a.Folder, folder));
+        var relative = await Post("/apps/add", new() { ["path"] = "game.exe" });
+        Assert.True(relative.IsError);
+    }
+
+    [Fact]
     public async Task Concurrent_tabs_admit_one_identity_without_restarting()
     {
         _running = true;

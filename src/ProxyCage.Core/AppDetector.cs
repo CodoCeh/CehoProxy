@@ -92,7 +92,7 @@ public static class AppDetector
             throw new InvalidOperationException(Strings.T(lang, "det_cli_script", command));
         }
 
-        var folder = Directory.Exists(full) ? full : Path.GetDirectoryName(full) ?? full;
+        var folder = Directory.Exists(full) || (!isFile && !Path.HasExtension(full)) ? full : Path.GetDirectoryName(full) ?? full;
         folder = folder.TrimEnd('\\', '/');
         if (folder.Length == 0) folder = "/";
 

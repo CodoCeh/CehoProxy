@@ -43,7 +43,8 @@ public sealed partial class WebServer
             var selected = AppIdentity.Normalize(raw);
             if (AppIdentity.Find(cfg.Apps, selected) is { } existing)
                 return new(S("err_already_added"), false, "already_added", AppIdentity.Id(existing), AppIdentity.PathOf(existing));
-            if (!File.Exists(raw) && !Directory.Exists(raw))
+            var missing = !File.Exists(raw) && !Directory.Exists(raw);
+            if (missing && !Path.IsPathFullyQualified(raw))
                 return new(S("err_no_such_path", raw), true, "error");
 
             // Routing coverage is useful, but it is not proof that two applications are the same.
@@ -87,7 +88,9 @@ public sealed partial class WebServer
             Save(cfg);
             Interlocked.Increment(ref _pending);
             InvalidateAppObservations();
-            return new($"{S("added_name", app.Name)}. {detected.Explanation} " + T(
+            return new($"{S("added_name", app.Name)}. {detected.Explanation} " + (missing ? T(
+                "Программы по этому пути пока нет: правило начнёт работать, когда она появится. ",
+                "Nothing is at this path yet: the rule starts working once the app is there. ") : "") + T(
                 "Правило сохранено. Нажмите «Применить», чтобы применить его; работающий туннель будет переподключён.",
                 "Rule saved. Choose Apply to use it; a running tunnel will reconnect."),
                 false, "added", AppIdentity.Id(app), selected);
