@@ -262,7 +262,7 @@ public static class WebUi
       border:1px solid var(--line);border-radius:10px;color:var(--text);text-decoration:none;
       font-size:var(--fs-s);font-weight:500;white-space:nowrap;box-sizing:border-box}
     a.pick:hover{background:var(--panel2)}
-    input[type=text],input[type=password],input[type=number],select{
+    input[type=text],input[type=url],input[type=password],input[type=number],select{
       flex:1;min-width:200px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
       background:var(--surface);color:var(--text);font:inherit;font-size:var(--fs-s);
       transition:border-color .18s ease}

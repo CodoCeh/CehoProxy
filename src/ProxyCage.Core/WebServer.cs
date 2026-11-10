@@ -1836,7 +1836,7 @@ public sealed partial class WebServer
         if (job is { Running: true })
             sb.Append("<noscript><meta http-equiv=refresh content=2></noscript>");
 
-        sb.Append(light ? "<title>CehoProxy Light</title>" : "<title>CehoProxy</title>").Append("<link rel=icon type=\"image/svg+xml\" href=\"").Append(ProductBrand.IconDataUri).Append("\">").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append(TunnelUi.Css).Append(light ? LightUi.Css : "").Append("</style></head>");
+        sb.Append(light ? "<title>CehoProxy Light</title>" : "<title>CehoProxy</title>").Append("<link rel=icon type=\"image/svg+xml\" href=\"").Append(ProductBrand.IconDataUri).Append("\">").Append(WebUi.ThemeEarlyScript).Append("<style>").Append(WebUi.Css).Append(TunnelUi.Css).Append(OnboardingUi.Css).Append(light ? LightUi.Css : "").Append("</style></head>");
 
         // Пока идёт операция, страница перерисовывается каждые пару секунд.
         // Появление разделов на таких перерисовках только мельтешит, поэтому его выключаем.
@@ -2104,7 +2104,7 @@ public sealed partial class WebServer
           .Append(E(title)).Append("</h1><p>").Append(E(detail)).Append("</p><p class=scope-note>")
           .Append(E(T("VPN предназначен только для выбранных программ. Их фактические соединения проверяются отдельно.",
               "VPN is configured for selected apps only. Their actual connections are checked separately."))).Append("</p></div>")
-          .Append(_lightRequest && power is null ? "<p class=light-tap>" + E(S(st.Running ? "light_tap_on" : "light_tap_off", [])) + "</p>" : "")
+          .Append(_lightRequest && power is null ? "<p class=light-tap>" + E(S(step > 0 ? "light_tap_setup" : st.Running ? "light_tap_on" : "light_tap_off", [])) + "</p>" : "")
           .Append(_lightRequest ? "<form id=light-power method=post>" : "<form method=post>").Append("<input type=hidden name=tab value=state>");
         if (power is not null) { }
         else if (st.Running || DaemonControl.IsRecovering(Root))
@@ -2134,6 +2134,7 @@ public sealed partial class WebServer
         }
         if (leaks.Count > 0) AppendLeakFix(sb, cfg, leaks.Select(a => a.App), "state");
         sb.Append("</section>");
+        if (step is 1 or 2) RenderWizard(sb, cfg, st, step, S);
         if (_lightRequest) LightUi.Speed(sb, cfg.Language == "ru");
         RenderLiveApps(sb, cfg, st, guarded, S);
 
@@ -2193,7 +2194,7 @@ public sealed partial class WebServer
               .Append("<input type=hidden name=folder value=\"").Append(E(broken.Folder)).Append("\">")
               .Append("<button class=danger>").Append(E(S("fix_system_folder", []))).Append("</button></form></div></section>");
 
-        if (step > 0) RenderWizard(sb, cfg, st, step, S);
+        if (step == 3) RenderWizard(sb, cfg, st, step, S);
         if (step is 0 or 3)
         {
             RenderCheckSummary(sb, cfg, S);
@@ -2311,6 +2312,7 @@ public sealed partial class WebServer
         sb.Append("</ol><h2>").Append(E(step == 3 ? T("Проверим реальное соединение", "Verify a real connection") : S($"wiz_title{step}", [])))
           .Append("</h2><p class=lede>")
           .Append(E(step == 3 ? T("Подписка, туннель и трафик программы проверяются отдельно.", "The subscription, tunnel and app traffic are checked separately.") : S($"wiz_hint{step}", []))).Append("</p>");
+        OnboardingUi.Scene(sb, step == 1 ? "sub" : step == 2 ? "apps" : st.Running ? "check" : "power", S);
 
         if (step == 1 && _lightRequest)
         {
@@ -4033,6 +4035,7 @@ public sealed partial class WebServer
 
     private static void RenderHelp(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
     {
+        OnboardingUi.Tour(sb, S);
         sb.Append("<section><h2>").Append(E(S("help_title", []))).Append("</h2><ol class=steps>");
         sb.Append("<li>").Append(E(S("help_1", []))).Append("</li>");
         sb.Append("<li>").Append(E(Os.Kind switch
