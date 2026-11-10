@@ -48,6 +48,10 @@ public class LanReceiverTests
         using var http = new HttpClient();
         var page = await http.GetAsync(receiver.Url);
         Assert.Equal(System.Net.HttpStatusCode.OK, page.StatusCode);
+        var html = await page.Content.ReadAsStringAsync();
+        Assert.Contains("href=\"" + System.Net.WebUtility.HtmlEncode(receiver.AppLink) + "\"", html);
+        Assert.Contains("<textarea name=\"link\"", html);
+        Assert.StartsWith("cehoproxy://pair?u=http%3A%2F%2F", receiver.AppLink);
         var wrong = await http.GetAsync(receiver.Url[..^1] + (receiver.Url[^1] == '0' ? "1" : "0"));
         Assert.Equal(System.Net.HttpStatusCode.NotFound, wrong.StatusCode);
 

@@ -237,8 +237,12 @@ public sealed class LanReceiver : IDisposable
         return null;
     }
 
+    internal string AppLink => "cehoproxy://pair?u=" + Uri.EscapeDataString(Url);
+
     private string FormPage(string? error) => Page("Отправить подписку на компьютер",
-        "<p>Вставьте ссылку на подписку:</p>"
+        "<p>Приложение CehoProxy уже на телефоне? Откройте его кнопкой, оно само отправит подписки.</p>"
+        + "<a class=\"app\" href=\"" + WebUtility.HtmlEncode(AppLink) + "\">Открыть в CehoProxy</a>"
+        + "<p>Приложения нет, например на iPhone? Вставьте ссылку на подписку здесь:</p>"
         + (error is null ? "" : "<p class=\"error\">" + WebUtility.HtmlEncode(error) + "</p>")
         + "<form method=\"post\" action=\"/p/" + _token + "\"><textarea name=\"link\" rows=\"4\" placeholder=\"https://…\"></textarea>"
         + "<button type=\"submit\">Отправить на компьютер</button></form>");
@@ -250,6 +254,7 @@ public sealed class LanReceiver : IDisposable
         + "h1{font-size:24px;margin:0 0 16px}p{color:#c7c4b8}button{display:block;width:100%;box-sizing:border-box;margin:12px 0 24px;padding:14px;border:0;"
         + "border-radius:14px;background:#a9c29a;color:#1f2a1b;font-size:16px;font-weight:600}"
         + "textarea{width:100%;box-sizing:border-box;padding:12px;border-radius:12px;border:1px solid #4a4a40;background:#26251f;color:#e9e6dc;font-size:15px}"
+        + "a.app{display:block;box-sizing:border-box;margin:12px 0 24px;padding:14px;border-radius:14px;background:#a9c29a;color:#1f2a1b;font-size:16px;font-weight:600;text-align:center;text-decoration:none}"
         + ".error{color:#f2b8b5}</style></head><body><h1>" + WebUtility.HtmlEncode(title) + "</h1>" + body + "</body></html>";
 
     private static async Task RespondAsync(NetworkStream stream, int status, string html, CancellationToken ct)
