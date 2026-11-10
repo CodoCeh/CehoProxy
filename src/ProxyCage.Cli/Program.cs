@@ -2421,7 +2421,7 @@ if (cmd is "daemon" or "web")
         report?.Phase(Strings.T(c.Language, "stage_cleanup"));
 
         var handover = guard is not null;
-        StopGuard();
+        if (!Os.IsMac) StopGuard();
 
         var before = TunCleanup.Devices();
         var justCleaned = cleanedDevices is not null
@@ -2460,6 +2460,7 @@ if (cmd is "daemon" or "web")
         var p = new SingBoxProcess();
         try
         {
+            StopGuard();
             p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
             Log.Info($"движок запущен, pid {p.ProcessId}");
 
@@ -2524,6 +2525,7 @@ if (cmd is "daemon" or "web")
         runtimeChanged();
         exitCountry = exitIp = null;
         probed = false;
+        if (Os.IsMac) StartGuard().GetAwaiter().GetResult();
 
         if (!clean)
         {
