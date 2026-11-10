@@ -131,6 +131,7 @@ public sealed class CehoConfig
 
     /// <summary>Адреса из вкладки «Сайты», без пути. Куда они идут, решает <see cref="SiteMode"/>.</summary>
     public List<string> DirectSites { get; set; } = new();
+    public string HomeCountry { get; set; } = "";
 
     /// <summary>Адрес сайта → код страны нод. Пусто — сайт идёт по режиму списка, без своей страны.</summary>
     public Dictionary<string, string> SiteCountries { get; set; } = new();
@@ -228,6 +229,7 @@ public sealed class CehoConfig
                 if (app is not null) { app.AllowedNodes ??= new(); app.UnsuitableNodes ??= new(); }
         cfg.DirectSites ??= new();
         cfg.SiteCountries ??= new();
+        cfg.HomeCountry = CountryRules.Normalize(cfg.HomeCountry);
         if (!cfg.SitesOnly)
             cfg.SiteMode = SiteModeExcept;
 

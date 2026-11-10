@@ -62,6 +62,18 @@ public static class WebUi
     .mark{font-size:var(--fs-l);font-weight:680;letter-spacing:-.015em}
     .mark span{color:var(--brand-ink)}
     .where{color:var(--muted);font-size:var(--fs-s);margin-left:auto;font-variant-numeric:tabular-nums}
+    header form.upd-pill-form{margin:0 0 0 auto;display:inline-flex}
+    header form.upd-pill-form+form.mode{margin-left:0}
+    .upd-pill{display:inline-flex;align-items:center;gap:8px;min-height:30px;padding:0 13px 0 11px;border:1px solid color-mix(in srgb,var(--brand-ink) 40%,var(--line));
+      border-radius:99px;background:color-mix(in srgb,var(--brand-ink) 11%,var(--surface));color:var(--brand-ink);font-size:var(--fs-s);font-weight:600;cursor:pointer;white-space:nowrap}
+    .upd-pill:hover{background:color-mix(in srgb,var(--brand-ink) 18%,var(--surface))}
+    .upd-dot{position:relative;width:8px;height:8px;border-radius:50%;background:var(--brand-ink);flex:none}
+    @media(prefers-reduced-motion:no-preference){
+      .upd-pill{animation:upd-in .5s cubic-bezier(.2,.8,.2,1) both}
+      .upd-dot::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--brand-ink);animation:upd-ring 2.2s ease-out infinite}
+      @keyframes upd-in{from{opacity:0;transform:translateY(-6px) scale(.96)}to{opacity:1;transform:none}}
+      @keyframes upd-ring{0%{transform:scale(1);opacity:.55}70%,100%{transform:scale(2.8);opacity:0}}
+    }
     header form.mode{margin:0 0 0 auto;display:inline-flex;align-items:center;gap:9px;font-size:var(--fs-s);color:var(--subtext)}
     header form.mode .mode-toggle{position:relative;display:inline-block;width:44px;height:26px;min-height:26px;
       padding:0;border:1px solid var(--line);border-radius:99px;background:var(--panel2);flex:none}

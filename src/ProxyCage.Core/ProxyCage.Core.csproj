@@ -12,6 +12,7 @@
     <PackageReference Include="MaxMind.Db" Version="5.2.0" />
     <EmbeddedResource Include="Assets/dbip-country-lite-2026-09.mmdb.gz" />
     <EmbeddedResource Include="Assets/jsQR.js" />
+    <EmbeddedResource Include="Assets/country-rules/*" LogicalName="country-rules/%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets/qrcode.js" />
     <PackageReference Include="System.Threading.AccessControl" Version="8.0.0" />
   </ItemGroup>

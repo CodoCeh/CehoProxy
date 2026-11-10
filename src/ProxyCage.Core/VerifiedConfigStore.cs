@@ -20,7 +20,7 @@ public static class VerifiedConfigStore
         nameof(CehoConfig.MixedPort), nameof(CehoConfig.ClashApiPort), nameof(CehoConfig.TunAddress),
         nameof(CehoConfig.TunIpv6), nameof(CehoConfig.FailClosed), nameof(CehoConfig.Apps),
         nameof(CehoConfig.Subscriptions), nameof(CehoConfig.NaiveProxy), nameof(CehoConfig.ActiveSubscription),
-        nameof(CehoConfig.PreferredCountries), nameof(CehoConfig.ExcludedCountries), nameof(CehoConfig.DirectSites),
+        nameof(CehoConfig.PreferredCountries), nameof(CehoConfig.ExcludedCountries), nameof(CehoConfig.DirectSites), nameof(CehoConfig.HomeCountry),
         nameof(CehoConfig.SiteCountries), nameof(CehoConfig.SiteMode), nameof(CehoConfig.BlockedNodes),
         nameof(CehoConfig.RotationEnabled), nameof(CehoConfig.MaxLatencyMs), nameof(CehoConfig.NodeLatency),
         nameof(CehoConfig.CheckUrl), nameof(CehoConfig.TimeoutSeconds), nameof(CehoConfig.EngineLogLevel),

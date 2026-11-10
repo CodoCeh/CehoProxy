@@ -264,7 +264,7 @@ public static class SingBoxConfigGenerator
     }
 
     public static string GenerateForConfig(
-        IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg, string? tunInterfaceName = null)
+        IReadOnlyList<ProxyNode> allNodes, CehoConfig cfg, string? tunInterfaceName = null, string? ruleSetDir = null)
     {
         var apps = cfg.Apps.Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)).ToList();
         if (apps.Count == 0)
@@ -457,6 +457,51 @@ public static class SingBoxConfigGenerator
             ["process_path_regex"] = ownProcesses.DeepClone(),
             ["server"] = "dns-direct",
         });
+
+        var homeRuleSets = new JsonArray();
+        {
+            List<CountryRuleSet> home;
+            try
+            {
+                var dir = ruleSetDir ?? CountryRules.DefaultDir(
+                    Environment.GetEnvironmentVariable("CEHOPROXY_HOME") ?? Os.DefaultRoot);
+                home = CountryRules.Prepare(cfg.HomeCountry, dir);
+            }
+            catch { home = new(); }
+            var homeRegexes = new JsonArray();
+            foreach (var a in apps.Where(a => !a.NoInternet && !pinned.Any(p => p.App == a && p.Nodes.Count == 0)))
+                foreach (var rx in AppDetector.ToRegexes(a)) homeRegexes.Add(rx);
+            if (home.Count > 0 && homeRegexes.Count > 0)
+            {
+                var tags = new JsonArray();
+                var domainTags = new JsonArray();
+                foreach (var set in home)
+                {
+                    homeRuleSets.Add(new JsonObject
+                    {
+                        ["type"] = "local",
+                        ["tag"] = set.Tag,
+                        ["format"] = "binary",
+                        ["path"] = set.Path.Replace('\\', '/'),
+                    });
+                    tags.Add(set.Tag);
+                    if (set.Domains) domainTags.Add(set.Tag);
+                }
+                if (domainTags.Count > 0)
+                    dnsRules.Add(new JsonObject
+                    {
+                        ["process_path_regex"] = homeRegexes.DeepClone(),
+                        ["rule_set"] = domainTags,
+                        ["server"] = "dns-direct",
+                    });
+                routeRules.Add(new JsonObject
+                {
+                    ["process_path_regex"] = homeRegexes,
+                    ["rule_set"] = tags,
+                    ["outbound"] = DirectTag,
+                });
+            }
+        }
 
         foreach (var item in pinned)
         {
@@ -682,6 +727,7 @@ public static class SingBoxConfigGenerator
                 ["default_domain_resolver"] = new JsonObject { ["server"] = "dns-direct" },
             },
         };
+        if (homeRuleSets.Count > 0) ((JsonObject)config["route"]!)["rule_set"] = homeRuleSets;
 
         return config.ToJsonString(new JsonSerializerOptions
         {

@@ -1108,6 +1108,18 @@ public sealed partial class WebServer
                     return (S("country_set", app.Label, nodes[0].CountryName ?? code), false, ApplyOrDefer(cfg, restartIfRunning: true));
                 }
 
+                case "/home-country":
+                {
+                    var code = CountryRules.Normalize(f.GetValueOrDefault("country", ""));
+                    cfg.HomeCountry = code;
+                    Save(cfg);
+                    var option = CountryRules.Find(code);
+                    return (option is null
+                        ? S("home_country_none")
+                        : S("home_country_set", cfg.Language == "ru" ? option.NameRu : option.NameEn),
+                        false, ApplyOrDefer(cfg, restartIfRunning: true));
+                }
+
                 case "/apps/offline":
                 {
                     var folder = f.GetValueOrDefault("folder", "");
@@ -1856,6 +1868,12 @@ public sealed partial class WebServer
         sb.Append("<header>");
         AppendProductLogo(sb);
         sb.Append("<span class=mark>Ceho<span>Proxy</span></span>");
+        UpdateWatch.RefreshInBackground(cfg.UpdateRepo);
+        if (UpdateWatch.Available is { } newer && job?.Kind != JobUpdate)
+            sb.Append("<form class=upd-pill-form method=post action=/update><input type=hidden name=tab value=\"").Append(E(tab))
+              .Append("\"><input type=hidden name=install value=1><button type=submit class=upd-pill title=\"")
+              .Append(E(S("upd_pill_title", new object[] { newer }))).Append("\"><span class=upd-dot aria-hidden=true></span><span>")
+              .Append(E(S("upd_pill", new object[] { newer }))).Append("</span></button></form>");
         sb.Append("<form class=mode method=post action=/mode aria-label=\"").Append(E(S("mode_label")))
           .Append("\"><input type=hidden name=tab value=\"").Append(E(tab)).Append("\">");
         sb.Append("<span").Append(cfg.SimplePanel ? " class=selected" : "").Append('>')
@@ -3018,6 +3036,21 @@ public sealed partial class WebServer
         catch { return Array.Empty<InstalledAppCatalog.Entry>(); }
     }
 
+    private static string Flag(string code) => string.Concat(code.ToUpperInvariant().Select(c => char.ConvertFromUtf32(0x1F1E6 + c - 'A')));
+
+    private static void RenderHomeCountry(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S)
+    {
+        sb.Append("<section class=home-country><h2>").Append(E(S("home_country_title", []))).Append("</h2><p class=lede>")
+          .Append(E(S("home_country_lede", []))).Append("</p><form method=post action=/home-country><input type=hidden name=tab value=apps>")
+          .Append("<label>").Append(E(S("home_country_label", []))).Append(" <select name=country onchange=\"this.form.submit()\">")
+          .Append("<option value=\"\"").Append(cfg.HomeCountry.Length == 0 ? " selected" : "").Append('>').Append(E(S("home_country_other", []))).Append("</option>");
+        foreach (var option in CountryRules.Options)
+            sb.Append("<option value=\"").Append(option.Code).Append('"').Append(option.Code == cfg.HomeCountry ? " selected" : "").Append('>')
+              .Append(Flag(option.Code)).Append(' ').Append(E(cfg.Language == "ru" ? option.NameRu : option.NameEn))
+              .Append(" (").Append(E(S(option.HasDomains ? "home_country_cov_full" : "home_country_cov_ip", []))).Append(")</option>");
+        sb.Append("</select></label><noscript><button>").Append(E(S("btn_save", []))).Append("</button></noscript></form></section>");
+    }
+
     private void RenderApps(StringBuilder sb, CehoConfig cfg, Func<string, object[], string> S,
         string? tunnelFolder, string? pickedPath = null)
     {
@@ -3041,6 +3074,7 @@ public sealed partial class WebServer
 
         var installed = PanelInstalledApps(cfg);
         var state = _state();
+        RenderHomeCountry(sb, cfg, S);
         RenderRecommended(sb, cfg, S, "apps");
         TunnelUi.Render(sb, cfg, installed, "apps", state.Running, Volatile.Read(ref _pending) > 0, AppRulesPending && (Jobs.Active(JobApply) is not null || Jobs.Active(JobPower) is not null || Jobs.Active(JobRestore) is not null), pickedPath);
         sb.Append("<div data-live=app-cards id=added-apps><h2 class=tunnel-added-title>").Append(E(AppObservation.Text(cfg, "Добавленные программы", "Added apps"))).Append("</h2>");
