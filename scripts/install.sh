@@ -52,6 +52,7 @@ if [ -x "$BIN" ]; then
   "$BIN" stop >/dev/null 2>&1 || true
 fi
 
+mkdir -p "$(dirname "$BIN")"
 install -m 755 "$SRC" "$BIN"
 mkdir -p "$ROOT"
 chmod 755 "$ROOT"
