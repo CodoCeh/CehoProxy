@@ -1774,6 +1774,7 @@ private fun FirstRunOnboarding(
             1 -> {
                 Text("Добавьте подписку", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
                 Text("Подписка — это ссылка с серверами от вашего провайдера. CehoProxy сам подписки не выдаёт. Вставьте ссылку, остальное настроится само.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+                OnboardingSceneArt(OnboardingScene.Add, Modifier.padding(top = 16.dp))
                 if (profile.nodes.isNotEmpty()) {
                     Text("Подписка уже добавлена: серверов ${profile.nodes.size}.", color = colors.primary, style = MaterialTheme.typography.bodyLarge)
                     QuietButton("Далее", { step = 2 }, Modifier.fillMaxWidth().padding(top = 16.dp).testTag("onboarding-continue"))
@@ -1798,6 +1799,7 @@ private fun FirstRunOnboarding(
             2 -> {
                 Text("Какая у вас страна?", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
                 Text("Ресурсы из набора выбранной страны открываются напрямую, без VPN. Это не значит, что напрямую пойдут все сайты страны. Если вашей страны нет в списке, выберите «Другая страна».", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp, bottom = 12.dp))
+                OnboardingSceneArt(OnboardingScene.Country, Modifier.padding(top = 12.dp, bottom = 8.dp))
                 QuietDivider()
                 CountryRouting.countries.forEach { option ->
                     OnboardingCountryRow(
@@ -1816,6 +1818,7 @@ private fun FirstRunOnboarding(
             else -> {
                 Text("Разрешение Android", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
                 Text("При первом подключении Android покажет системный запрос на VPN-соединение. Без этого разрешения VPN не запустится. Если вы откажетесь, запрос можно повторить: нажмите на водоворот на главном экране.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+                OnboardingSceneArt(OnboardingScene.Permission, Modifier.padding(top = 12.dp, bottom = 16.dp))
                 QuietButton("Перейти на главную", onFinish, Modifier.fillMaxWidth().testTag("onboarding-finish"))
             }
         }
