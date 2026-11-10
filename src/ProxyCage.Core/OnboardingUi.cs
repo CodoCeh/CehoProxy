@@ -42,7 +42,6 @@ public static class OnboardingUi
     figure.ob-card figcaption{margin-top:8px;color:var(--subtext);font-size:var(--fs-s)}
     figure.ob-card figcaption b{display:block;color:var(--text)}
     @media (prefers-reduced-motion:no-preference){
-      .ob-all{animation:obFade 8s ease-in-out infinite}
       .ob-cover{animation:obType 8s ease-in-out infinite}
       .ob-sub .ob-btn{animation:obPress 8s ease-in-out infinite}
       .ob-sub .ob-ring{animation:obRing 8s ease-out infinite}
@@ -63,25 +62,24 @@ public static class OnboardingUi
       .ob-check .ob-wire{animation:obWire 8s ease-in-out infinite}
       .ob-check .ob-badge{animation:obBadge 8s ease-out infinite}
     }
-    @keyframes obFade{0%{opacity:0}5%,90%{opacity:1}97%,100%{opacity:0}}
-    @keyframes obType{0%,8%{transform:scaleX(1)}30%,100%{transform:scaleX(0)}}
+    @keyframes obType{0%,8%{transform:scaleX(1)}30%,86%{transform:scaleX(0)}96%,100%{transform:scaleX(1)}}
     @keyframes obPress{0%,44%{transform:scale(1)}48%{transform:scale(.96)}54%,100%{transform:scale(1)}}
     @keyframes obRing{0%,45%{opacity:0;transform:scale(.3)}47%{opacity:.9}58%,100%{opacity:0;transform:scale(3.2)}}
     @keyframes obHand{0%,28%{opacity:0;transform:translate(110px,50px)}34%{opacity:1;transform:translate(110px,50px)}44%,52%{opacity:1;transform:translate(0,0)}60%,100%{opacity:0;transform:translate(0,0)}}
-    @keyframes obChip{0%,58%{opacity:0;transform:translateY(8px)}68%,100%{opacity:1;transform:translateY(0)}}
+    @keyframes obChip{0%,58%{opacity:0;transform:translateY(8px)}68%,84%{opacity:1;transform:translateY(0)}94%,100%{opacity:0;transform:translateY(0)}}
     @keyframes obSpin{to{transform:rotate(360deg)}}
-    @keyframes obFly1{0%,12%{opacity:1;transform:translate(0,0) scale(1)}28%{opacity:0;transform:translate(192px,38px) scale(.2)}29%,100%{opacity:0;transform:translate(192px,38px) scale(.2)}}
-    @keyframes obFly2{0%,26%{opacity:1;transform:translate(0,0) scale(1)}42%{opacity:0;transform:translate(192px,-4px) scale(.2)}43%,100%{opacity:0;transform:translate(192px,-4px) scale(.2)}}
-    @keyframes obFly3{0%,40%{opacity:1;transform:translate(0,0) scale(1)}56%{opacity:0;transform:translate(192px,-46px) scale(.2)}57%,100%{opacity:0;transform:translate(192px,-46px) scale(.2)}}
+    @keyframes obFly1{0%,12%{opacity:1;transform:translate(0,0) scale(1)}28%{opacity:0;transform:translate(192px,38px) scale(.2)}29%,70%{opacity:0;transform:translate(0,0) scale(.6)}80%,100%{opacity:1;transform:translate(0,0) scale(1)}}
+    @keyframes obFly2{0%,26%{opacity:1;transform:translate(0,0) scale(1)}42%{opacity:0;transform:translate(192px,-4px) scale(.2)}43%,76%{opacity:0;transform:translate(0,0) scale(.6)}86%,100%{opacity:1;transform:translate(0,0) scale(1)}}
+    @keyframes obFly3{0%,40%{opacity:1;transform:translate(0,0) scale(1)}56%{opacity:0;transform:translate(192px,-46px) scale(.2)}57%,82%{opacity:0;transform:translate(0,0) scale(.6)}92%,100%{opacity:1;transform:translate(0,0) scale(1)}}
     @keyframes obHandC{0%,18%{opacity:0;transform:translate(70px,60px)}24%{opacity:1;transform:translate(70px,60px)}32%,38%{opacity:1;transform:translate(0,0)}46%,100%{opacity:0;transform:translate(0,0)}}
     @keyframes obRingC{0%,31%{opacity:0;transform:scale(.3)}33%{opacity:.9}46%,100%{opacity:0;transform:scale(3.4)}}
-    @keyframes obArmOn{0%,33%{opacity:0}42%,100%{opacity:1}}
-    @keyframes obOn{0%,33%{opacity:0}42%,100%{opacity:1}}
-    @keyframes obOff{0%,30%{opacity:1}38%,100%{opacity:0}}
+    @keyframes obArmOn{0%,33%{opacity:0}42%,84%{opacity:1}94%,100%{opacity:0}}
+    @keyframes obOn{0%,33%{opacity:0}42%,84%{opacity:1}92%,100%{opacity:0}}
+    @keyframes obOff{0%,30%{opacity:1}38%,90%{opacity:0}98%,100%{opacity:1}}
     @keyframes obRedo{0%,12%{transform:scale(1)}20%{transform:scale(.88)}28%,100%{transform:scale(1)}}
     @keyframes obTurn{0%,12%{transform:rotate(0)}34%,100%{transform:rotate(360deg)}}
-    @keyframes obWire{0%,38%{stroke-dashoffset:0;opacity:0}44%{opacity:1}60%,100%{stroke-dashoffset:-44;opacity:1}}
-    @keyframes obBadge{0%,54%{opacity:0;transform:scale(.8)}64%,100%{opacity:1;transform:scale(1)}}
+    @keyframes obWire{0%,38%{stroke-dashoffset:0;opacity:0}44%{opacity:1}60%,84%{stroke-dashoffset:-44;opacity:1}94%,100%{stroke-dashoffset:-44;opacity:0}}
+    @keyframes obBadge{0%,54%{opacity:0;transform:scale(.8)}64%,84%{opacity:1;transform:scale(1)}94%,100%{opacity:0;transform:scale(1)}}
     """;
 
     private static string E(string s) => WebUtility.HtmlEncode(s);
