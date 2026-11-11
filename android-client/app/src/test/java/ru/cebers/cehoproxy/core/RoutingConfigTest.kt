@@ -293,7 +293,9 @@ class RoutingConfigTest {
 
     @Test fun importedPolicyUsesConfiguredOutboundTagAndDefaultPolicyPreservesConfig() {
         val imported = """{"inbounds":[{"type":"tun"}],"outbounds":[{"type":"vless","tag":"edge-out"},{"type":"direct","tag":"direct"}],"route":{"final":"edge-out","rules":[{"domain":["old.example"],"outbound":"edge-out"}]}}"""
-        assertEquals(imported, RoutingConfig.applyToImported(imported, RoutePolicy()))
+        val preserved = JSONObject(RoutingConfig.applyToImported(imported, RoutePolicy()))
+        assertTrue(preserved.getJSONArray("inbounds").getJSONObject(0).remove("route_exclude_address") != null)
+        assertEquals(JSONObject(imported).toString(), preserved.toString())
         val result = JSONObject(RoutingConfig.applyToImported(imported, RoutePolicy(sites = listOf("allowed.example"), siteMode = SiteMode.ONLY_LIST)))
         val route = result.getJSONObject("route")
         assertEquals("direct", route.getString("final"))
