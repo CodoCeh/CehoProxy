@@ -91,7 +91,7 @@ object RoutingConfig {
         val onlySites = policy.siteMode == SiteMode.ONLY_LIST
         return JSONObject().put("log", JSONObject().put("level", "info"))
             .put("dns", dnsConfig(policy, fallbackTag, tagByRouteId))
-            .put("inbounds", JSONArray().put(JSONObject().put("type", "tun").put("tag", "tun-in").put("address", JSONArray().put("172.19.0.1/30").put("fdfe:dcba:9876::1/126")).put("auto_route", true).put("strict_route", true).put("stack", "gvisor").apply {
+            .put("inbounds", JSONArray().put(JSONObject().put("type", "tun").put("tag", "tun-in").put("address", JSONArray().put("172.19.0.1/30").put("fdfe:dcba:9876::1/126")).put("auto_route", true).put("strict_route", true).put("stack", "gvisor").also(::addLanBypass).apply {
                 val includedPackages = (policy.apps + policy.appNodeRoutes.keys).distinct()
                 if (!policy.excludeSelectedApps && includedPackages.isNotEmpty()) put("include_package", JSONArray(includedPackages))
                 else if (policy.excludeSelectedApps && policy.apps.isNotEmpty()) put("exclude_package", JSONArray(policy.apps))
@@ -144,7 +144,7 @@ object RoutingConfig {
     fun applyToImported(config: String, policy: RoutePolicy): String {
         if (policy.apps.isEmpty() && !policy.excludeSelectedApps && policy.sites.isEmpty() &&
             policy.appNodeRoutes.isEmpty() && policy.siteNodeRoutes.isEmpty() &&
-            !policy.autoRotationEnabled && policy.siteMode == SiteMode.ALL_EXCEPT_LIST) return config
+            !policy.autoRotationEnabled && policy.siteMode == SiteMode.ALL_EXCEPT_LIST) return withLanBypass(config)
         val root = JSONObject(config)
         val inbounds = root.optJSONArray("inbounds") ?: JSONArray()
         var tun: JSONObject? = null
@@ -201,7 +201,47 @@ object RoutingConfig {
         if (policy.siteMode == SiteMode.ONLY_LIST) route.put("final", "direct")
         else if (policy.autoRotationEnabled) route.put("final", OrderedFailoverConfig.GLOBAL_TAG)
         else if (policy.apps.isNotEmpty()) route.put("final", proxyTag)
+        addLanBypass(tun!!)
         return root.toString(2)
+    }
+
+    val LAN_BYPASS = listOf("192.168.0.0/16", "10.0.0.0/8", "169.254.0.0/16",
+        "172.16.0.0/15", "172.18.0.0/16", "172.20.0.0/14", "172.24.0.0/13")
+
+    private fun withLanBypass(config: String): String {
+        val root = try { JSONObject(config) } catch (_: org.json.JSONException) { return config }
+        val inbounds = root.optJSONArray("inbounds") ?: return config
+        val tun = (0 until inbounds.length()).mapNotNull { inbounds.optJSONObject(it) }.firstOrNull { it.optString("type") == "tun" } ?: return config
+        addLanBypass(tun)
+        return root.toString(2)
+    }
+
+    private fun addLanBypass(tun: JSONObject) {
+        val own = listOf("address", "inet4_address").flatMap { key ->
+            when (val value = tun.opt(key)) {
+                is JSONArray -> (0 until value.length()).map { value.optString(it) }
+                is String -> listOf(value)
+                else -> emptyList()
+            }
+        }
+        val excludes = tun.optJSONArray("route_exclude_address") ?: JSONArray()
+        val present = (0 until excludes.length()).map { excludes.optString(it) }.toSet()
+        for (prefix in LAN_BYPASS) if (prefix !in present && own.none { overlaps(it, prefix) }) excludes.put(prefix)
+        tun.put("route_exclude_address", excludes)
+    }
+
+    private fun overlaps(a: String, b: String): Boolean {
+        fun parse(cidr: String): Pair<Long, Int>? {
+            val parts = cidr.split('/')
+            val octets = parts[0].split('.').mapNotNull { it.toIntOrNull() }
+            if (octets.size != 4) return null
+            return octets.fold(0L) { acc, o -> (acc shl 8) or o.toLong() } to (parts.getOrNull(1)?.toIntOrNull() ?: 32)
+        }
+        val (ipA, lenA) = parse(a) ?: return false
+        val (ipB, lenB) = parse(b) ?: return false
+        val len = minOf(lenA, lenB)
+        val mask = if (len == 0) 0L else (0xFFFFFFFFL shl (32 - len)) and 0xFFFFFFFFL
+        return (ipA and mask) == (ipB and mask)
     }
 
     private fun proxyOutboundTags(outbounds: JSONArray?): List<String> = outbounds?.let { array ->
