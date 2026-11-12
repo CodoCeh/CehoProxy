@@ -58,6 +58,7 @@ internal object DirectSitePresets {
         "uchi.ru", "sdamgia.ru", "1c.ru", "sbis.ru",
         "kontur.ru", "diadoc.ru",
         "x5.ru", "lenta.com", "auchan.ru", "metro-cc.ru", "kazanexpress.ru", "oldi.ru", "technodom.ru", "sportmaster.ru", "eapteka.ru", "apteka.ru", "zdravcity.ru", "holodilnik.ru", "dodopizza.ru", "cian.ru", "domclick.ru", "drom.ru", "auto.ru", "otpbank.ru", "uralsib.ru", "bspb.ru", "mtsbank.ru", "rencredit.ru", "homecredit.ru", "pochtabank.ru", "akbars.ru", "vtb24.ru", "minfin.gov.ru", "minzdrav.gov.ru", "mosreg.ru", "gov.spb.ru", "fssprus.ru", "sudrf.ru", "pravo.gov.ru", "arbitr.ru", "gibdd.ru", "trudvsem.ru", "edu.gov.ru", "fipi.ru", "ttk.ru", "citymobil.ru", "maxim.ru", "dellin.ru", "pecom.ru", "dpd.ru", "smotreshka.tv", "amediateka.ru", "forbes.ru", "foxford.ru", "dnevnik.ru", "zarplata.ru", "gaijin.net", "warthunder.com", "gitverse.ru", "selectel.ru", "timeweb.ru", "reg.ru", "beget.com", "cloud.ru",
+        "наш.дом.рф", "rusprofile.ru", "indparks.ru", "russiaindustrialpark.ru", "ostov-tver.ru", "tverinvest.ru", "admoblkaluga.ru", "kaluga-gov.ru", "oezkaluga.ru", "investkaluga.com", "kaluga24.tv", "tularegion.ru", "uzlovaya.ru", "myslo.ru", "admrzn.ru", "investryazan.ru", "rzn.info", "emmauss.ru", "ryazan-gov.ru",
     )
 
     fun forMode(onlySites: Boolean): List<String> = if (onlySites) tunnelSites else russianSites

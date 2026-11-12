@@ -2,16 +2,20 @@ package ru.cebers.cehoproxy.core
 
 import java.util.Locale
 
-data class CountryRoutingOption(val code: String, val name: String, val domainAsset: String? = null) {
+data class CountryRoutingOption(val code: String, val name: String, val domainAsset: String? = null, val domainSuffixes: List<String> = emptyList()) {
     val ipAsset: String get() = "geoip-$code.srs"
     val coverage: String get() = if (domainAsset == null) "IP-адреса" else "Домены и IP-адреса"
 }
 
-data class CountryRuleSet(val tag: String, val path: String, val domains: Boolean)
+data class CountryRuleSet(val tag: String, val path: String, val domains: Boolean, val domainSuffixes: List<String> = emptyList())
 
 object CountryRouting {
+    val russianSuffixes = listOf(
+        "ru", "su", "xn--p1ai", "xn--p1acf", "xn--80adxhks", "xn--d1acj3b", "moscow", "tatar",
+        "investkaluga.com", "kaluga24.tv", "rzn.info",
+    )
     val countries = listOf(
-        CountryRoutingOption("ru", "Россия", "geosite-category-ru.srs"),
+        CountryRoutingOption("ru", "Россия", "geosite-category-ru.srs", russianSuffixes),
         CountryRoutingOption("cn", "Китай", "geosite-cn.srs"),
         CountryRoutingOption("ir", "Иран", "geosite-category-ir.srs"),
         CountryRoutingOption("de", "Германия"), CountryRoutingOption("us", "США"),

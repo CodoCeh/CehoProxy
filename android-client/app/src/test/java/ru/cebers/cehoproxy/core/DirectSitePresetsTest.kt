@@ -6,7 +6,7 @@ import org.junit.Test
 class DirectSitePresetsTest {
     @Test fun presetsMatchDesktopLists() {
         assertEquals(18, DirectSitePresets.tunnelSites.size)
-        assertEquals(244, DirectSitePresets.russianSites.size)
+        assertEquals(263, DirectSitePresets.russianSites.size)
         assertTrue("gosuslugi.ru" in DirectSitePresets.russianSites)
         assertTrue("youtube.com" in DirectSitePresets.tunnelSites)
     }
