@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace ProxyCage.Core;
 
-public sealed record CountryOption(string Code, string NameRu, string NameEn, string? DomainAsset = null)
+public sealed record CountryOption(string Code, string NameRu, string NameEn, string? DomainAsset = null, string[]? DomainSuffixes = null)
 {
     public string IpAsset => $"geoip-{Code}.srs";
     public bool HasDomains => DomainAsset is not null;
@@ -18,9 +18,15 @@ public sealed record CountryRuleSet(string Tag, string Path, bool Domains);
 /// </summary>
 public static class CountryRules
 {
+    public static readonly string[] RussianSuffixes =
+    [
+        "ru", "su", "xn--p1ai", "xn--p1acf", "xn--80adxhks", "xn--d1acj3b", "moscow", "tatar",
+        "investkaluga.com", "kaluga24.tv", "rzn.info",
+    ];
+
     public static readonly IReadOnlyList<CountryOption> Options = new[]
     {
-        new CountryOption("ru", "Россия", "Russia", "geosite-category-ru.srs"),
+        new CountryOption("ru", "Россия", "Russia", "geosite-category-ru.srs", RussianSuffixes),
         new CountryOption("cn", "Китай", "China", "geosite-cn.srs"),
         new CountryOption("ir", "Иран", "Iran", "geosite-category-ir.srs"),
         new CountryOption("de", "Германия", "Germany"),

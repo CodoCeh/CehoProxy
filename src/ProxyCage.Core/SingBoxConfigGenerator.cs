@@ -496,10 +496,25 @@ public static class SingBoxConfigGenerator
                     });
                 routeRules.Add(new JsonObject
                 {
-                    ["process_path_regex"] = homeRegexes,
+                    ["process_path_regex"] = homeRegexes.DeepClone(),
                     ["rule_set"] = tags,
                     ["outbound"] = DirectTag,
                 });
+                if (CountryRules.Find(cfg.HomeCountry)?.DomainSuffixes is { Length: > 0 } homeSuffixes)
+                {
+                    dnsRules.Add(new JsonObject
+                    {
+                        ["process_path_regex"] = homeRegexes.DeepClone(),
+                        ["domain_suffix"] = new JsonArray(homeSuffixes.Select(s => (JsonNode)s).ToArray()),
+                        ["server"] = "dns-direct",
+                    });
+                    routeRules.Add(new JsonObject
+                    {
+                        ["process_path_regex"] = homeRegexes,
+                        ["domain_suffix"] = new JsonArray(homeSuffixes.Select(s => (JsonNode)s).ToArray()),
+                        ["outbound"] = DirectTag,
+                    });
+                }
             }
         }
 

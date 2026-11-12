@@ -41,6 +41,22 @@ public class HomeCountryTests
     }
 
     [Fact]
+    public void Russia_sends_whole_russian_zones_and_listed_regional_sites_direct()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        var json = Generate(Config("ru"), dir);
+        var rule = json["route"]!["rules"]!.AsArray().Single(r => r!["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "xn--p1ai"))!;
+        Assert.Equal("direct", (string)rule["outbound"]!);
+        Assert.Contains(rule["process_path_regex"]!.AsArray(), x => ((string)x!).Contains("HomeApp"));
+        var suffixes = rule["domain_suffix"]!.AsArray().Select(x => (string)x!).ToList();
+        foreach (var host in new[] { "zakupki.gov.ru", "xn--80az8a.xn--d1aqf.xn--p1ai", "nspd.gov.ru", "pkk.rosreestr.ru", "rusprofile.ru", "egrul.nalog.ru", "focus.kontur.ru", "gisp.gov.ru", "indparks.ru", "russiaindustrialpark.ru", "yandex.ru", "2gis.ru", "avito.ru", "hh.ru", "tver.mk.ru", "ostov-tver.ru", "tverinvest.ru", "admoblkaluga.ru", "kaluga-gov.ru", "oezkaluga.ru", "investkaluga.com", "kaluga24.tv", "tularegion.ru", "stroy.tularegion.ru", "econom.tularegion.ru", "tulacity.gosuslugi.ru", "uzlovaya.ru", "tula.mk.ru", "myslo.ru", "ryazan.gov.ru", "admrzn.ru", "investryazan.ru", "rzn.info", "kaluga.mk.ru", "ryazan.mk.ru", "emmauss.ru", "ryazan-gov.ru" })
+            Assert.True(suffixes.Any(s => host == s || host.EndsWith("." + s)), host);
+        Assert.DoesNotContain(suffixes, s => "example.guru".EndsWith("." + s) || "github.com".EndsWith("." + s));
+        Assert.Contains(json["dns"]!["rules"]!.AsArray(), r => r!["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "ru") && (string)r["server"]! == "dns-direct");
+        Assert.DoesNotContain(Generate(Config("de"), dir)["route"]!["rules"]!.AsArray(), r => r!["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "ru"));
+    }
+
+    [Fact]
     public void A_country_without_domains_uses_ip_only_and_no_country_means_no_rules()
     {
         var dir = Directory.CreateTempSubdirectory().FullName;
