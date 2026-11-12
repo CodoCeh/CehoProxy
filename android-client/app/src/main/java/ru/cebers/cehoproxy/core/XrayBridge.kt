@@ -9,7 +9,8 @@ import java.net.URLDecoder
 internal object XrayBridge {
     private val transports = setOf("xhttp", "splithttp", "kcp", "mkcp")
 
-    fun needsXray(node: ProxyNode): Boolean = node.type == "vless" && networkOf(node) in transports
+    fun needsXray(node: ProxyNode): Boolean =
+        node.type == "vless" && !node.raw.trimStart().startsWith("{") && runCatching { networkOf(node) }.getOrNull() in transports
 
     fun config(nodes: List<ProxyNode>, socksPorts: Map<String, Int>): String {
         val inbounds = JSONArray()
