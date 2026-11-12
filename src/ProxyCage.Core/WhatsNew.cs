@@ -54,6 +54,12 @@ public static class WhatsNew
                 "Кнопка «Удалить» убирает программу целиком, ошибка «CehoProxy.Engine» больше не появляется, значок в «Программах» называется CehoProxy.",
                 "The Uninstall button removes the app completely, the CehoProxy.Engine error no longer appears, and the icon in Applications is named CehoProxy."),
         }),
+        new("1.2.189", new[]
+        {
+            new Item("Все российские сайты напрямую", "All Russian sites directly",
+                "Если на вкладке «Программы» выбрана страна «Россия», напрямую идут все сайты в зонах .ru, .рф, .su и других российских, включая региональные порталы.",
+                "If Russia is selected on the Apps tab, all sites in the .ru, .рф, .su and other Russian zones go directly, including regional portals."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
