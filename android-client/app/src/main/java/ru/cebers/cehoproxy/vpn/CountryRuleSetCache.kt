@@ -31,7 +31,8 @@ internal object CountryRuleSetCache {
                 } finally { temporary.delete() }
             }
             val domains = name == country.domainAsset
-            CountryRuleSet("country-${country.code}-${if (domains) "domains" else "ip"}", file.absolutePath, domains)
+            CountryRuleSet("country-${country.code}-${if (domains) "domains" else "ip"}", file.absolutePath, domains,
+                if (domains) country.domainSuffixes else emptyList())
         }
     }
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes)

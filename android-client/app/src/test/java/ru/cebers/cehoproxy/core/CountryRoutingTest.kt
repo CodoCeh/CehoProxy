@@ -91,6 +91,23 @@ class CountryRoutingTest {
         assertFalse(config.toString().contains("http_client"))
     }
 
+    @Test fun russiaSendsWholeRussianZonesAndListedRegionalSitesDirect() {
+        val ru = listOf(sets[0], sets[1].copy(domainSuffixes = CountryRouting.find("ru")!!.domainSuffixes))
+        val config = JSONObject(RoutingConfig.build(node, RoutePolicy(countryRuleSets = ru)))
+        val rules = config.getJSONObject("route").getJSONArray("rules")
+        val rule = (0 until rules.length()).map { rules.getJSONObject(it) }.single { it.has("domain_suffix") && it.getJSONArray("domain_suffix").toString().contains("xn--p1ai") }
+        assertEquals("direct", rule.getString("outbound"))
+        val suffixes = (0 until rule.getJSONArray("domain_suffix").length()).map { rule.getJSONArray("domain_suffix").getString(it) }
+        listOf("zakupki.gov.ru", "xn--80az8a.xn--d1aqf.xn--p1ai", "nspd.gov.ru", "pkk.rosreestr.ru", "rusprofile.ru", "egrul.nalog.ru", "focus.kontur.ru", "gisp.gov.ru", "indparks.ru", "russiaindustrialpark.ru", "yandex.ru", "2gis.ru", "avito.ru", "hh.ru", "tver.mk.ru", "ostov-tver.ru", "tverinvest.ru", "admoblkaluga.ru", "kaluga-gov.ru", "oezkaluga.ru", "investkaluga.com", "kaluga24.tv", "tularegion.ru", "stroy.tularegion.ru", "econom.tularegion.ru", "tulacity.gosuslugi.ru", "uzlovaya.ru", "tula.mk.ru", "myslo.ru", "ryazan.gov.ru", "admrzn.ru", "investryazan.ru", "rzn.info", "kaluga.mk.ru", "ryazan.mk.ru", "emmauss.ru", "ryazan-gov.ru").forEach { host ->
+            assertTrue(host, suffixes.any { host == it || host.endsWith(".$it") })
+        }
+        assertFalse(suffixes.any { "example.guru".endsWith(".$it") || "github.com".endsWith(".$it") })
+        val dns = config.getJSONObject("dns").getJSONArray("rules")
+        assertTrue((0 until dns.length()).map { dns.getJSONObject(it) }.any { it.optString("server") == "dns-direct" && it.optJSONArray("domain_suffix")?.toString()?.contains("\"ru\"") == true })
+        assertEquals("xn--80az8a.xn--d1aqf.xn--p1ai", RoutingConfig.ruleDomain("наш.дом.рф"))
+        assertEquals("example.com", RoutingConfig.ruleDomain("https://Example.com/path"))
+    }
+
     @Test fun bundledFilesMatchPinnedManifestAndAdvertisedCoverage() {
         val directory = File("src/main/assets/country-rules")
         val manifest = JSONObject(File(directory, "manifest.json").readText()).getJSONArray("files")

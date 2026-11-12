@@ -85,6 +85,9 @@ object RoutingConfig {
             appendLocalDpiRules(rules, dpiApps)
             if (policy.countryRuleSets.isNotEmpty()) rules.put(JSONObject().put("rule_set", JSONArray(policy.countryRuleSets.map { it.tag }))
                 .put("action", "route").put("outbound", "direct"))
+            val countrySuffixes = policy.countryRuleSets.flatMap { it.domainSuffixes }.distinct()
+            if (countrySuffixes.isNotEmpty()) rules.put(JSONObject().put("domain_suffix", JSONArray(countrySuffixes))
+                .put("action", "route").put("outbound", "direct"))
             appendAssignedRules(rules, policy.copy(siteNodeRoutes = emptyMap()), tagByRouteId)
         }
         rules.put(JSONObject().put("ip_version", 6).put("action", "reject"))
@@ -110,7 +113,7 @@ object RoutingConfig {
 
     private fun dnsConfig(policy: RoutePolicy, proxyTag: String, tagByRouteId: Map<String, String>): JSONObject {
         val onlySites = policy.siteMode == SiteMode.ONLY_LIST
-        val domains = policy.sites.map(::normalizeDomain).filter(String::isNotBlank).distinct()
+        val domains = policy.sites.map(::ruleDomain).filter(String::isNotBlank).distinct()
         fun remoteServer(tag: String, detour: String) = JSONObject().put("type", "https").put("tag", tag)
             .put("server", "1.1.1.1").put("path", "/dns-query").put("detour", detour)
         val servers = JSONArray().put(remoteServer("dns-remote", proxyTag))
@@ -118,7 +121,7 @@ object RoutingConfig {
         val addedServerTags = mutableSetOf("dns-remote")
         val rules = JSONArray()
         policy.siteNodeRoutes.toSortedMap().forEach { (value, nodeRouteId) ->
-            val domain = normalizeDomain(value)
+            val domain = ruleDomain(value)
             val nodeTag = tagByRouteId[nodeRouteId] ?: return@forEach
             if (domain.isBlank()) return@forEach
             val dnsTag = if (nodeTag == proxyTag) "dns-remote" else "dns-route-$nodeTag"
@@ -133,6 +136,9 @@ object RoutingConfig {
         if (dpiApps.isNotEmpty()) rules.put(JSONObject().put("package_name", JSONArray(dpiApps)).put("server", "dns-direct"))
         val domainSets = policy.countryRuleSets.filter { it.domains }
         if (domainSets.isNotEmpty()) rules.put(JSONObject().put("rule_set", JSONArray(domainSets.map { it.tag }))
+            .put("server", "dns-direct"))
+        val countrySuffixes = policy.countryRuleSets.flatMap { it.domainSuffixes }.distinct()
+        if (countrySuffixes.isNotEmpty()) rules.put(JSONObject().put("domain_suffix", JSONArray(countrySuffixes))
             .put("server", "dns-direct"))
         if (proxyTag == "block") rules.put(JSONObject().put("action", "reject"))
         return JSONObject().put("servers", servers)
@@ -271,7 +277,7 @@ object RoutingConfig {
 
     private fun appendAssignedRules(rules: JSONArray, policy: RoutePolicy, tagByRouteId: Map<String, String>) {
         policy.siteNodeRoutes.toSortedMap().forEach { (domainValue, nodeRouteId) ->
-            val domain = normalizeDomain(domainValue)
+            val domain = ruleDomain(domainValue)
             val tag = tagByRouteId[nodeRouteId] ?: return@forEach
             if (domain.isNotBlank()) rules.put(JSONObject().put("domain", JSONArray().put(domain))
                 .put("domain_suffix", JSONArray().put(".$domain")).put("outbound", tag))
@@ -283,7 +289,7 @@ object RoutingConfig {
     }
 
     private fun appendPolicyRules(rules: JSONArray, policy: RoutePolicy, proxyTag: String = "proxy") {
-        val domains = policy.sites.map(::normalizeDomain).filter(String::isNotBlank).distinct()
+        val domains = policy.sites.map(::ruleDomain).filter(String::isNotBlank).distinct()
         if (domains.isNotEmpty()) {
             val siteRule = JSONObject().put("domain", JSONArray(domains))
                 .put("domain_suffix", JSONArray(domains.map { ".$it" }))
@@ -293,6 +299,9 @@ object RoutingConfig {
     }
 
     fun normalizeDomain(value: String): String = value.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').substringBefore(':').removePrefix("*.").trimEnd('.')
+
+    fun ruleDomain(value: String): String = normalizeDomain(value)
+        .let { host -> runCatching { java.net.IDN.toASCII(host, java.net.IDN.ALLOW_UNASSIGNED).lowercase() }.getOrDefault(host) }
 
     private fun outbound(node: ProxyNode, tag: String = "proxy", xrayPorts: Map<String, Int> = emptyMap()): JSONObject {
         if (node.raw.trimStart().startsWith("{")) return JSONObject(node.raw).put("tag", tag)
