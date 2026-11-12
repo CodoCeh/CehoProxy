@@ -18,6 +18,11 @@ class XrayBridgeTest {
         assertFalse(XrayBridge.needsXray(NodeShareParser.parse("trojan://pass@203.0.113.4:443#tr").single()))
     }
 
+    @Test fun singBoxJsonVlessNodeDoesNotNeedXrayAndDoesNotThrow() {
+        val raw = """{"type":"vless","server":"203.0.113.5","server_port":8443,"tag":"США","uuid":"$uuid","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"example.com","reality":{"enabled":true,"public_key":"AAAA","short_id":"ab"}}}"""
+        assertFalse(XrayBridge.needsXray(ProxyNode("США", "vless", "203.0.113.5", 8443, raw)))
+    }
+
     @Test fun buildsSocksInboundPerNodeAndMatchingRoute() {
         val config = JSONObject(XrayBridge.config(listOf(xhttp, kcp), mapOf(xhttp.routeId to 10001, kcp.routeId to 10002)))
         val inbounds = config.getJSONArray("inbounds")
