@@ -17,7 +17,6 @@ data class RoutePolicy(
     val excludedCountriesBySubscription: Map<String, Set<String>> = emptyMap(),
     val countryRuleSets: List<CountryRuleSet> = emptyList(),
     val localDpiApps: List<String> = emptyList(),
-    val blockYoutubeAds: Boolean = false,
     val disabledSubscriptions: Set<String> = emptySet(),
     val autoDisabledSubscriptions: Set<String> = emptySet(),
     val xrayPorts: Map<String, Int> = emptyMap(),
@@ -75,7 +74,6 @@ object RoutingConfig {
         val rules = JSONArray()
         rules.put(JSONObject().put("action", "sniff"))
         rules.put(JSONObject().put("protocol", "dns").put("action", "hijack-dns"))
-        if (policy.blockYoutubeAds) rules.put(JSONObject().put("domain_suffix", JSONArray(YoutubeAdPolicy.domainSuffixes)).put("action", "reject"))
         if (policy.countryRuleSets.isEmpty() && dpiApps.isEmpty()) {
             appendAssignedRules(rules, policy, tagByRouteId)
             appendPolicyRules(rules, policy, fallbackTag)
@@ -107,8 +105,7 @@ object RoutingConfig {
     }
 
     private fun directDpiApps(policy: RoutePolicy): List<String> {
-        val apps = LocalDpiPolicy.activeApps(policy.localDpiApps, policy.apps, policy.excludeSelectedApps)
-        return if (policy.blockYoutubeAds) (apps + YoutubeAdPolicy.PACKAGE).distinct() else apps
+        return LocalDpiPolicy.activeApps(policy.localDpiApps, policy.apps, policy.excludeSelectedApps)
     }
 
     private fun dnsConfig(policy: RoutePolicy, proxyTag: String, tagByRouteId: Map<String, String>): JSONObject {

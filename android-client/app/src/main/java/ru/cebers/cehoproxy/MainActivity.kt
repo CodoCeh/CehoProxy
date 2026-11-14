@@ -1554,13 +1554,6 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                         "Дополнительные параметры" -> {
                             PageHeading("Дополнительные параметры", subtitle = "Редкие и технические настройки")
                             QuietDivider()
-                            if (!BuildConfig.PLAY) {
-                                QuietRow(
-                                    "Блокировка рекламных сайтов", subtitle = "Блокирует рекламные домены. Реклама внутри видео, например в YouTube, может остаться.",
-                                    trailing = { Switch(checked = profile.blockYoutubeAds, onCheckedChange = { onSaveRouteSettings(profile.copy(blockYoutubeAds = it)) }, modifier = Modifier.testTag("home-block-youtube-ads").semantics { contentDescription = "Реклама YouTube" }) },
-                                )
-                                QuietDivider()
-                            }
                             QuietRow(
                                 "Напоминать о сроке", subtitle = "Уведомление перед окончанием подписки",
                                 trailing = { Switch(checked = profile.expiryRemindersEnabled, onCheckedChange = onExpiryReminders, modifier = Modifier.semantics { contentDescription = "Напоминать о сроке" }) },
@@ -1813,7 +1806,6 @@ private fun FirstRunOnboarding(
                 }
                 OnboardingCountryRow(title = "Другая страна", subtitle = "Все ресурсы пойдут по вашим правилам", selected = profile.directCountryCode.isEmpty(), tag = "onboarding-country:none", onClick = { onPickCountry("") })
                 QuietDivider()
-                if (profile.directCountryCode == "ru") Text("Для России блокировка рекламных сайтов включается сама. Отключить её можно в «Настройки → Дополнительные параметры».", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp).testTag("onboarding-ads-note"))
             }
             else -> {
                 Text("Разрешение Android", style = cappedStyle(MaterialTheme.typography.headlineMedium), color = colors.onSurface, modifier = Modifier.padding(top = 16.dp))
@@ -1858,7 +1850,6 @@ internal const val ACTION_SHORTCUT_SPEED_TEST = "ru.cebers.cehoproxy.action.SPEE
 private fun countryOnboardingChoice(profile: ClientProfile, code: String): ClientProfile =
     profile.copy(
         directCountryCode = code,
-        blockYoutubeAds = if (code == "ru" && !BuildConfig.PLAY) true else profile.blockYoutubeAds,
         sites = if (code == "ru" && !profile.onlySites) profile.sites + DirectSitePresets.newHosts(profile.sites, DirectSitePresets.russianSites) else profile.sites,
     )
 
