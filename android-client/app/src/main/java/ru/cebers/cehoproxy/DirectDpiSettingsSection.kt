@@ -31,8 +31,6 @@ internal fun DirectDpiSettingsSection(profile: ClientProfile, apps: List<AppChoi
             }
         }
         OutlinedButton(onClick = { choosing = true }, enabled = enabled, modifier = Modifier.testTag("dpi-app-picker")) { Text("Выбрать приложение") }
-        val youtube = apps.firstOrNull { it.packageName == "com.google.android.youtube" }
-        if (youtube != null && youtube.packageName !in profile.localDpiApps) QuietTextButton(onClick = { setMode(youtube.packageName, true) }, enabled = enabled, modifier = Modifier.testTag("dpi-add-youtube")) { Text("Добавить YouTube") }
     }
     if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text("Устойчивое соединение для приложения") }, text = {
         Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {

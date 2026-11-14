@@ -41,8 +41,8 @@ class RoutingEngineConfigTest {
         for (nodes in listOf(listOf(node), emptyList())) {
             for (mode in SiteMode.entries) {
                 Libbox.checkConfig(RoutingConfig.build(nodes, 0, RoutePolicy(
-                    apps = listOf("com.google.android.youtube"),
-                    localDpiApps = listOf("com.google.android.youtube"),
+                    apps = listOf("com.example.video"),
+                    localDpiApps = listOf("com.example.video"),
                     sites = listOf("manual.example"),
                     siteMode = mode,
                 )))

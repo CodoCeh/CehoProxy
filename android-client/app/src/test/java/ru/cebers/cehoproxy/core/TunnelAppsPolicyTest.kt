@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TunnelAppsPolicyTest {
-    private val installed = listOf("a.app", "b.app", "c.app", "d.app", YoutubeAdPolicy.PACKAGE)
+    private val installed = listOf("a.app", "b.app", "c.app", "d.app", "e.app")
 
     @Test fun includeModeSkipsAppsThatGoDirectByDpi() {
         val profile = ClientProfile(apps = listOf("a.app", "b.app"), localDpiApps = listOf("b.app"))
@@ -16,8 +16,8 @@ class TunnelAppsPolicyTest {
         assertEquals(listOf("a.app", "c.app"), TunnelAppsPolicy.packages(profile, installed))
     }
 
-    @Test fun excludeModeSkipsSelectedAndDpiAndAdBlockApps() {
-        val profile = ClientProfile(apps = listOf("a.app"), localDpiApps = listOf("b.app"), excludeSelectedApps = true, blockYoutubeAds = true)
-        assertEquals(listOf("c.app", "d.app"), TunnelAppsPolicy.packages(profile, installed))
+    @Test fun excludeModeSkipsSelectedAndDpiApps() {
+        val profile = ClientProfile(apps = listOf("a.app"), localDpiApps = listOf("b.app"), excludeSelectedApps = true)
+        assertEquals(listOf("c.app", "d.app", "e.app"), TunnelAppsPolicy.packages(profile, installed))
     }
 }

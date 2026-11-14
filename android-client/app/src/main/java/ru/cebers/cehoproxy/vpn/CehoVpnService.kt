@@ -266,7 +266,6 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 autoRotationIntervalSeconds = profile.autoRotationIntervalSeconds,
                 autoExcludedRouteIds = profile.autoExcludedRouteIds.toSet(),
                 excludedCountriesBySubscription = profile.excludedCountrySets,
-                blockYoutubeAds = profile.blockYoutubeAds,
                 disabledSubscriptions = profile.disabledSubscriptions.toSet(),
                 autoDisabledSubscriptions = profile.autoDisabledSubscriptions.toSet(),
                 xrayPorts = xrayPorts,

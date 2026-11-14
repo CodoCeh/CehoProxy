@@ -94,7 +94,7 @@ class LocalDpiEngineTest {
                 }
             }
             val generated = JSONObject(RoutingConfig.build(emptyList(), 0, RoutePolicy(
-                apps = listOf("com.google.android.youtube"), localDpiApps = listOf("com.google.android.youtube"))))
+                apps = listOf("com.example.video"), localDpiApps = listOf("com.example.video"))))
             val generatedRules = generated.getJSONObject("route").getJSONArray("rules")
             val fragmentRule = (0 until generatedRules.length()).map { generatedRules.getJSONObject(it) }.first { it.optBoolean("tls_fragment") || it.toString().contains("tls_record_fragment") }
             fragmentRule.remove("package_name")

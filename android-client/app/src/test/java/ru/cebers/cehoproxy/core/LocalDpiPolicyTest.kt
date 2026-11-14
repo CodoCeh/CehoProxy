@@ -5,7 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LocalDpiPolicyTest {
-    private val app = "com.google.android.youtube"
+    private val app = "com.example.video"
     private val other = "com.example.other"
     private val node = NodeShareParser.parse("vless://synthetic-id@edge.example:443#test").single()
     private val sets = listOf(CountryRuleSet("country-ru-ip", "/synthetic/ru.srs", false), CountryRuleSet("country-ru-domains", "/synthetic/domains.srs", true))
@@ -15,6 +15,11 @@ class LocalDpiPolicyTest {
         assertTrue(LocalDpiPolicy.activeApps(listOf(app), emptyList(), false).isEmpty())
         assertEquals(listOf(other), LocalDpiPolicy.activeApps(listOf(app, other), listOf(app), true))
         assertEquals(listOf(app), LocalDpiPolicy.normalize(listOf(" $app ", app, "", "../bad", "ru.cebers.cehoproxy")))
+    }
+
+    @Test fun youtubeIsDroppedFromDirectBypass() {
+        assertEquals(listOf(app), LocalDpiPolicy.normalize(listOf("com.google.android.youtube", app)))
+        assertEquals(listOf(app), ProfileCodec.decode(ProfileCodec.encode(ClientProfile(localDpiApps = listOf("com.google.android.youtube", app)))).localDpiApps)
     }
 
     @Test fun importedConfigDisablesDpiWithoutDiscardingPreference() {

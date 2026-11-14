@@ -27,7 +27,6 @@ data class ClientProfile(
     val subscriptionFetchedAt: Long = 0L,
     val subscriptionFetchedAtByUrl: Map<String, Long> = emptyMap(),
     val subscriptionRefreshHours: Int = SubscriptionRefreshPolicy.DEFAULT_INTERVAL_HOURS,
-    val blockYoutubeAds: Boolean = false,
     val disabledSubscriptions: List<String> = emptyList(),
     val autoDisabledSubscriptions: List<String> = emptyList(),
 ) {
@@ -66,7 +65,7 @@ object ProfileCodec {
             .put("excludedCountriesBySubscription", JSONObject().apply { profile.excludedCountriesBySubscription.forEach { (key, countries) -> put(key, JSONArray(countries.map { it.uppercase() }.distinct())) } })
             .put("subscriptionUrls", JSONArray(profile.subscriptionUrls)).put("subscriptionFetchedAt", profile.subscriptionFetchedAt)
             .put("subscriptionFetchedAtByUrl", JSONObject().apply { profile.subscriptionFetchedAtByUrl.forEach { (url, at) -> put(url, at) } })
-            .put("subscriptionRefreshHours", profile.subscriptionRefreshHours).put("blockYoutubeAds", profile.blockYoutubeAds).put("disabledSubscriptions", JSONArray(profile.disabledSubscriptions.distinct())).put("autoDisabledSubscriptions", JSONArray(profile.autoDisabledSubscriptions.distinct())).toString()
+            .put("subscriptionRefreshHours", profile.subscriptionRefreshHours).put("disabledSubscriptions", JSONArray(profile.disabledSubscriptions.distinct())).put("autoDisabledSubscriptions", JSONArray(profile.autoDisabledSubscriptions.distinct())).toString()
     }
 
     fun decode(encoded: String): ClientProfile = runCatching {
@@ -115,7 +114,6 @@ object ProfileCodec {
             subscriptionFetchedAtByUrl = json.optJSONObject("subscriptionFetchedAtByUrl")?.let { obj -> obj.keys().asSequence().associateWith { obj.optLong(it) } }.orEmpty(),
             subscriptionRefreshHours = json.optInt("subscriptionRefreshHours", SubscriptionRefreshPolicy.DEFAULT_INTERVAL_HOURS)
                 .takeIf { it in SubscriptionRefreshPolicy.INTERVAL_OPTIONS_HOURS } ?: SubscriptionRefreshPolicy.DEFAULT_INTERVAL_HOURS,
-            blockYoutubeAds = !ru.cebers.cehoproxy.BuildConfig.PLAY && json.optBoolean("blockYoutubeAds"),
             disabledSubscriptions = json.array("disabledSubscriptions"),
             autoDisabledSubscriptions = json.array("autoDisabledSubscriptions"),
         )
