@@ -97,7 +97,7 @@ object RoutingConfig {
                 if (!policy.excludeSelectedApps && includedPackages.isNotEmpty()) put("include_package", JSONArray(includedPackages))
                 else if (policy.excludeSelectedApps && policy.apps.isNotEmpty()) put("exclude_package", JSONArray(policy.apps))
             }))
-            .put("outbounds", outbounds).apply { if (endpoints.length() > 0) put("endpoints", endpoints) }.put("route", JSONObject().put("auto_detect_interface", true).put("default_domain_resolver", "dns-direct").put("rules", rules).apply {
+            .put("outbounds", outbounds).apply { if (endpoints.length() > 0) put("endpoints", endpoints) }.put("route", JSONObject().put("auto_detect_interface", true).put("find_process", true).put("default_domain_resolver", "dns-direct").put("rules", rules).apply {
                 if (policy.countryRuleSets.isNotEmpty()) put("rule_set", JSONArray(policy.countryRuleSets.map { set ->
                     JSONObject().put("type", "local").put("tag", set.tag).put("format", "binary").put("path", set.path)
                 }))

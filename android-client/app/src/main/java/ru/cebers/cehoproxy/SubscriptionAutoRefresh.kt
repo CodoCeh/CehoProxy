@@ -71,6 +71,7 @@ object SubscriptionAutoRefresh {
                 removed = current.nodes.filter { it.raw !in after }.map { it.name }
             }
         }
+        QuotaWarnings.check(context, result)
         if (added.isNotEmpty() || removed.isNotEmpty()) EventLog.append(context, "список узлов подписки изменился: добавлено ${added.size}${names(added)}, убрано ${removed.size}${names(removed)}")
         return result
     }
