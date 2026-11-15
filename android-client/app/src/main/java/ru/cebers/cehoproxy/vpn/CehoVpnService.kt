@@ -50,6 +50,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         private const val ALERT_CHANNEL = "cehoproxy-alert"
         private const val NOTIFICATION_ID = 41
         private const val ALERT_NOTIFICATION_ID = 42
+        private const val WHITELIST_NOTIFICATION_ID = 43
         private const val NETWORK_LOST_GRACE_SECONDS = 4L
         private const val NETWORK_CHANGE_DEBOUNCE_MILLIS = 300L
         private const val RECOVERY_PROBE_TIMEOUT_MILLIS = 1_500
@@ -119,6 +120,8 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         if (key == "data") onProfileChanged()
     }
     @Volatile private var directState = DirectReachability.State.OPEN
+    @Volatile private var whitelistMarked: Set<String> = emptySet()
+    @Volatile private var whitelistFromRaw: String? = null
     private val scout = LatencyScout(OrderedFailoverConfig.LATENCY_TAG)
     @Volatile private var interactive = true
     @Volatile private var forceCheck = false
@@ -151,6 +154,7 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     private var acceptTun = false
     private var commandServer: CommandServer? = null
     private var siteWatch: SiteWatch? = null
+    private var trafficMonitor: TrafficMonitor? = null
     private var tunnel: ParcelFileDescriptor? = null
     @Volatile private var physicalNetwork: Network? = null
     private val interfaceMonitors = ConcurrentHashMap<InterfaceUpdateListener, ConnectivityManager.NetworkCallback>()
@@ -288,6 +292,9 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             readyGeneration = generation
             siteWatch?.stop()
             siteWatch = SiteWatch(this) { directState == DirectReachability.State.OPEN }.also { it.start() }
+            trafficMonitor?.stop()
+            val subscriptionByTag = tagsByRaw(profile).entries.mapNotNull { (raw, tag) -> profile.nodes.firstOrNull { it.raw == raw }?.let { tag to NodePresentation.subscriptionKey(it) } }.toMap()
+            trafficMonitor = TrafficMonitor(this) { tag -> subscriptionByTag[tag] }.also { it.start() }
             val checkNode = candidates.isNotEmpty() && profile.importedConfig == null
             val published = startGeneration.runIfCurrent(generation) {
                 if (!checkNode) {
@@ -495,13 +502,13 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     private fun refreshDirectState() { directState = DirectReachability.check() }
 
     private fun outageText(): String = when (directState) {
-        DirectReachability.State.RESTRICTED -> "Оператор ограничил интернет: открыты только российские сайты. VPN заработает, когда ограничение снимут"
+        DirectReachability.State.RESTRICTED -> WhitelistPolicy.outageText(whitelistMarked.isNotEmpty(), activeProfile?.autoRotationEnabled == true)
         DirectReachability.State.OFFLINE -> "Нет интернета. VPN восстановится сам, когда сеть появится"
         DirectReachability.State.OPEN -> "Ни один сервер не отвечает. Проверка повторится автоматически"
     }
 
     private fun outageTitle(): String = when (directState) {
-        DirectReachability.State.RESTRICTED -> "Интернет ограничен оператором"
+        DirectReachability.State.RESTRICTED -> "Похоже, включены белые списки"
         DirectReachability.State.OFFLINE -> "Нет интернета"
         DirectReachability.State.OPEN -> "Нет доступных узлов"
     }
@@ -593,6 +600,10 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         val startedAt = System.currentTimeMillis()
         val first = firstConnection
         val grace = if (first) 0L else FailoverHealthPolicy.STARTUP_GRACE_MILLIS
+        val rawByTag = tagsByRaw(profile).entries.associate { (raw, tag) -> tag to raw }
+        val marked = profile.nodes.filter { WhitelistPolicy.isMarked(it.name) }.mapNotNull { tagsByRaw(profile)[it.raw] }.toSet()
+        whitelistMarked = marked
+        var lastHealthy: String? = null
         val check = Runnable {
             if (!startGeneration.isCurrent(generation) || !checkDue()) return@Runnable
             try {
@@ -611,7 +622,11 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                     val order = startOrder(candidates, profile).let { if (recovering) it.take(RECOVERY_CANDIDATES) else it }
                     val head = order.firstOrNull() ?: return null
                     OrderedFailover.firstWorking(listOf(head), current, nodeHealth, SLOW_NODE_MILLIS, probeNode)?.let { return it }
-                    val rest = order.drop(1)
+                    var rest = order.drop(1)
+                    if (marked.isNotEmpty() && rest.any { it in marked }) {
+                        refreshDirectState()
+                        if (directState == DirectReachability.State.RESTRICTED) rest = WhitelistPolicy.preferMarked(rest, marked)
+                    }
                     // The chosen node is down: one parallel test shows which others are alive instead of probing each dead one in turn.
                     val alive = if (recovering || rest.isEmpty()) null else nativeCalls.run(SCOUT_WAIT_MILLIS + SELECT_TIMEOUT_MILLIS) { scout.alive(rest.toSet(), SCOUT_WAIT_MILLIS) }
                     if (alive != null) rest.filter { it !in alive }.forEach(nodeHealth::markBad)
@@ -628,6 +643,9 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                     if (healthy != null) {
                         nativeCalls.run(SELECT_TIMEOUT_MILLIS) { client.selectOutbound(OrderedFailoverConfig.GLOBAL_TAG, healthy) }
                         failedChecks = 0
+                        val restricted = directState == DirectReachability.State.RESTRICTED
+                        val previous = lastHealthy
+                        lastHealthy = healthy
                         directState = DirectReachability.State.OPEN
                         val healthyRaw = tagsByRaw(profile).entries.firstOrNull { it.value == healthy }?.key
                         val activeNode = profile.nodes.firstOrNull { it.raw == healthyRaw }
@@ -640,6 +658,16 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                         }
                         publishStatus("connected", null)
                         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, connectedNotification())
+                        val label = activeNode?.let(::nodeLabel) ?: healthy
+                        if (whitelistFromRaw != null && healthy !in marked) {
+                            whitelistFromRaw = null
+                            EventLog.append(this, "белые списки сняты, вернулись на $label")
+                            notifyInfo("Ограничения сняты", "Вернулись на «$label»")
+                        } else if (restricted && healthy in marked && previous !in marked) {
+                            whitelistFromRaw = (previous ?: candidates.firstOrNull())?.let { rawByTag[it] }
+                            EventLog.append(this, "похоже, включены белые списки: переключились на $label")
+                            notifyInfo("Похоже, включены белые списки", "Переключились на «$label». Когда ограничения снимут, CehoProxy вернётся сам")
+                        }
                     } else {
                         failedChecks = FailoverHealthPolicy.nextFailedRounds(failedChecks, false, System.currentTimeMillis() - startedAt, grace)
                         refreshDirectState()
@@ -727,6 +755,8 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         xrayProcess = null
         siteWatch?.stop()
         siteWatch = null
+        trafficMonitor?.stop()
+        trafficMonitor = null
         val server = commandServer
         commandServer = null
         runCatching { server?.closeService() }
@@ -931,9 +961,20 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     private fun activate(node: ProxyNode?) {
         activeNodeName = node?.let(::nodeLabel)
         activeSubscriptionText = node?.let(NodePresentation::subscriptionSource)
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("widget_node", activeNodeName).apply()
     }
 
     private fun notifyProblem(text: String) = notifyProblem(this, text)
+
+    private fun notifyInfo(title: String, text: String) {
+        ensureChannels(this)
+        val note = NotificationCompat.Builder(this, ALERT_CHANNEL).setSmallIcon(ru.cebers.cehoproxy.R.drawable.ic_ceho_whirlpool)
+            .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT).setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(this, 4, Intent(this, ru.cebers.cehoproxy.MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            .build()
+        getSystemService(NotificationManager::class.java).notify(WHITELIST_NOTIFICATION_ID, note)
+    }
 
     private fun clearProblem() {
         networkLostAnnounced = false
@@ -944,6 +985,8 @@ class CehoVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     private val trafficTicker by lazy {
         TrafficTicker(this) { text ->
             speedText = text
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("widget_speed", text).apply()
+            CehoWidgetProvider.refreshAll(this)
             if (liveTunnelConnected) getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, connectedNotification())
         }
     }

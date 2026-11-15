@@ -702,6 +702,7 @@ class MainActivity : ComponentActivity() {
         profile = resolved
         ExpiryReminderScheduler.reconcile(this, resolved)
         SubscriptionAutoRefresh.reconcile(this, resolved)
+        QuotaWarnings.check(this, resolved)
     }
 
     private fun applyFetched(fetched: Map<String, List<ProxyNode>>) {
@@ -1424,6 +1425,10 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             QuietDivider()
                             CaptionLabel("Сервис")
                             QuietDivider()
+                            QuietRow("Куда идёт трафик", subtitle = "Через VPN или напрямую, по каждому приложению", onClick = { openPage("Куда идёт трафик") }, leading = { QuietBadge { SlidersGlyph(primary) } }, modifier = Modifier.testTag("settings-traffic-routes"))
+                            QuietDivider()
+                            QuietRow("Расход трафика", subtitle = "По приложениям и подпискам", onClick = { openPage("Расход трафика") }, leading = { QuietBadge { ServersGlyph(primary) } }, modifier = Modifier.testTag("settings-usage"))
+                            QuietDivider()
                             QuietRow("Проверка и помощь", subtitle = "Соединение, журнал, поддержка", onClick = { openPage("Проверка и помощь") }, leading = { QuietBadge { HelpGlyph(primary) } }, modifier = Modifier.testTag("settings-help"))
                             QuietDivider()
                             QuietRow("Перенос настроек", subtitle = "Импорт и экспорт", onClick = { openPage("Перенос настроек") }, leading = { QuietBadge { DocumentGlyph(primary) } }, modifier = Modifier.testTag("settings-transfer"))
@@ -1520,6 +1525,8 @@ private fun slowNodeRouteIds(profile: ClientProfile, measurements: VpnMeasuremen
                             }
                             Text("«Системная» следует настройке Android.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
                         }
+                        "Куда идёт трафик" -> TrafficRoutesPage(profile, connected, appChoices) { next -> onSaveRouteSettings(next); onNotice("Приложение пойдёт через VPN") }
+                        "Расход трафика" -> UsagePage(profile, appChoices)
                         "Проверка и помощь" -> {
                             PageHeading("Проверка и помощь", subtitle = "Соединение, журнал, поддержка")
                             QuietDivider()
