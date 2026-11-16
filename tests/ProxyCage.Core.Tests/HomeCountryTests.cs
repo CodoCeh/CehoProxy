@@ -29,7 +29,7 @@ public class HomeCountryTests
         Assert.Equal(new[] { "country-ru-ip", "country-ru-domains" }.Order(), sets.Order());
         Assert.All(json["route"]!["rule_set"]!.AsArray(), s => Assert.True(File.Exists((string)s!["path"]!)));
 
-        var rule = json["route"]!["rules"]!.AsArray().Single(r => r!["rule_set"] is not null)!;
+        var rule = json["route"]!["rules"]!.AsArray().Single(r => r!["rule_set"] is not null && r["process_path_regex"] is not null)!;
         Assert.Equal("direct", (string)rule["outbound"]!);
         var regexes = rule["process_path_regex"]!.AsArray().Select(x => (string)x!).ToList();
         Assert.Contains(regexes, x => x.Contains("HomeApp"));
@@ -45,7 +45,7 @@ public class HomeCountryTests
     {
         var dir = Directory.CreateTempSubdirectory().FullName;
         var json = Generate(Config("ru"), dir);
-        var rule = json["route"]!["rules"]!.AsArray().Single(r => r!["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "xn--p1ai"))!;
+        var rule = json["route"]!["rules"]!.AsArray().Single(r => r!["process_path_regex"] is not null && r["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "xn--p1ai"))!;
         Assert.Equal("direct", (string)rule["outbound"]!);
         Assert.Contains(rule["process_path_regex"]!.AsArray(), x => ((string)x!).Contains("HomeApp"));
         var suffixes = rule["domain_suffix"]!.AsArray().Select(x => (string)x!).ToList();
@@ -54,6 +54,30 @@ public class HomeCountryTests
         Assert.DoesNotContain(suffixes, s => "example.guru".EndsWith("." + s) || "github.com".EndsWith("." + s));
         Assert.Contains(json["dns"]!["rules"]!.AsArray(), r => r!["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "ru") && (string)r["server"]! == "dns-direct");
         Assert.DoesNotContain(Generate(Config("de"), dir)["route"]!["rules"]!.AsArray(), r => r!["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "ru"));
+    }
+
+    [Fact]
+    public void Russia_sends_local_proxy_traffic_direct_before_the_tunnel_rule()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        var cfg = Config("ru");
+        cfg.DirectSites.Add("example.com");
+        cfg.SiteCountries["example.com"] = "de";
+        var rules = Generate(cfg, dir)["route"]!["rules"]!.AsArray().Select(r => r!.AsObject()).ToList();
+        bool Mixed(JsonObject r) => r["inbound"] is JsonArray a && a.Any(x => (string)x! == "mixed-in");
+        var tunnel = rules.FindIndex(r => Mixed(r) && r.Count == 2 && (string?)r["outbound"] == "proxy");
+        var sets = rules.FindIndex(r => Mixed(r) && r["rule_set"] is not null);
+        var zones = rules.FindIndex(r => Mixed(r) && r["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "xn--p1ai"));
+        Assert.True(tunnel > 0);
+        Assert.InRange(sets, 0, tunnel - 1);
+        Assert.InRange(zones, 0, tunnel - 1);
+        Assert.Equal("direct", (string)rules[sets]["outbound"]!);
+        Assert.Equal("direct", (string)rules[zones]["outbound"]!);
+        var site = rules.FindIndex(r => Mixed(r) && r["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "example.com") && r["outbound"] is not null);
+        Assert.InRange(site, 0, sets - 1);
+
+        cfg.SiteMode = CehoConfig.SiteModeOnly;
+        Assert.DoesNotContain(Generate(cfg, dir)["route"]!["rules"]!.AsArray(), r => Mixed(r!.AsObject()) && (r["rule_set"] is not null || r["domain_suffix"] is JsonArray a && a.Any(x => (string)x! == "xn--p1ai")));
     }
 
     [Fact]

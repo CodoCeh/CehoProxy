@@ -459,6 +459,7 @@ public static class SingBoxConfigGenerator
         });
 
         var homeRuleSets = new JsonArray();
+        var homeMixedRules = new List<JsonObject>();
         {
             List<CountryRuleSet> home;
             try
@@ -471,12 +472,9 @@ public static class SingBoxConfigGenerator
             var homeRegexes = new JsonArray();
             foreach (var a in apps.Where(a => !a.NoInternet && !pinned.Any(p => p.App == a && p.Nodes.Count == 0)))
                 foreach (var rx in AppDetector.ToRegexes(a)) homeRegexes.Add(rx);
-            if (home.Count > 0 && homeRegexes.Count > 0)
+            if (home.Count > 0 && (homeRegexes.Count > 0 || !sitesOnly))
             {
-                var tags = new JsonArray();
-                var domainTags = new JsonArray();
                 foreach (var set in home)
-                {
                     homeRuleSets.Add(new JsonObject
                     {
                         ["type"] = "local",
@@ -484,36 +482,48 @@ public static class SingBoxConfigGenerator
                         ["format"] = "binary",
                         ["path"] = set.Path.Replace('\\', '/'),
                     });
-                    tags.Add(set.Tag);
-                    if (set.Domains) domainTags.Add(set.Tag);
+                var tags = new JsonArray(home.Select(set => (JsonNode)set.Tag).ToArray());
+                var domainTags = new JsonArray(home.Where(set => set.Domains).Select(set => (JsonNode)set.Tag).ToArray());
+                var suffixes = CountryRules.Find(cfg.HomeCountry)?.DomainSuffixes ?? [];
+                JsonArray Suffixes() => new(suffixes.Select(s => (JsonNode)s).ToArray());
+
+                if (!sitesOnly)
+                {
+                    homeMixedRules.Add(new JsonObject { ["inbound"] = new JsonArray { "mixed-in" }, ["rule_set"] = tags.DeepClone(), ["outbound"] = DirectTag });
+                    if (suffixes.Length > 0)
+                        homeMixedRules.Add(new JsonObject { ["inbound"] = new JsonArray { "mixed-in" }, ["domain_suffix"] = Suffixes(), ["outbound"] = DirectTag });
                 }
-                if (domainTags.Count > 0)
-                    dnsRules.Add(new JsonObject
-                    {
-                        ["process_path_regex"] = homeRegexes.DeepClone(),
-                        ["rule_set"] = domainTags,
-                        ["server"] = "dns-direct",
-                    });
-                routeRules.Add(new JsonObject
+
+                if (homeRegexes.Count > 0)
                 {
-                    ["process_path_regex"] = homeRegexes.DeepClone(),
-                    ["rule_set"] = tags,
-                    ["outbound"] = DirectTag,
-                });
-                if (CountryRules.Find(cfg.HomeCountry)?.DomainSuffixes is { Length: > 0 } homeSuffixes)
-                {
-                    dnsRules.Add(new JsonObject
-                    {
-                        ["process_path_regex"] = homeRegexes.DeepClone(),
-                        ["domain_suffix"] = new JsonArray(homeSuffixes.Select(s => (JsonNode)s).ToArray()),
-                        ["server"] = "dns-direct",
-                    });
+                    if (domainTags.Count > 0)
+                        dnsRules.Add(new JsonObject
+                        {
+                            ["process_path_regex"] = homeRegexes.DeepClone(),
+                            ["rule_set"] = domainTags,
+                            ["server"] = "dns-direct",
+                        });
                     routeRules.Add(new JsonObject
                     {
-                        ["process_path_regex"] = homeRegexes,
-                        ["domain_suffix"] = new JsonArray(homeSuffixes.Select(s => (JsonNode)s).ToArray()),
+                        ["process_path_regex"] = homeRegexes.DeepClone(),
+                        ["rule_set"] = tags,
                         ["outbound"] = DirectTag,
                     });
+                    if (suffixes.Length > 0)
+                    {
+                        dnsRules.Add(new JsonObject
+                        {
+                            ["process_path_regex"] = homeRegexes.DeepClone(),
+                            ["domain_suffix"] = Suffixes(),
+                            ["server"] = "dns-direct",
+                        });
+                        routeRules.Add(new JsonObject
+                        {
+                            ["process_path_regex"] = homeRegexes,
+                            ["domain_suffix"] = Suffixes(),
+                            ["outbound"] = DirectTag,
+                        });
+                    }
                 }
             }
         }
@@ -625,11 +635,12 @@ public static class SingBoxConfigGenerator
                 ["port"] = new JsonArray { 443, 853 },
                 ["action"] = "reject",
             });
-            routeRules.Insert(tunHijackIndex + 3, new JsonObject
+            var mixedToProxy = new JsonObject
             {
                 ["inbound"] = new JsonArray { "mixed-in" },
                 ["outbound"] = ProxyTag,
-            });
+            };
+            routeRules.Insert(tunHijackIndex + 3, mixedToProxy);
 
             // До правил программ и локального прокси: иначе сайт из списка всё равно уйдёт в туннель.
             if (siteSuffixes.Count > 0)
@@ -648,6 +659,11 @@ public static class SingBoxConfigGenerator
             }
 
             InsertCountryMixed(tunHijackIndex + 1);
+
+            // После списка «Сайты»: сайт, которому назначена своя страна, важнее домашней.
+            var homeAt = routeRules.IndexOf(mixedToProxy);
+            foreach (var rule in homeMixedRules.AsEnumerable().Reverse())
+                routeRules.Insert(homeAt, rule);
         }
         else
         {
