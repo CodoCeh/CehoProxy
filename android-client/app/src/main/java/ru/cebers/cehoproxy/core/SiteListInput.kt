@@ -10,9 +10,14 @@ internal object SiteListInput {
         val hosts = linkedSetOf<String>()
         val rejected = mutableListOf<String>()
         raw.split(separators).map(String::trim).filter(String::isNotEmpty).forEach { token ->
-            val host = RoutingConfig.normalizeDomain(token)
+            val host = readable(RoutingConfig.normalizeDomain(token.substringBefore('?').substringBefore('#')))
             if (hostPattern.matches(host)) hosts += host else rejected += token
         }
         return Parsed(hosts.toList(), rejected)
+    }
+
+    private fun readable(host: String): String {
+        val decoded = if ('%' in host) runCatching { java.net.URLDecoder.decode(host.replace("+", "%2B"), "UTF-8") }.getOrDefault(host) else host
+        return runCatching { java.net.IDN.toUnicode(decoded, java.net.IDN.ALLOW_UNASSIGNED) }.getOrDefault(decoded).lowercase()
     }
 }
