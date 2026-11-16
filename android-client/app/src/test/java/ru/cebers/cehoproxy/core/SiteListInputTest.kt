@@ -16,6 +16,15 @@ class SiteListInputTest {
         assertEquals(listOf("abc", "1.2.3.4x", "-bad.ru"), parsed.rejected)
     }
 
+    @Test fun acceptsRfDomainsCopiedFromBrowser() {
+        val parsed = SiteListInput.parse(
+            "https://xn--80az8a.xn--d1aqf.xn--p1ai/, https://%D0%B4%D0%BE%D0%BC.%D1%80%D1%84/, наш.дом.рф?x=1, мвд.рф#top, xn--80aswg.xn--p1ai"
+        )
+        assertEquals(listOf("наш.дом.рф", "дом.рф", "мвд.рф", "сайт.рф"), parsed.hosts)
+        assertEquals(emptyList<String>(), parsed.rejected)
+        assertEquals("xn--80az8a.xn--d1aqf.xn--p1ai", RoutingConfig.ruleDomain(parsed.hosts.first()))
+    }
+
     @Test fun emptyInputGivesNothing() {
         val parsed = SiteListInput.parse("  , ,\n")
         assertEquals(emptyList<String>(), parsed.hosts)
