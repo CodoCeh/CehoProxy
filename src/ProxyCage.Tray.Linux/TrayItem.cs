@@ -41,6 +41,7 @@ internal sealed class TrayItem : IDisposable
     private bool _langKnown;
     private bool _passwordProved;
     private TrayLook _look = TrayLook.Stopped;
+    private int _misses;
     private TrayState.Snapshot? _snapshot;
     private readonly TrayNotifier _notifier = new();
     private DateTime _resumeAtUtc = DateTime.MinValue;
@@ -193,13 +194,14 @@ internal sealed class TrayItem : IDisposable
                     break;
 
                 default:
+                    if (TrayState.KeepsLookAfterMiss(_look, ++_misses)) break;
                     _langKnown = false;
                     _snapshot = null;
                     _look = TrayLook.Stopped;
                     if (Installer.IsGone(_root) && ++_goneChecks >= Installer.GoneChecksToQuit) _stop.Cancel();
                     break;
             }
-            if (reading.Outcome != PanelLink.Outcome.Unreachable) _goneChecks = 0;
+            if (reading.Outcome != PanelLink.Outcome.Unreachable) _goneChecks = _misses = 0;
             if (_notifier.Next(_lang, _look, _snapshot) is { } notice) Notify(notice);
         }
     }

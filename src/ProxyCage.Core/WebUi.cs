@@ -652,6 +652,13 @@ public static class WebUi
       addEventListener('online',resume);addEventListener('offline',function(){failed=true;paint()});
       document.addEventListener('visibilitychange',function(){if(!document.hidden)resume()});
       setInterval(paint,1000);paint();timer=setTimeout(refresh,10000);
+      var stamp=null,peeking=false;
+      setInterval(function(){
+        if(document.hidden||peeking||!api.active())return;peeking=true;
+        fetch('/speed',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(s){
+          if(stamp!==null&&s.stamp!==stamp)refresh();stamp=s.stamp;
+        }).catch(function(){}).finally(function(){peeking=false});
+      },2000);
     })();
     </script>
     """;

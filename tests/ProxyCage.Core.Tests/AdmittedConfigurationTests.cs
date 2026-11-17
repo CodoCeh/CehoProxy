@@ -71,7 +71,7 @@ public sealed class AdmittedConfigurationTests
         Assert.Contains("c = admittedConfiguration.Snapshot();", startup);
         Assert.Contains("if (!keepAdmitted) c.Save(Ceho.ConfigPath);", startup);
         Assert.Contains("admittedConfiguration.Admit(c);", startup);
-        var observer = Between(source, "                var observedGeneration = recovery.Generation;", "            try { await Task.Delay(TimeSpan.FromSeconds(30)");
+        var observer = Between(source, "                var observedGeneration = recovery.Generation;", "            try { await exitCheckNow.WaitAsync(TimeSpan.FromSeconds(30)");
         Assert.Contains("LeakGuard.Apply(admittedConfiguration.Snapshot(), Ceho.Root);", observer);
         var guardApply = observer.IndexOf("LeakGuard.Apply", StringComparison.Ordinal);
         Assert.Contains("using var gate = EngineMutex.Acquire(Ceho.Root);", observer[..guardApply]);

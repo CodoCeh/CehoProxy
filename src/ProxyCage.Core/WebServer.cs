@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Web;
 
@@ -149,7 +150,7 @@ public sealed partial class WebServer
 
         if (path == "/light" && ctx.Request.HttpMethod == "GET")
         {
-            ctx.Response.Headers.Add("Set-Cookie", $"{SkinCookie}=light; Path=/; Max-Age=31536000; SameSite=Strict");
+            ctx.Response.Headers.Add("Set-Cookie", $"{SkinCookie}=light; Path=/; SameSite=Strict");
             ctx.Response.StatusCode = 302;
             ctx.Response.Headers["Location"] = ctx.Request.QueryString["add"] == "1" ? "/#add" : "/";
             ctx.Response.Close();
@@ -384,6 +385,13 @@ public sealed partial class WebServer
             return;
         }
 
+        if (argv[0] is "status" or "lang")
+        {
+            var (readOk, readText) = await OnApiCommand(argv);
+            await WriteJsonAsync(ctx, readOk, readText);
+            return;
+        }
+
         await _configGate.WaitAsync();
         try
         {
@@ -566,12 +574,22 @@ public sealed partial class WebServer
                 up = Interlocked.Read(ref _speedUp);
             }
         }
-        var bytes = Encoding.UTF8.GetBytes($"{{\"down\":{down},\"up\":{up}}}");
+        var bytes = Encoding.UTF8.GetBytes($"{{\"down\":{down},\"up\":{up},\"stamp\":\"{LiveStamp()}\"}}");
         ctx.Response.ContentType = "application/json; charset=utf-8";
         ctx.Response.Headers.Add("Cache-Control", "no-store");
         ctx.Response.ContentLength64 = bytes.Length;
         await ctx.Response.OutputStream.WriteAsync(bytes);
         ctx.Response.Close();
+    }
+
+    private string LiveStamp()
+    {
+        var st = _state();
+        long saved = 0;
+        try { saved = File.GetLastWriteTimeUtc(_configPath).Ticks; } catch { }
+        var jobs = string.Join(",", Jobs.Running().Select(j => j.Id));
+        var text = $"{st.Running}|{st.Probed}|{st.ExitIp}|{DaemonControl.IsRecovering(Root)}|{DaemonControl.IsStarting(Root, TimeSpan.Zero)}|{LeakGuard.IsActive(Root)}|{saved}|{jobs}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
     }
 
     private async Task SampleSpeedAsync(int clashPort)

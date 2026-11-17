@@ -26,6 +26,7 @@ internal sealed class TrayWindow : IDisposable
     private bool _langKnown;
     private bool _passwordProved;
     private TrayLook _look = TrayLook.Stopped;
+    private int _misses;
     private TrayState.Snapshot? _snapshot;
     private DateTime _resumeAtUtc = DateTime.MinValue;
     private string? _balloon;
@@ -168,6 +169,7 @@ internal sealed class TrayWindow : IDisposable
                 break;
 
             default:
+                if (TrayState.KeepsLookAfterMiss(_look, ++_misses)) break;
                 _langKnown = false;
                 _snapshot = null;
                 _look = TrayLook.Stopped;
@@ -175,7 +177,7 @@ internal sealed class TrayWindow : IDisposable
                     Win32.PostMessage(_window, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
                 break;
         }
-        if (reading.Outcome != PanelLink.Outcome.Unreachable) _goneChecks = 0;
+        if (reading.Outcome != PanelLink.Outcome.Unreachable) _goneChecks = _misses = 0;
         if (_notifier.Next(_lang, _look, _snapshot) is { } notice) _balloon = notice;
     }
 

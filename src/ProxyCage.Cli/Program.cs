@@ -2044,6 +2044,7 @@ if (cmd is "daemon" or "web")
     Action<CehoConfig> rulesApplied = _ => { };
     string? exitCountry = null, exitIp = null;
     var probed = false;
+    var exitCheckNow = new SemaphoreSlim(0, 1);
     string? boundAddress = null;
     var tunnelMissing = 0;
     var failedExitChecks = 0;
@@ -2329,6 +2330,7 @@ if (cmd is "daemon" or "web")
                 catch { Log.Warn("Не удалось сохранить проверенную копию настроек."); }
             }
             probed = false;
+            try { exitCheckNow.Release(); } catch (SemaphoreFullException) { }
             boundAddress = Os.PhysicalBindAddress(c.TunAddress)?.ToString();
             if (!engineAdopted)
             {
@@ -3377,7 +3379,7 @@ if (cmd is "daemon" or "web")
                 }
             }
             catch (Exception ex) { Log.Error("проверка выхода не завершилась", ex); }
-            try { await Task.Delay(TimeSpan.FromSeconds(30), cts.Token); } catch { return; }
+            try { await exitCheckNow.WaitAsync(TimeSpan.FromSeconds(30), cts.Token); } catch { return; }
         }
     });
 

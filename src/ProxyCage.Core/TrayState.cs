@@ -12,6 +12,11 @@ public static class TrayState
 
     public const int MaxWaitSeconds = 300;
 
+    public const int MissesBeforeStopped = 3;
+
+    public static bool KeepsLookAfterMiss(TrayLook current, int misses) =>
+        current != TrayLook.Stopped && misses < MissesBeforeStopped;
+
     public const string TooltipLimitMarker = "…";
 
     public static readonly string[] StatusArgs = { "status", "--json", "--quick" };

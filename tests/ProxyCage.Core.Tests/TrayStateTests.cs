@@ -235,4 +235,13 @@ public class TrayStateTests
         Assert.Contains(Strings.T(lang, "state_no_exit"), hint);
         Assert.Contains(Strings.T(lang, "tray_no_exit_todo"), hint);
     }
+
+    [Fact]
+    public void A_single_missed_reply_does_not_turn_the_icon_into_service_stopped()
+    {
+        Assert.True(TrayState.KeepsLookAfterMiss(TrayLook.Protected, 1));
+        Assert.True(TrayState.KeepsLookAfterMiss(TrayLook.Off, TrayState.MissesBeforeStopped - 1));
+        Assert.False(TrayState.KeepsLookAfterMiss(TrayLook.Protected, TrayState.MissesBeforeStopped));
+        Assert.False(TrayState.KeepsLookAfterMiss(TrayLook.Stopped, 1));
+    }
 }

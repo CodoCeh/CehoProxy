@@ -87,7 +87,29 @@ public class LightPanelTests : IDisposable
 
         Assert.Equal(System.Net.HttpStatusCode.Found, reply.StatusCode);
         Assert.Contains("ceho-skin=light", string.Join(";", reply.Headers.GetValues("Set-Cookie")));
+        Assert.DoesNotContain("Max-Age", string.Join(";", reply.Headers.GetValues("Set-Cookie")));
+        Assert.DoesNotContain("Expires", string.Join(";", reply.Headers.GetValues("Set-Cookie")));
         Assert.Equal("/", reply.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task Speed_carries_a_state_stamp_that_changes_when_settings_are_saved()
+    {
+        string Stamp(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("stamp").GetString()!;
+        var url = $"http://127.0.0.1:{_panelPort}/speed";
+        var before = Stamp(await _http.GetStringAsync(url));
+        Assert.Equal(before, Stamp(await _http.GetStringAsync(url)));
+
+        var path = Path.Combine(_root, "config.json");
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddSeconds(5));
+        Assert.NotEqual(before, Stamp(await _http.GetStringAsync(url)));
+    }
+
+    [Fact]
+    public async Task Open_pages_watch_the_stamp_to_refresh_without_waiting_ten_seconds()
+    {
+        var page = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=state");
+        Assert.Contains("s.stamp!==stamp", page);
     }
 
     [Fact]
@@ -108,7 +130,9 @@ public class LightPanelTests : IDisposable
     public async Task Speed_is_zero_while_the_tunnel_is_off()
     {
         var json = await _skin.GetStringAsync($"http://127.0.0.1:{_panelPort}/speed");
-        Assert.Equal("{\"down\":0,\"up\":0}", json);
+        var speed = System.Text.Json.JsonDocument.Parse(json).RootElement;
+        Assert.Equal(0, speed.GetProperty("down").GetInt64());
+        Assert.Equal(0, speed.GetProperty("up").GetInt64());
     }
 
     [Fact]
