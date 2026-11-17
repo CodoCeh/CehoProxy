@@ -60,6 +60,12 @@ public static class WhatsNew
                 "Если на вкладке «Программы» выбрана страна «Россия», напрямую идут все сайты в зонах .ru, .рф, .su и других российских, включая региональные порталы.",
                 "If Russia is selected on the Apps tab, all sites in the .ru, .рф, .su and other Russian zones go directly, including regional portals."),
         }),
+        new("1.2.190", new[]
+        {
+            new Item("Страна работает и для прокси", "Your country applies to the proxy too",
+                "Если выбрана страна «Россия», российские сайты напрямую открываются и у программ, которые подключены через локальный прокси, а не только у программ в туннеле.",
+                "If Russia is selected, Russian sites also open directly for apps that connect through the local proxy, not only for apps in the tunnel."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
