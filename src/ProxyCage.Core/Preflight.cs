@@ -83,7 +83,7 @@ public static class Preflight
         try
         {
             Directory.CreateDirectory(root);
-            var probe = Path.Combine(root, ".write-test");
+            var probe = Path.Combine(root, $".write-test-{Guid.NewGuid():N}");
             File.WriteAllText(probe, "1");
             File.Delete(probe);
             why = "";

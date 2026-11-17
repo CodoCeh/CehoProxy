@@ -244,4 +244,14 @@ public class TrayStateTests
         Assert.False(TrayState.KeepsLookAfterMiss(TrayLook.Protected, TrayState.MissesBeforeStopped));
         Assert.False(TrayState.KeepsLookAfterMiss(TrayLook.Stopped, 1));
     }
+
+    [Fact]
+    public void Parallel_write_checks_of_one_folder_do_not_fail_each_other()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        var results = new System.Collections.Concurrent.ConcurrentBag<bool>();
+        Parallel.For(0, 200, new ParallelOptions { MaxDegreeOfParallelism = 16 }, _ => results.Add(ProxyCage.Core.Preflight.FolderIsWritable(root, out string _)));
+        Assert.All(results, Assert.True);
+        Assert.Empty(Directory.GetFiles(root));
+    }
 }

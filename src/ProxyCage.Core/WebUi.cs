@@ -630,6 +630,7 @@ public static class WebUi
           if(!api.active())return;
           var doc=new DOMParser().parseFromString(html,'text/html');
           if(!doc.querySelector('[data-live]'))throw new Error('missing-state');
+          var changed=false;
           document.querySelectorAll('[data-live]').forEach(function(now){
             var fresh=doc.querySelector('[data-live="'+now.dataset.live+'"]');
             if(!fresh||fresh.outerHTML===now.outerHTML)return;
@@ -641,8 +642,9 @@ public static class WebUi
             }
             var open=Array.from(now.querySelectorAll('details')).map(function(d){return d.open});
             fresh.querySelectorAll('details').forEach(function(d,i){if(open[i]!==undefined)d.open=open[i]});
-            fresh.style.animation='none';now.replaceWith(fresh);
+            fresh.style.animation='none';now.replaceWith(fresh);changed=true;
           });
+          if(changed)document.querySelectorAll('.flash.notice').forEach(function(f){f.remove()});
           last=Date.now();failed=false;document.dispatchEvent(new CustomEvent('ceho:refreshed'));
         }).catch(function(){if(api.active())failed=true}).finally(function(){busy=false;paint();if(api.active()){timer=setTimeout(refresh,queued?0:10000);queued=false}});
       }

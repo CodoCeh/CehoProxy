@@ -157,6 +157,15 @@ public sealed partial class WebServer
             return;
         }
 
+        if (path == "/web" && ctx.Request.HttpMethod == "GET")
+        {
+            ctx.Response.Headers.Add("Set-Cookie", $"{SkinCookie}=; Path=/; Max-Age=0; SameSite=Strict");
+            ctx.Response.StatusCode = 302;
+            ctx.Response.Headers["Location"] = "/";
+            ctx.Response.Close();
+            return;
+        }
+
         if (path == "/open" && ctx.Request.HttpMethod == "GET")
         {
             await WriteHtmlAsync(ctx, RenderChooser(cfg, ctx.Request.QueryString["n"] ?? ""));
@@ -1870,7 +1879,8 @@ public sealed partial class WebServer
     private static void Head(StringBuilder sb, CehoConfig cfg, Job? job)
     {
         var light = _lightRequest;
-        sb.Append("<!doctype html><html lang=").Append(cfg.Language).Append(light ? " class=light" : "").Append("><head><meta charset=utf-8>");
+        sb.Append("<!doctype html><html lang=").Append(cfg.Language).Append(light ? " class=light" : "").Append(" translate=no><head><meta charset=utf-8><meta name=google content=notranslate>");
+        if (light) sb.Append("<script>if(matchMedia('(display-mode: browser)').matches)location.replace('/web')</script>");
         sb.Append("<meta name=viewport content=\"width=device-width,initial-scale=1\">");
 
         // Без JavaScript страница с идущей операцией обновляется сама: панель управления

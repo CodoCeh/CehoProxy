@@ -727,7 +727,7 @@ public static class Installer
                      "relaunch.ps1", "relaunch.sh",
                      "update-relaunch.ps1", "update-relaunch.sh", "pick-app.ps1",
                      "pick-app-launch.vbs", "pick-app-result.txt", "user-alias.path",
-                     ".write-probe", ".write-test",
+                     ".write-probe", ".write-test", ".write-test-*",
                      ".ceho-private-*", "config.import.json", "controller.lock", "restart.request", "starting",
                      "update-helper.started", "update-was-protected", "keep-engine", "stopped-by-user", "cehoproxy-support.txt",
                      "guard.json", "cehoproxy.pid", "panel.port", "engine.lock", "node-country-cache.json*", "sub-*.txt",

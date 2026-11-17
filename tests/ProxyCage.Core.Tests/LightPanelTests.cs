@@ -42,7 +42,8 @@ public class LightPanelTests : IDisposable
         var light = await _skin.GetStringAsync($"http://127.0.0.1:{_panelPort}/");
         var panel = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/");
 
-        Assert.Contains("<html lang=ru class=light>", light);
+        Assert.Contains("<html lang=ru class=light translate=no>", light);
+        Assert.Contains("<meta name=google content=notranslate>", light);
         Assert.Contains("CehoProxy Light", light);
         Assert.Contains("id=light-speed", light);
         Assert.Contains("class=\"light-vortex", light);
@@ -93,6 +94,22 @@ public class LightPanelTests : IDisposable
     }
 
     [Fact]
+    public async Task Light_in_an_ordinary_browser_tab_falls_back_to_the_web_panel()
+    {
+        var light = await _skin.GetStringAsync($"http://127.0.0.1:{_panelPort}/");
+        var panel = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/");
+        Assert.Contains("matchMedia('(display-mode: browser)').matches)location.replace('/web')", light);
+        Assert.DoesNotContain("location.replace('/web')", panel);
+
+        using var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        using var http = new HttpClient(handler);
+        var reply = await http.GetAsync($"http://127.0.0.1:{_panelPort}/web");
+        Assert.Equal(System.Net.HttpStatusCode.Found, reply.StatusCode);
+        Assert.Contains("ceho-skin=; Path=/; Max-Age=0", string.Join(";", reply.Headers.GetValues("Set-Cookie")));
+        Assert.Equal("/", reply.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
     public async Task Speed_carries_a_state_stamp_that_changes_when_settings_are_saved()
     {
         string Stamp(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("stamp").GetString()!;
@@ -110,6 +127,7 @@ public class LightPanelTests : IDisposable
     {
         var page = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=state");
         Assert.Contains("s.stamp!==stamp", page);
+        Assert.Contains("if(changed)document.querySelectorAll('.flash.notice')", page);
     }
 
     [Fact]
