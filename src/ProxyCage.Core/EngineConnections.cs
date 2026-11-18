@@ -7,7 +7,7 @@ public static class EngineConnections
 {
     public sealed record Connection(string ProcessPath, bool Direct);
 
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(2) };
+    private static readonly HttpClient Http = EngineHttp.Create(TimeSpan.FromSeconds(2));
 
     public static IReadOnlyList<Connection> Fetch(int clashApiPort)
     {
