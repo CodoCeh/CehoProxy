@@ -1447,8 +1447,8 @@ public static class Strings
             "Провайдер вместо серверов прислал сообщение: «{0}». Так бывает, когда закончился трафик или срок подписки: продлите её у провайдера и проверьте подписку снова.",
             "Instead of servers the provider sent a message: \"{0}\". This usually means the traffic or the subscription period ran out: renew it with the provider and check the subscription again."),
         ["sub_xhttp_only"] = new(
-            "Все серверы подписки работают через XHTTP, а движок CehoProxy (sing-box) его не поддерживает. Попросите у провайдера подписку с другим типом подключения: Reality, WebSocket, gRPC или Hysteria2.",
-            "All servers of this subscription use XHTTP, which the CehoProxy engine (sing-box) does not support. Ask the provider for a subscription with another transport: Reality, WebSocket, gRPC or Hysteria2."),
+            "Все серверы подписки работают через XHTTP, а CehoProxy такой тип подключения не умеет. Попросите у провайдера подписку с другим типом подключения, например Reality или WebSocket.",
+            "All servers of this subscription use XHTTP, which CehoProxy cannot use. Ask the provider for a subscription with another connection type, for example Reality or WebSocket."),
         ["sub_failed_title"] = new("Подписка «{0}» не работает. ", "Subscription \"{0}\" is not working. "),
         ["sub_traffic_over"] = new(
             "Трафик подписки закончился: использовано {0} из {1}. Продлите подписку у провайдера.",

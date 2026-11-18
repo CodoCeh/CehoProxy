@@ -89,9 +89,9 @@ public static class WhatsNew
         }),
         new("1.2.194", new[]
         {
-            new Item("Больше видов серверов работает", "More server types work",
-                "Серверы HTTPUpgrade, HTTP/2, AnyTLS, WebSocket с ранними данными и Shadowsocks с плагинами obfs и v2ray-plugin теперь подключаются. Если в подписке только серверы XHTTP, панель объяснит, что такой тип не поддерживается.",
-                "HTTPUpgrade, HTTP/2, AnyTLS, WebSocket with early data and Shadowsocks with obfs and v2ray-plugin servers now connect. If a subscription has only XHTTP servers, the panel explains that this type is not supported."),
+            new Item("Больше серверов из подписок работает", "More subscription servers work",
+                "Часть серверов некоторых типов раньше молча не подключалась. Теперь они работают. Если подписка состоит только из серверов типа, который CehoProxy не умеет, панель скажет об этом.",
+                "Some servers of certain types used to fail silently. They work now. If a subscription has only servers of a type CehoProxy cannot use, the panel says so."),
         }),
     };
 
