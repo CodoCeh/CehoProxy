@@ -177,8 +177,6 @@ public static class OutboundBuilder
                 {
                     ["type"] = "ws",
                     ["path"] = n.Path ?? "/",
-                    ["idle_timeout"] = "60s",
-                    ["ping_timeout"] = "20s",
                 };
                 if (!string.IsNullOrEmpty(n.Host))
                     ws["headers"] = new JsonObject { ["Host"] = n.Host };

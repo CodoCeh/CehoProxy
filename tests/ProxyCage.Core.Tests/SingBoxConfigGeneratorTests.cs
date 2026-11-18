@@ -111,6 +111,42 @@ public class SingBoxConfigGeneratorTests
     }
 
     [Fact]
+    public void Ws_transport_has_only_fields_sing_box_accepts()
+    {
+        var node = SubscriptionParser.Parse(
+            "vless://11111111-1111-1111-1111-111111111111@198.51.100.10:443?type=ws&path=%2Fws&host=cdn.example&security=tls&sni=cdn.example#WS").Single();
+        var transport = OutboundBuilder.Build(node)["transport"]!.AsObject();
+
+        Assert.Equal("ws", (string?)transport["type"]);
+        Assert.Empty(transport.Select(p => p.Key).Except(new[] { "type", "path", "headers", "max_early_data", "early_data_header_name" }));
+    }
+
+    [Fact]
+    public void Generated_config_is_decoded_by_sing_box_when_engine_is_given()
+    {
+        var engine = Environment.GetEnvironmentVariable("CEHO_SINGBOX_CHECK");
+        if (string.IsNullOrEmpty(engine) || !File.Exists(engine)) return;
+
+        var nodes = SubscriptionParser.Parse(string.Join("\n",
+            "vless://11111111-1111-1111-1111-111111111111@198.51.100.10:443?type=ws&path=%2Fws&host=cdn.example&security=tls&sni=cdn.example#WS",
+            "vless://11111111-1111-1111-1111-111111111111@198.51.100.11:443?type=grpc&serviceName=g&security=tls&sni=g.example#GRPC",
+            "vmess://" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+                "{\"v\":\"2\",\"ps\":\"VMWS\",\"add\":\"198.51.100.12\",\"port\":\"443\",\"id\":\"11111111-1111-1111-1111-111111111111\",\"net\":\"ws\",\"path\":\"/v\",\"tls\":\"tls\"}")),
+            "trojan://secret@198.51.100.13:443?type=ws&path=%2Ft&sni=t.example#TRWS"));
+        var config = Path.Combine(Path.GetTempPath(), $"ceho-check-{Guid.NewGuid():N}.json");
+        File.WriteAllText(config, SingBoxConfigGenerator.Generate(nodes, new ProxyCageSettings { FolderPath = @"C:\Games\MyApp" }));
+        try
+        {
+            var run = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(engine, $"check -c \"{config}\"")
+                { RedirectStandardError = true, RedirectStandardOutput = true })!;
+            var error = run.StandardError.ReadToEnd();
+            run.WaitForExit();
+            Assert.DoesNotContain("decode config", error);
+        }
+        finally { File.Delete(config); }
+    }
+
+    [Fact]
     public void Keeps_reality_short_id_grpc_and_flow()
     {
         const string sub =
