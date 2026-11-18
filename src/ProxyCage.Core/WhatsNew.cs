@@ -66,6 +66,15 @@ public static class WhatsNew
                 "Если выбрана страна «Россия», российские сайты напрямую открываются и у программ, которые подключены через локальный прокси, а не только у программ в туннеле.",
                 "If Russia is selected, Russian sites also open directly for apps that connect through the local proxy, not only for apps in the tunnel."),
         }),
+        new("1.2.191", new[]
+        {
+            new Item("Light открывается отдельным окном", "Light opens in its own window",
+                "Light запускается как приложение, а не вкладкой браузера, и сразу показывает то же, что веб-панель: включение, выключение и смена программ видны в обоих за пару секунд.",
+                "Light starts as an app window, not a browser tab, and shows the same state as the web panel: turning protection on or off and app changes appear in both within seconds."),
+            new Item("Значок не пугает зря", "The tray icon no longer raises false alarms",
+                "Значок в трее больше не пишет, что защита не включена, из-за одного медленного ответа службы, а проверка выхода начинается сразу после включения.",
+                "The tray icon no longer says protection is off because of one slow reply from the service, and the exit check starts right after protection turns on."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
