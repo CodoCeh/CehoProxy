@@ -215,9 +215,9 @@ class MainActivity : ComponentActivity() {
             else { update(profile.copy(expiryRemindersEnabled = false)); notice = "Android не разрешил уведомления. Напоминания можно включить в системных настройках приложения." }
         }
         val requestConnect: () -> Unit = {
-            if (!hasNetwork()) notice = "Нет интернета. Подключитесь к Wi-Fi или мобильной сети"
-            else if (profile.apps.isEmpty() && !profile.excludeSelectedApps) notice = "Выберите приложения для туннеля или включите режим «Все, кроме выбранных»."
-            else if (profile.importedConfig.isNullOrBlank() && profile.selectedNode == null && LocalDpiPolicy.activeApps(profile).isEmpty()) notice = "Сначала добавьте ссылку или конфигурацию"
+            if (!hasNetwork()) report("Нет интернета. Подключитесь к Wi-Fi или мобильной сети")
+            else if (profile.apps.isEmpty() && !profile.excludeSelectedApps) report("Выберите приложения для туннеля в «Правила подключения» или включите режим «Все, кроме выбранных».")
+            else if (profile.importedConfig.isNullOrBlank() && profile.selectedNode == null && LocalDpiPolicy.activeApps(profile).isEmpty()) report("Сначала добавьте ссылку или конфигурацию")
             else {
                 minimizePending = LaunchBehavior.enabled(this, LaunchBehavior.MINIMIZE)
                 val notificationsAsked = getSharedPreferences("onboarding", MODE_PRIVATE)
