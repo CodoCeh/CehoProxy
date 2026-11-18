@@ -438,7 +438,7 @@ public sealed partial class WebServer
         ctx.Response.Close();
     }
 
-    private static readonly HttpClient SpeedHttp = new() { Timeout = TimeSpan.FromSeconds(3) };
+    private static readonly HttpClient SpeedHttp = EngineHttp.Create(TimeSpan.FromSeconds(3));
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Target, DateTime At)> Picks = new();
 
