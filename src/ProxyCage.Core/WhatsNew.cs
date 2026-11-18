@@ -75,6 +75,12 @@ public static class WhatsNew
                 "Значок в трее больше не пишет, что защита не включена, из-за одного медленного ответа службы, а проверка выхода начинается сразу после включения.",
                 "The tray icon no longer says protection is off because of one slow reply from the service, and the exit check starts right after protection turns on."),
         }),
+        new("1.2.192", new[]
+        {
+            new Item("Видно, когда подписка кончилась", "You can see when a subscription runs out",
+                "Если у провайдера закончился трафик или срок подписки, на главном экране панели и в Light появляется красная карточка с его сообщением.",
+                "If the provider's traffic or subscription period runs out, a red card with the provider's message appears on the main screen of the panel and in Light."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
