@@ -84,6 +84,7 @@ public sealed partial class WebServer
     private string Root => Path.GetDirectoryName(_configPath) ?? ".";
 
     [ThreadStatic] private static bool _lightRequest;
+    [ThreadStatic] private static string? _renderStamp;
 
     private int _port;
 
@@ -186,7 +187,7 @@ public sealed partial class WebServer
 
         if (!Authorized(ctx, cfg))
         {
-            if (path == "/speed")
+            if (path is "/speed" or "/events")
             {
                 ctx.Response.StatusCode = 401;
                 ctx.Response.Close();
@@ -199,6 +200,12 @@ public sealed partial class WebServer
         if (path == "/speed")
         {
             await HandleSpeedAsync(ctx, cfg);
+            return;
+        }
+
+        if (path == "/events")
+        {
+            await HandleEventsAsync(ctx);
             return;
         }
 
@@ -311,9 +318,11 @@ public sealed partial class WebServer
         }
         var view = ViewFromQuery(ctx.Request.QueryString["view"]);
         var tunnel = ctx.Request.QueryString["tunnel"];
+        var stamp = LiveStamp();
         var st = _state();
         if (current == "exit" && st.Running)
             await RefreshLiveLatencyAsync(cfg);
+        _renderStamp = stamp;
         await WriteHtmlAsync(ctx, AsSkin(light, () => RenderPage(cfg, st, current, flash, flashErr, job, view, tunnel,
             ctx.Request.QueryString["wizard"], ctx.Request.QueryString["pick_path"])));
     }
@@ -589,6 +598,35 @@ public sealed partial class WebServer
         ctx.Response.ContentLength64 = bytes.Length;
         await ctx.Response.OutputStream.WriteAsync(bytes);
         ctx.Response.Close();
+    }
+
+    private async Task HandleEventsAsync(HttpListenerContext ctx)
+    {
+        ctx.Response.ContentType = "text/event-stream; charset=utf-8";
+        ctx.Response.Headers.Add("Cache-Control", "no-store");
+        ctx.Response.SendChunked = true;
+        var output = ctx.Response.OutputStream;
+        string? sent = null;
+        var quiet = 0;
+        try
+        {
+            await output.WriteAsync(Encoding.UTF8.GetBytes("retry: 1000\n\n"));
+            while (_listener?.IsListening == true)
+            {
+                var now = LiveStamp();
+                if (now != sent || quiet >= 60)
+                {
+                    await output.WriteAsync(Encoding.UTF8.GetBytes($"data: {now}\n\n"));
+                    await output.FlushAsync();
+                    sent = now;
+                    quiet = 0;
+                }
+                else quiet++;
+                await Task.Delay(250);
+            }
+        }
+        catch (Exception ex) when (ex is HttpListenerException or IOException or ObjectDisposedException or InvalidOperationException) { }
+        finally { try { ctx.Response.Close(); } catch { } }
     }
 
     private string LiveStamp()
@@ -1853,7 +1891,7 @@ public sealed partial class WebServer
     {
         _lightRequest = light;
         try { return render(); }
-        finally { _lightRequest = false; }
+        finally { _lightRequest = false; _renderStamp = null; }
     }
 
     private static string RenderGate(CehoConfig cfg, string? error, bool light = false)
@@ -1880,6 +1918,7 @@ public sealed partial class WebServer
     {
         var light = _lightRequest;
         sb.Append("<!doctype html><html lang=").Append(cfg.Language).Append(light ? " class=light" : "").Append(" translate=no><head><meta charset=utf-8><meta name=google content=notranslate>");
+        if (_renderStamp is not null) sb.Append("<meta name=ceho-stamp content=").Append(_renderStamp).Append('>');
         if (light) sb.Append("<script>if(matchMedia('(display-mode: browser)').matches)location.replace('/web')</script>");
         sb.Append("<meta name=viewport content=\"width=device-width,initial-scale=1\">");
 

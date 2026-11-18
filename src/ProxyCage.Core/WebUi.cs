@@ -630,12 +630,14 @@ public static class WebUi
           if(!api.active())return;
           var doc=new DOMParser().parseFromString(html,'text/html');
           if(!doc.querySelector('[data-live]'))throw new Error('missing-state');
+          var freshMark=doc.querySelector('meta[name=ceho-stamp]');if(freshMark)stamp=freshMark.content;
           var changed=false;
           document.querySelectorAll('[data-live]').forEach(function(now){
             var fresh=doc.querySelector('[data-live="'+now.dataset.live+'"]');
             if(!fresh||fresh.outerHTML===now.outerHTML)return;
             // Do not remove a keyboard user's current control or their unsubmitted edits.
-            if((now.contains(document.activeElement)&&document.activeElement!==document.body)||now.querySelector('form[data-submitting="1"],form[data-dirty="1"]')){
+            var typing=document.activeElement&&now.contains(document.activeElement)&&document.activeElement.matches('textarea,select,[contenteditable],input:not([type=button]):not([type=submit]):not([type=checkbox]):not([type=radio]):not([type=hidden])');
+            if(typing||now.querySelector('form[data-submitting="1"],form[data-dirty="1"]')){
               now.classList.add('live-stale');
               if(!now.querySelector('[data-deferred-notice]')){var notice=document.createElement('p');notice.dataset.deferredNotice='1';notice.className='hint';notice.textContent=api.text('Этот раздел не обновлён, чтобы сохранить ввод. Данные могут устареть.','This section was not refreshed to preserve your input. Its data may be stale.');now.appendChild(notice)}
               return;
@@ -654,11 +656,14 @@ public static class WebUi
       addEventListener('online',resume);addEventListener('offline',function(){failed=true;paint()});
       document.addEventListener('visibilitychange',function(){if(!document.hidden)resume()});
       setInterval(paint,1000);paint();timer=setTimeout(refresh,10000);
-      var stamp=null,peeking=false;
+      var mark=document.querySelector('meta[name=ceho-stamp]'),stamp=mark?mark.content:null,peeking=false,events=null;
+      function seen(next){if(stamp!==null&&next!==stamp)refresh();stamp=next}
+      if(window.EventSource){events=new EventSource('/events');events.onmessage=function(e){last=Date.now();failed=false;seen(e.data)}}
       setInterval(function(){
+        if(events&&events.readyState===1)return;
         if(document.hidden||peeking||!api.active())return;peeking=true;
         fetch('/speed',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(s){
-          if(stamp!==null&&s.stamp!==stamp)refresh();stamp=s.stamp;
+          seen(s.stamp);
         }).catch(function(){}).finally(function(){peeking=false});
       },2000);
     })();
