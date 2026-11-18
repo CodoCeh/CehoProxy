@@ -93,6 +93,15 @@ public static class WhatsNew
                 "Часть серверов некоторых типов раньше молча не подключалась. Теперь они работают. Если подписка состоит только из серверов типа, который CehoProxy не умеет, панель скажет об этом.",
                 "Some servers of certain types used to fail silently. They work now. If a subscription has only servers of a type CehoProxy cannot use, the panel says so."),
         }),
+        new("1.2.195", new[]
+        {
+            new Item("Серверы XHTTP работают", "XHTTP servers work",
+                "Если в подписке есть серверы XHTTP, CehoProxy один раз скачает для них отдельный модуль и будет запускать его вместе с защитой.",
+                "If a subscription has XHTTP servers, CehoProxy downloads a separate module for them once and runs it together with protection."),
+            new Item("Панель и Light показывают одно и то же сразу", "The panel and Light show the same state at once",
+                "Включение и выключение защиты видно во всех открытых окнах в ту же секунду, даже если нажать в нескольких окнах одновременно.",
+                "Turning protection on or off shows in every open window within a second, even if you press it in several windows at once."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
