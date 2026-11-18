@@ -19,6 +19,7 @@ public static class SubscriptionParser
         ("hysteria2://", ProxyProtocol.Hysteria2),
         ("hy2://", ProxyProtocol.Hysteria2),
         ("tuic://", ProxyProtocol.Tuic),
+        ("anytls://", ProxyProtocol.AnyTls),
         ("naive://", ProxyProtocol.Naive),
         ("socks5://", ProxyProtocol.Socks),
         ("socks5h://", ProxyProtocol.Socks),
@@ -59,7 +60,7 @@ public static class SubscriptionParser
         if (string.IsNullOrWhiteSpace(body)) return null;
         var text = Decode(body);
         var remarks = SubscriptionFormats.Parse(text, "ru").Concat(ParseLines(text, "ru"))
-            .Where(IsPlaceholder)
+            .Where(n => IsPlaceholder(n) && !IsUnsupportedTransport(n))
             .Select(n => n.Remark.Trim())
             .Where(r => r.Length > 0)
             .Distinct()
@@ -115,7 +116,18 @@ public static class SubscriptionParser
     }
 
     internal static bool IsPlaceholder(ProxyNode node) =>
-        node.Port <= 1 && node.Server is "0.0.0.0" or "::" or "127.0.0.1";
+        (node.Port <= 1 && node.Server is "0.0.0.0" or "::" or "127.0.0.1") || IsUnsupportedTransport(node);
+
+    internal static bool IsUnsupportedTransport(ProxyNode node) => node.Network is "xhttp" or "splithttp";
+
+    /// <summary>Серверы подписки есть, но все на транспорте, которого нет в sing-box.</summary>
+    public static bool OnlyUnsupportedTransports(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return false;
+        var text = Decode(body);
+        var all = SubscriptionFormats.Parse(text, "ru").Concat(ParseLines(text, "ru")).ToList();
+        return all.Count > 0 && all.Any(IsUnsupportedTransport) && all.All(n => IsUnsupportedTransport(n) || n.Port <= 1);
+    }
 
     private static IReadOnlyList<ProxyNode> DropPlaceholders(IReadOnlyList<ProxyNode> nodes)
     {
@@ -282,7 +294,7 @@ public static class SubscriptionParser
                 Port = port,
                 Credential = credential,
                 Network = (q["type"] ?? (protocol is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic ? "quic" : "tcp")).ToLowerInvariant(),
-                Security = (q["security"] ?? (protocol is ProxyProtocol.Trojan or ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic ? "tls" : "none")).ToLowerInvariant(),
+                Security = (q["security"] ?? (protocol is ProxyProtocol.Trojan or ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic or ProxyProtocol.AnyTls ? "tls" : "none")).ToLowerInvariant(),
                 Flow = Empty(q["flow"]),
                 Sni = q["sni"] ?? q["peer"],
                 Fingerprint = q["fp"],
@@ -429,6 +441,8 @@ public static class SubscriptionParser
                 Security = "none",
                 Path = q["path"],
                 Host = q["host"],
+                Plugin = PluginName(q["plugin"]),
+                PluginOpts = PluginOptions(q["plugin"]),
                 Remark = remark,
                 CountryCode = country,
                 CountryName = CountryResolver.DisplayName(country, lang),
@@ -441,6 +455,16 @@ public static class SubscriptionParser
             return null;
         }
     }
+
+    private static string? PluginName(string? plugin)
+    {
+        if (string.IsNullOrWhiteSpace(plugin)) return null;
+        var name = plugin.Split(';', 2)[0].Trim();
+        return name is "simple-obfs" ? "obfs-local" : name;
+    }
+
+    private static string? PluginOptions(string? plugin) =>
+        plugin is not null && plugin.IndexOf(';') is var i and >= 0 ? plugin[(i + 1)..] : null;
 
     private static string? TryBase64(string s)
     {

@@ -11,6 +11,7 @@ public enum ProxyProtocol
     Naive,
     Http,
     Socks,
+    AnyTls,
 }
 
 public sealed class ProxyNode
@@ -39,6 +40,8 @@ public sealed class ProxyNode
     public string? Host { get; set; }
 
     public string? Method { get; set; }
+    public string? Plugin { get; set; }
+    public string? PluginOpts { get; set; }
 
     public int AlterId { get; set; }
 

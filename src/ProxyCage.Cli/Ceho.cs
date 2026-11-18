@@ -210,6 +210,8 @@ public static class Ceho
             if (!Quiet) Console.Error.WriteLine($"подписка «{sub.Name}» ответила, но нод в ответе нет");
             if (SubscriptionParser.LooksLikeHwidGate(fetched.Body))
                 fetched = fetched with { Failure = Strings.T(lang, "sub_hwid_gate") };
+            else if (SubscriptionParser.OnlyUnsupportedTransports(fetched.Body))
+                fetched = fetched with { Failure = Strings.T(lang, "sub_xhttp_only") };
         }
         else
         {

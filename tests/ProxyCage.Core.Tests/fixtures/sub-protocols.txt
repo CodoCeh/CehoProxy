@@ -7,3 +7,4 @@ tuic://00000000-0000-4000-8000-000000000002:tuic-password@tuic.example.com:443?s
 naive://user:pass@naive.example.com:8443?sni=naive.example.com#Naive
 http://proxy-user:proxy-pass@http-proxy.example.net:3128#HTTP proxy
 socks5://proxy-user:proxy-pass@socks-proxy.example.net:1080#SOCKS5 proxy
+anytls://anytls-password@anytls.example.com:443?sni=anytls.example.com#AnyTLS

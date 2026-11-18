@@ -13,6 +13,7 @@ public static class OutboundBuilder
         ProxyProtocol.Hysteria2 => BuildHysteria2(n),
         ProxyProtocol.Tuic => BuildTuic(n),
         ProxyProtocol.Naive => BuildNaive(n),
+        ProxyProtocol.AnyTls => BuildAnyTls(n),
         ProxyProtocol.Http => BuildProxy(n, "http"),
         ProxyProtocol.Socks => BuildProxy(n, "socks"),
         _ => throw new NotSupportedException($"протокол {n.Protocol} не поддержан"),
@@ -61,6 +62,19 @@ public static class OutboundBuilder
         var o = Base(n, "shadowsocks");
         o["method"] = string.IsNullOrEmpty(n.Method) ? "aes-256-gcm" : n.Method;
         o["password"] = n.Credential;
+        if (n.Plugin is "obfs-local" or "v2ray-plugin")
+        {
+            o["plugin"] = n.Plugin;
+            o["plugin_opts"] = n.PluginOpts ?? "";
+        }
+        return o;
+    }
+
+    private static JsonObject BuildAnyTls(ProxyNode n)
+    {
+        var o = Base(n, "anytls");
+        o["password"] = n.Credential;
+        AddTls(o, n, forceTls: true);
         return o;
     }
 
@@ -173,14 +187,31 @@ public static class OutboundBuilder
                 o["transport"] = GrpcTransport(n.ServiceName);
                 break;
             case "ws":
+                var (wsPath, earlyData) = SplitEarlyData(n.Path ?? "/");
                 var ws = new JsonObject
                 {
                     ["type"] = "ws",
-                    ["path"] = n.Path ?? "/",
+                    ["path"] = wsPath,
                 };
+                if (earlyData > 0)
+                {
+                    ws["max_early_data"] = earlyData;
+                    ws["early_data_header_name"] = "Sec-WebSocket-Protocol";
+                }
                 if (!string.IsNullOrEmpty(n.Host))
                     ws["headers"] = new JsonObject { ["Host"] = n.Host };
                 o["transport"] = ws;
+                break;
+            case "httpupgrade":
+                var upgrade = new JsonObject { ["type"] = "httpupgrade", ["path"] = n.Path ?? "/" };
+                if (!string.IsNullOrEmpty(n.Host)) upgrade["host"] = n.Host;
+                o["transport"] = upgrade;
+                break;
+            case "h2":
+                var h2 = new JsonObject { ["type"] = "http", ["path"] = n.Path ?? "/" };
+                if (!string.IsNullOrEmpty(n.Host))
+                    h2["host"] = new JsonArray(n.Host.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(h => (JsonNode)h.Trim()).ToArray());
+                o["transport"] = h2;
                 break;
             case "http":
                 o["transport"] = new JsonObject
@@ -192,5 +223,19 @@ public static class OutboundBuilder
                 };
                 break;
         }
+    }
+
+    private static (string Path, int EarlyData) SplitEarlyData(string path)
+    {
+        var q = path.IndexOf('?');
+        if (q < 0) return (path, 0);
+        var kept = new List<string>();
+        var early = 0;
+        foreach (var part in path[(q + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part.StartsWith("ed=", StringComparison.OrdinalIgnoreCase) && int.TryParse(part[3..], out var ed)) early = ed;
+            else kept.Add(part);
+        }
+        return (kept.Count == 0 ? path[..q] : path[..q] + "?" + string.Join('&', kept), early);
     }
 }

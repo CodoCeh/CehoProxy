@@ -388,6 +388,7 @@ public static class SubscriptionFormats
         "shadowsocks" or "ss" => ProxyProtocol.Shadowsocks,
         "hysteria" or "hysteria2" or "hy2" => ProxyProtocol.Hysteria2,
         "tuic" => ProxyProtocol.Tuic,
+        "anytls" => ProxyProtocol.AnyTls,
         "naive" or "naiveproxy" => ProxyProtocol.Naive,
         _ => null,
     };
