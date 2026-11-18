@@ -123,11 +123,56 @@ public class LightPanelTests : IDisposable
     }
 
     [Fact]
-    public async Task Open_pages_watch_the_stamp_to_refresh_without_waiting_ten_seconds()
+    public async Task Open_pages_listen_for_pushed_changes_and_fall_back_to_polling()
     {
         var page = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=state");
-        Assert.Contains("s.stamp!==stamp", page);
+        Assert.Contains("new EventSource('/events')", page);
+        Assert.Contains("seen(s.stamp)", page);
         Assert.Contains("if(changed)document.querySelectorAll('.flash.notice')", page);
+    }
+
+    [Fact]
+    public async Task A_page_knows_the_state_it_was_drawn_with()
+    {
+        await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=state");
+        string Drawn(string html) => System.Text.RegularExpressions.Regex.Match(html, "<meta name=ceho-stamp content=([0-9A-F]{16})>").Groups[1].Value;
+        var first = Drawn(await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=state"));
+        var second = Drawn(await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=state"));
+        var speed = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/speed");
+        Assert.NotEqual("", first);
+        Assert.Equal(first, second);
+        Assert.Contains($"\"stamp\":\"{first}\"", speed);
+    }
+
+    [Fact]
+    public async Task A_pressed_button_does_not_freeze_its_section()
+    {
+        var page = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/?tab=state");
+        Assert.Contains("var typing=document.activeElement&&now.contains(document.activeElement)&&document.activeElement.matches(", page);
+        Assert.DoesNotContain("(now.contains(document.activeElement)&&document.activeElement!==document.body)", page);
+    }
+
+    [Fact]
+    public async Task Events_push_a_new_stamp_as_soon_as_state_changes()
+    {
+        using var stream = await _http.GetStreamAsync($"http://127.0.0.1:{_panelPort}/events");
+        using var reader = new StreamReader(stream);
+        async Task<string> NextStamp()
+        {
+            while (true)
+            {
+                var line = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(20));
+                if (line is null) throw new EndOfStreamException();
+                if (line.StartsWith("data: ")) return line[6..];
+            }
+        }
+        var first = await NextStamp();
+        var cfgPath = Path.Combine(_root, "config.json");
+        File.SetLastWriteTimeUtc(cfgPath, DateTime.UtcNow.AddMinutes(1));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var second = await NextStamp();
+        Assert.NotEqual(first, second);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(2), $"пришло через {clock.Elapsed.TotalSeconds:F1} с");
     }
 
     [Fact]
