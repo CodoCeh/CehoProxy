@@ -50,6 +50,25 @@ public static class SubscriptionParser
         var ready = DropPlaceholders(SubscriptionFormats.Parse(text, lang));
         if (ready.Count > 0) return ready;
 
+        return DropPlaceholders(ParseLines(text, lang));
+    }
+
+    /// <summary>Подписи «нод» на 0.0.0.0:1, которыми панель заменяет серверы: «Subscription limited», «Contact support».</summary>
+    public static string? ProviderNotice(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        var text = Decode(body);
+        var remarks = SubscriptionFormats.Parse(text, "ru").Concat(ParseLines(text, "ru"))
+            .Where(IsPlaceholder)
+            .Select(n => n.Remark.Trim())
+            .Where(r => r.Length > 0)
+            .Distinct()
+            .ToList();
+        return remarks.Count == 0 ? null : string.Join(" · ", remarks);
+    }
+
+    private static List<ProxyNode> ParseLines(string text, string lang)
+    {
         var nodes = new List<ProxyNode>();
         var index = 0;
 
@@ -79,7 +98,7 @@ public static class SubscriptionParser
             if (node is not null) nodes.Add(node);
         }
 
-        return DropPlaceholders(nodes);
+        return nodes;
     }
 
     /// <summary>

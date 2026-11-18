@@ -75,6 +75,37 @@ public class SubscriptionFetcherTests
         Assert.Equal(Strings.T("en", "sub_hwid_gate"), message);
     }
 
+    private const string LimitedStub =
+        "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1?encryption=none&type=tcp&security=none#%F0%9F%9A%A7%20Subscription%20limited\n" +
+        "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1?encryption=none&type=tcp&security=none#Contact%20support\n";
+
+    [Fact]
+    public void Limited_subscription_reports_the_provider_text_not_hwid()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.OK);
+        var body = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(LimitedStub));
+
+        Assert.Equal("🚧 Subscription limited · Contact support", SubscriptionParser.ProviderNotice(body));
+        Assert.Empty(SubscriptionParser.Parse(body));
+        var message = SubscriptionFetcher.HwidFailureMessage(response, body, "ru");
+        Assert.Equal(Strings.T("ru", "sub_provider_notice", "🚧 Subscription limited · Contact support"), message);
+    }
+
+    [Fact]
+    public void Hwid_stub_in_body_still_reports_hwid()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.OK);
+        var body = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "sub-hwid-gate.txt"));
+
+        Assert.Equal(Strings.T("ru", "sub_hwid_gate"), SubscriptionFetcher.HwidFailureMessage(response, body, "ru"));
+    }
+
+    [Fact]
+    public void Real_nodes_have_no_provider_notice()
+    {
+        Assert.Null(SubscriptionParser.ProviderNotice("vless://11111111-1111-1111-1111-111111111111@198.51.100.10:443?security=tls#DE"));
+    }
+
     [Fact]
     public async Task Mock_handler_receives_sing_box_headers_and_body_is_parsed()
     {

@@ -2156,6 +2156,20 @@ public sealed partial class WebServer
             : guarded ? ("warn", T("Туннель выключен", "Tunnel is off"), T("Защитный барьер отмечен как включённый", "Guard is recorded as enabled"))
             : ("off", T("Туннель выключен", "Tunnel is off"), T("Защитный барьер не подтверждён", "Guard is not confirmed"));
 
+        var subWarnings = new StringBuilder();
+        foreach (var sub in cfg.Subscriptions.Where(s => s.Enabled))
+        {
+            var why = sub.LastCheckOk == false && sub.LastError is not null
+                ? sub.LastError
+                : sub.UsedBytes is { } used && sub.TotalBytes is { } total && used >= total
+                    ? S("sub_traffic_over", new object[] { SubscriptionInfo.Bytes(used), SubscriptionInfo.Bytes(total) })
+                    : null;
+            if (why is null) continue;
+            subWarnings.Append("<div class=\"flash err\"><b>").Append(E(S("sub_failed_title", new object[] { sub.Name }))).Append("</b>")
+              .Append(E(why)).Append("<br><a href=\"/?tab=subs\">").Append(E(S("sub_open_list", []))).Append("</a></div>");
+        }
+        if (_lightRequest && subWarnings.Length > 0) sb.Append("<section>").Append(subWarnings).Append("</section>");
+
         sb.Append("<section data-live=hero><div class=\"hero ").Append(cls).Append("\" role=status aria-live=polite>");
         if (_lightRequest) TunnelUi.LightVortex(sb, cfg, InstalledAppCatalog.Detect(cfg.Language), st.Running, power is null && (st.Running || DaemonControl.IsRecovering(Root) || Os.IsElevated()));
         sb.Append("<span class=dot></span><div><h1>")
@@ -2177,6 +2191,7 @@ public sealed partial class WebServer
         sb.Append("</form></div><details class=consequences><summary>")
           .Append(E(T("Что произойдёт при выключении?", "What happens when I turn it off?")))
           .Append("</summary><p>").Append(E(AppObservation.StopConsequence(cfg, Os.IsWindows, guarded))).Append("</p></details>");
+        if (!_lightRequest) sb.Append(subWarnings);
         if (observations.Count > 0)
         {
             var summaryClass = leaks.Count > 0 ? "bad" : verified == observations.Count && st.Running ? "on" : "warn";

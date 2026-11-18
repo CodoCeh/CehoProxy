@@ -100,10 +100,15 @@ public static class SubscriptionFetcher
             return Strings.T(lang, "sub_hwid_gate");
 
         if (!string.IsNullOrEmpty(body) && SubscriptionParser.LooksLikeHwidGate(body))
-            return Strings.T(lang, "sub_hwid_gate");
+            return SubscriptionParser.ProviderNotice(body) is { } notice && !AboutDevice(notice)
+                ? Strings.T(lang, "sub_provider_notice", notice)
+                : Strings.T(lang, "sub_hwid_gate");
 
         return null;
     }
+
+    private static bool AboutDevice(string notice) =>
+        new[] { "hwid", "устройств", "device" }.Any(w => notice.Contains(w, StringComparison.OrdinalIgnoreCase));
 
     public static string HttpFailureMessage(HttpResponseMessage response, string lang)
     {

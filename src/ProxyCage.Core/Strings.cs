@@ -1443,6 +1443,14 @@ public static class Strings
         ["sub_hwid_gate"] = new(
             "Панель не отдала ноды: она требует идентификатор устройства, как Happ. Если Happ уже привязан — в боте отвяжите лишний клиент и проверьте подписку снова.",
             "The panel did not return nodes: it wants a device id, like Happ. If Happ is already bound, unlink an extra client in the bot and check the subscription again."),
+        ["sub_provider_notice"] = new(
+            "Провайдер вместо серверов прислал сообщение: «{0}». Так бывает, когда закончился трафик или срок подписки: продлите её у провайдера и проверьте подписку снова.",
+            "Instead of servers the provider sent a message: \"{0}\". This usually means the traffic or the subscription period ran out: renew it with the provider and check the subscription again."),
+        ["sub_failed_title"] = new("Подписка «{0}» не работает. ", "Subscription \"{0}\" is not working. "),
+        ["sub_traffic_over"] = new(
+            "Трафик подписки закончился: использовано {0} из {1}. Продлите подписку у провайдера.",
+            "The subscription traffic ran out: {0} of {1} used. Renew the subscription with the provider."),
+        ["sub_open_list"] = new("Открыть подписки", "Open subscriptions"),
         ["sub_hwid_limit"] = new(
             "Панель не отдала ноды: достигнут лимит устройств. Отвяжите лишний клиент в боте и проверьте подписку снова.",
             "The panel did not return nodes: the device limit is reached. Unlink an extra client in the bot and check the subscription again."),

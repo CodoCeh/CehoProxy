@@ -223,12 +223,12 @@ public static class Ceho
             if (cached.Count > 0)
             {
                 Log.Info($"использую сохранённую копию подписки «{sub.Name}»");
-                Mark(sub, false, cached.Count, fetched.Failure, null);
+                Mark(sub, false, cached.Count, fetched.Failure, SubscriptionInfo.FromHeader(fetched.UserInfo));
                 return Tag(cached, sub.Name);
             }
         }
 
-        Mark(sub, false, 0, fetched.Failure, null);
+        Mark(sub, false, 0, fetched.Failure, SubscriptionInfo.FromHeader(fetched.UserInfo));
         return Array.Empty<ProxyNode>();
     }
 
@@ -259,6 +259,7 @@ public static class Ceho
         var fetchTimeout = attempts < FetchAttempts ? timeoutSeconds : SubscriptionTimeout(timeoutSeconds);
         string? failure = null;
         string? webPage = null;
+        string? lastUserInfo = null;
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
             report?.Note(Strings.T(lang, "sub_fetch_attempt", attempt, attempts));
@@ -272,6 +273,7 @@ public static class Ceho
                 using var response = await http.SendAsync(
                     request, HttpCompletionOption.ResponseHeadersRead);
                 var userInfo = UserInfoHeader(response);
+                lastUserInfo = userInfo ?? lastUserInfo;
                 if (response.IsSuccessStatusCode)
                 {
                     report?.Note(Strings.T(lang, "sub_reading_data"));
@@ -294,6 +296,7 @@ public static class Ceho
                     {
                         failure = hwidFailure;
                         report?.Note(failure);
+                        if (hwidFailure != Strings.T(lang, "sub_hwid_gate")) break;
                     }
                     else
                     {
@@ -328,7 +331,7 @@ public static class Ceho
 
         return webPage is not null && failure is null
             ? new Fetched(webPage, null, null)
-            : new Fetched(null, failure, null);
+            : new Fetched(null, failure, lastUserInfo);
     }
 
     private static string? UserInfoHeader(HttpResponseMessage response) =>
