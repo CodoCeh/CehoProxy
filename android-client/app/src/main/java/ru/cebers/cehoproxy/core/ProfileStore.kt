@@ -20,7 +20,6 @@ data class ClientProfile(
     val siteNodeRoutes: Map<String, String> = emptyMap(),
     val autoRotationEnabled: Boolean = false,
     val autoRotationIntervalSeconds: Int = 900,
-    val aiMode: Boolean = false,
     val autoExcludedRouteIds: List<String> = emptyList(),
     val excludedCountriesBySubscription: Map<String, List<String>> = emptyMap(),
     val subscriptionUrls: List<String> = emptyList(),
@@ -60,7 +59,7 @@ object ProfileCodec {
             .put("onlySites", profile.onlySites).put("config", profile.importedConfig ?: "")
             .put("excludeSelectedApps", profile.excludeSelectedApps).put("expiryRemindersEnabled", profile.expiryRemindersEnabled).put("siteHintsEnabled", profile.siteHintsEnabled)
             .put("appNodeRoutes", JSONObject(profile.appNodeRoutes)).put("siteNodeRoutes", JSONObject(profile.siteNodeRoutes))
-            .put("aiMode", profile.aiMode).put("autoRotationEnabled", profile.autoRotationEnabled).put("autoRotationIntervalSeconds", profile.autoRotationIntervalSeconds.coerceIn(60, 3600))
+            .put("autoRotationEnabled", profile.autoRotationEnabled).put("autoRotationIntervalSeconds", profile.autoRotationIntervalSeconds.coerceIn(60, 3600))
             .put("autoExcludedRouteIds", JSONArray(profile.autoExcludedRouteIds.distinct()))
             .put("excludedCountriesBySubscription", JSONObject().apply { profile.excludedCountriesBySubscription.forEach { (key, countries) -> put(key, JSONArray(countries.map { it.uppercase() }.distinct())) } })
             .put("subscriptionUrls", JSONArray(profile.subscriptionUrls)).put("subscriptionFetchedAt", profile.subscriptionFetchedAt)
@@ -105,7 +104,6 @@ object ProfileCodec {
             appNodeRoutes = json.objectMap("appNodeRoutes"),
             siteNodeRoutes = json.objectMap("siteNodeRoutes"),
             autoRotationEnabled = json.optBoolean("autoRotationEnabled"),
-            aiMode = json.optBoolean("aiMode"),
             autoRotationIntervalSeconds = json.optInt("autoRotationIntervalSeconds", 900).coerceIn(60, 3600),
             autoExcludedRouteIds = json.array("autoExcludedRouteIds"),
             excludedCountriesBySubscription = json.countriesBySubscription(nodes),
