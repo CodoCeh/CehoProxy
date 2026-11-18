@@ -49,7 +49,7 @@ internal object XrayBridge {
             })
             "tls" -> stream.put("security", "tls").put("tlsSettings", JSONObject().apply {
                 put("serverName", query["sni"].orEmpty())
-                put("allowInsecure", query["allowInsecure"] == "1" || query["insecure"] == "1")
+                putIfNotBlank(this, "pinnedPeerCertSha256", query["pcs"])
                 put("fingerprint", query["fp"].orEmpty().ifBlank { "chrome" })
                 query["alpn"]?.split(',')?.map(String::trim)?.filter(String::isNotBlank)?.takeIf { it.isNotEmpty() }
                     ?.let { put("alpn", JSONArray(it)) }

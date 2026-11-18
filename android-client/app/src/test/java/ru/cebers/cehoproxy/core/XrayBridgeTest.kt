@@ -69,4 +69,12 @@ class XrayBridgeTest {
         assertEquals("127.0.0.1", proxy.getString("server"))
         assertEquals(10001, proxy.getInt("server_port"))
     }
+
+    @Test fun insecureTlsDoesNotBreakXrayAndThePinIsPassed() {
+        val node = NodeShareParser.parse("vless://11111111-1111-1111-1111-111111111111@198.51.100.4:443?security=tls&sni=x.example&allowInsecure=1&pcs=2f0286243bada9b31b935cbbd27f7efdd3d64386f8dfe37d9b60516bfa190f29&type=xhttp&path=%2Fx#X").first()
+        val tls = JSONObject(XrayBridge.config(listOf(node), mapOf(node.routeId to 10001))).getJSONArray("outbounds").getJSONObject(0)
+            .getJSONObject("streamSettings").getJSONObject("tlsSettings")
+        org.junit.Assert.assertFalse(tls.has("allowInsecure"))
+        org.junit.Assert.assertEquals("2f0286243bada9b31b935cbbd27f7efdd3d64386f8dfe37d9b60516bfa190f29", tls.getString("pinnedPeerCertSha256"))
+    }
 }
