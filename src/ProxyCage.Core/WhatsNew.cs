@@ -81,6 +81,12 @@ public static class WhatsNew
                 "Если у провайдера закончился трафик или срок подписки, на главном экране панели и в Light появляется красная карточка с его сообщением.",
                 "If the provider's traffic or subscription period runs out, a red card with the provider's message appears on the main screen of the panel and in Light."),
         }),
+        new("1.2.193", new[]
+        {
+            new Item("Серверы на WebSocket снова работают", "WebSocket servers work again",
+                "Если в подписке был сервер на WebSocket, защита не включалась с ошибкой «unknown field idle_timeout». Теперь такие серверы работают.",
+                "If a subscription had a WebSocket server, protection did not start with the error \"unknown field idle_timeout\". Such servers work now."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
