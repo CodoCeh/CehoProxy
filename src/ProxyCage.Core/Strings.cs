@@ -1446,6 +1446,12 @@ public static class Strings
         ["sub_provider_notice"] = new(
             "Провайдер вместо серверов прислал сообщение: «{0}». Так бывает, когда закончился трафик или срок подписки: продлите её у провайдера и проверьте подписку снова.",
             "Instead of servers the provider sent a message: \"{0}\". This usually means the traffic or the subscription period ran out: renew it with the provider and check the subscription again."),
+        ["xray_downloading"] = new(
+            "Скачиваю Xray {0} для серверов XHTTP…",
+            "Downloading Xray {0} for XHTTP servers…"),
+        ["xray_download_failed"] = new(
+            "Не удалось скачать Xray для серверов XHTTP, они пока пропущены: {0}",
+            "Could not download Xray for XHTTP servers, they are skipped for now: {0}"),
         ["sub_xhttp_only"] = new(
             "Все серверы подписки работают через XHTTP, а CehoProxy такой тип подключения не умеет. Попросите у провайдера подписку с другим типом подключения, например Reality или WebSocket.",
             "All servers of this subscription use XHTTP, which CehoProxy cannot use. Ask the provider for a subscription with another connection type, for example Reality or WebSocket."),

@@ -171,8 +171,11 @@ public static class SubscriptionFormats
             node.AllowInsecure = Bool(tls, "allowInsecure");
             // Xray pins SHA256 of the certificate. sing-box pins the public key — это другое.
             // Если панель прислала пин, без него камуфляжный SNI не сойдётся с сертификатом.
-            if (Str(tls, "pinnedPeerCertSha256") is { Length: > 0 })
+            if (Str(tls, "pinnedPeerCertSha256") is { Length: > 0 } pin)
+            {
                 node.AllowInsecure = true;
+                node.PinnedCertSha256 = pin;
+            }
         }
         if (stream.TryGetProperty("hysteriaSettings", out var hy))
         {
@@ -187,6 +190,13 @@ public static class SubscriptionFormats
         {
             node.Path = Str(ws, "path");
             if (ws.TryGetProperty("headers", out var h)) node.Host = Str(h, "Host") ?? Str(h, "host");
+        }
+        if (stream.TryGetProperty("xhttpSettings", out var xhttp) || stream.TryGetProperty("splithttpSettings", out xhttp))
+        {
+            node.Path = Str(xhttp, "path");
+            node.Host = Str(xhttp, "host");
+            node.XhttpMode = Str(xhttp, "mode");
+            if (xhttp.TryGetProperty("extra", out var extra) && extra.ValueKind == JsonValueKind.Object) node.XhttpExtra = extra.GetRawText();
         }
         if (stream.TryGetProperty("httpSettings", out var http))
         {

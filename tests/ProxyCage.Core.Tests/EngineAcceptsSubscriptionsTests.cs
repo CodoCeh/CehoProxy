@@ -29,17 +29,82 @@ public class EngineAcceptsSubscriptionsTests
         Assert.Equal("v2ray-plugin", (string?)o["ss-v2ray"]["plugin"]);
         Assert.Equal("anytls", (string?)o["anytls"]["type"]);
         Assert.Equal("httpupgrade", (string?)o["vmess-httpupgrade"]["transport"]!["type"]);
-        Assert.False(o.ContainsKey("vless-xhttp"));
     }
 
     [Fact]
-    public void Subscription_of_only_xhttp_servers_is_explained()
+    public void Vless_xhttp_goes_through_the_xray_bridge()
     {
-        const string xhttp = "vless://11111111-1111-1111-1111-111111111111@198.51.100.4:443?security=reality&type=xhttp&path=%2Fx#X";
-        Assert.Empty(SubscriptionParser.Parse(xhttp));
-        Assert.True(SubscriptionParser.OnlyUnsupportedTransports(xhttp));
-        Assert.Null(SubscriptionParser.ProviderNotice(xhttp));
-        Assert.False(SubscriptionParser.OnlyUnsupportedTransports(xhttp + "\nvless://11111111-1111-1111-1111-111111111111@198.51.100.5:443?type=tcp#T"));
+        var node = SubscriptionParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "sub-transports.txt")))
+            .Single(n => n.Remark == "vless-xhttp");
+        node.BridgePort = 20808;
+
+        var outbound = OutboundBuilder.Build(node);
+        Assert.Equal("socks", (string?)outbound["type"]);
+        Assert.Equal("127.0.0.1", (string?)outbound["server"]);
+        Assert.Equal(20808, (int)outbound["server_port"]!);
+
+        var xray = JsonNode.Parse(XrayBridge.Config(new[] { node }))!;
+        Assert.Equal(20808, (int)xray["inbounds"]![0]!["port"]!);
+        var stream = xray["outbounds"]![0]!["streamSettings"]!;
+        Assert.Equal("xhttp", (string?)stream["network"]);
+        Assert.Equal("reality", (string?)stream["security"]);
+        Assert.Equal("Z84J2IelR9ch3k8VtlVhhs5ycBUlXA7wHBWcBrjqnAw", (string?)stream["realitySettings"]!["publicKey"]);
+        Assert.Equal("/x", (string?)stream["xhttpSettings"]!["path"]);
+        Assert.Equal("auto", (string?)stream["xhttpSettings"]!["mode"]);
+    }
+
+    [Fact]
+    public async Task Bridge_ports_stay_the_same_while_the_bridge_holds_them()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ceho-bridge-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        File.WriteAllText(XrayBridge.BinaryPath(root), "");
+        try
+        {
+            const string link = "vless://11111111-1111-1111-1111-111111111111@198.51.100.4:443?security=none&type=xhttp&path=%2Fx#X";
+            var first = (await XrayBridge.PrepareAsync(SubscriptionParser.Parse(link), root, _ => { })).Single().BridgePort!.Value;
+            using var held = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, first);
+            held.Start();
+            var second = (await XrayBridge.PrepareAsync(SubscriptionParser.Parse(link), root, _ => { })).Single().BridgePort!.Value;
+            Assert.Equal(first, second);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Without_xhttp_servers_the_bridge_config_is_removed()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ceho-bridge-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        File.WriteAllText(XrayBridge.ConfigPath(root), "{}");
+        try
+        {
+            var nodes = await XrayBridge.PrepareAsync(SubscriptionParser.Parse("vless://11111111-1111-1111-1111-111111111111@198.51.100.5:443?type=tcp#T"), root, _ => { });
+            Assert.Null(nodes.Single().BridgePort);
+            Assert.False(File.Exists(XrayBridge.ConfigPath(root)));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void Xhttp_extra_settings_are_passed_to_xray()
+    {
+        var node = SubscriptionParser.Parse("vless://11111111-1111-1111-1111-111111111111@198.51.100.4:443?security=tls&sni=x.example&type=xhttp&path=%2Fx&mode=packet-up&extra=%7B%22xPaddingBytes%22%3A%22100-1000%22%7D#X").Single();
+        node.BridgePort = 20809;
+        var xhttp = JsonNode.Parse(XrayBridge.Config(new[] { node }))!["outbounds"]![0]!["streamSettings"]!["xhttpSettings"]!;
+        Assert.Equal("packet-up", (string?)xhttp["mode"]);
+        Assert.Equal("100-1000", (string?)xhttp["extra"]!["xPaddingBytes"]);
+    }
+
+    [Fact]
+    public void Only_non_vless_xhttp_is_explained_as_unsupported()
+    {
+        const string vless = "vless://11111111-1111-1111-1111-111111111111@198.51.100.4:443?security=reality&type=xhttp&path=%2Fx#X";
+        const string trojan = "trojan://secret@198.51.100.6:443?security=tls&type=xhttp&path=%2Fx#T";
+        Assert.Single(SubscriptionParser.Parse(vless));
+        Assert.False(SubscriptionParser.OnlyUnsupportedTransports(vless));
+        Assert.Empty(SubscriptionParser.Parse(trojan));
+        Assert.True(SubscriptionParser.OnlyUnsupportedTransports(trojan));
     }
 
     [Theory]
@@ -54,6 +119,7 @@ public class EngineAcceptsSubscriptionsTests
         var failures = new List<string>();
         foreach (var node in nodes)
         {
+            if (XrayBridge.Supports(node)) node.BridgePort = 20808;
             var outbound = OutboundBuilder.Build(node);
             outbound["tag"] = "x";
             var config = Path.Combine(Path.GetTempPath(), $"ceho-node-{Guid.NewGuid():N}.json");

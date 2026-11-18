@@ -561,6 +561,7 @@ public static class Ceho
             ? null
             : Preflight.SaveProxyPortIfBusy(cfg, ConfigPath);
         var nodes = await LoadAllNodesAsync(cfg, preferCache: false, report);
+        nodes = await XrayBridge.PrepareAsync(nodes, Root, m => report?.Note(m), cfg.Language);
         report?.Phase(Strings.T(cfg.Language, "stage_writing_rules"));
         var json = SingBoxConfigGenerator.GenerateForConfig(nodes, cfg);
         Directory.CreateDirectory(Root);

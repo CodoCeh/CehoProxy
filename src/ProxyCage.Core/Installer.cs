@@ -705,6 +705,7 @@ public static class Installer
     {
         if (!Directory.Exists(root)) return;
 
+        XrayBridge.Stop();
         ForwardingGuard.Restore(root, null);
 
         foreach (var pattern in new[]
@@ -724,6 +725,7 @@ public static class Installer
                      "config.before-*.json", "dbip-country-lite.mmdb",
                      "dbip-country-lite.mmdb.tmp", "dbip-country-lite.mmdb.gz.tmp",
                      "dbip-country-lite.mmdb.bundled.tmp", "sing-box-*.zip", "sing-box-*.tar.gz",
+                     "ceho-xray.exe", "ceho-xray", "ceho-xray.exe.tmp", "ceho-xray.tmp", "xray.json", "xray.log", "Xray-*.zip",
                      "relaunch.ps1", "relaunch.sh",
                      "update-relaunch.ps1", "update-relaunch.sh", "pick-app.ps1",
                      "pick-app-launch.vbs", "pick-app-result.txt", "user-alias.path",

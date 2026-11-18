@@ -2241,6 +2241,7 @@ if (cmd is "daemon" or "web")
             Log.Info($"  защита от утечек (1): {lap.Elapsed.TotalSeconds:F1} с"); lap.Restart();
 
             var nodes = await Ceho.LoadAllNodesAsync(c, preferCache: reasonCode != "exit-unavailable", report);
+            nodes = await XrayBridge.PrepareAsync(nodes, Ceho.Root, m => { Log.Info(m); report?.Note(m); }, c.Language);
             Log.Info($"  подписки и страны: {lap.Elapsed.TotalSeconds:F1} с, нод {nodes.Count}"); lap.Restart();
 
             if (nodes.Any(n => n.Protocol == ProxyProtocol.Naive) && Installer.MissingCronetDll(Ceho.Root))
@@ -2409,7 +2410,7 @@ if (cmd is "daemon" or "web")
             var kept = new SingBoxProcess();
             try
             {
-                kept.Attach(keptPid);
+                kept.Attach(keptPid, Ceho.Root);
                 var keptReady = await EngineReadiness.WaitAsync(
                     () => kept.IsRunning,
                     () => SingBoxProcess.ListensAsync(c.MixedPort, c.ClashApiPort));
@@ -2471,7 +2472,7 @@ if (cmd is "daemon" or "web")
         try
         {
             StopGuard();
-            p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root);
+            p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root, bridge: true);
             Log.Info($"движок запущен, pid {p.ProcessId}");
 
             report?.StartupStep(3);

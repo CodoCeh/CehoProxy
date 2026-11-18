@@ -21,6 +21,7 @@ public static class SingBoxConfigGenerator
         @"(?i)[\\/]cehoproxy(\.exe)?$",
         @"(?i)[\\/]ceho-engine\.exe$",
         @"(?i)[\\/]sing-box\.exe$",
+        @"(?i)[\\/]ceho-xray(\.exe)?$",
     };
 
     public static string Generate(IReadOnlyList<ProxyNode> allNodes, ProxyCageSettings settings)

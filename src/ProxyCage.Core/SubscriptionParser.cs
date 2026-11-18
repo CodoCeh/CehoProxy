@@ -118,7 +118,8 @@ public static class SubscriptionParser
     internal static bool IsPlaceholder(ProxyNode node) =>
         (node.Port <= 1 && node.Server is "0.0.0.0" or "::" or "127.0.0.1") || IsUnsupportedTransport(node);
 
-    internal static bool IsUnsupportedTransport(ProxyNode node) => node.Network is "xhttp" or "splithttp";
+    internal static bool IsUnsupportedTransport(ProxyNode node) =>
+        node.Network is "xhttp" or "splithttp" && !XrayBridge.Supports(node);
 
     /// <summary>Серверы подписки есть, но все на транспорте, которого нет в sing-box.</summary>
     public static bool OnlyUnsupportedTransports(string? body)
@@ -303,6 +304,10 @@ public static class SubscriptionParser
                 ServiceName = q["serviceName"],
                 Path = q["path"],
                 Host = q["host"],
+                XhttpMode = q["mode"],
+                XhttpExtra = q["extra"],
+                SpiderX = q["spx"],
+                PinnedCertSha256 = q["pcs"],
                 Alpn = q["alpn"],
                 AllowInsecure = q["allowInsecure"] == "1" || q["insecure"] == "1",
                 ObfsPassword = q["obfs-password"],

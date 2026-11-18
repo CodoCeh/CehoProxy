@@ -4,7 +4,7 @@ namespace ProxyCage.Core;
 
 public static class OutboundBuilder
 {
-    public static JsonObject Build(ProxyNode n) => n.Protocol switch
+    public static JsonObject Build(ProxyNode n) => n.BridgePort is { } bridge ? BuildBridge(n, bridge) : n.Protocol switch
     {
         ProxyProtocol.Vless => BuildVless(n),
         ProxyProtocol.Vmess => BuildVmess(n),
@@ -17,6 +17,15 @@ public static class OutboundBuilder
         ProxyProtocol.Http => BuildProxy(n, "http"),
         ProxyProtocol.Socks => BuildProxy(n, "socks"),
         _ => throw new NotSupportedException($"протокол {n.Protocol} не поддержан"),
+    };
+
+    private static JsonObject BuildBridge(ProxyNode n, int port) => new()
+    {
+        ["type"] = "socks",
+        ["tag"] = n.Tag,
+        ["server"] = "127.0.0.1",
+        ["server_port"] = port,
+        ["version"] = "5",
     };
 
     private static JsonObject Base(ProxyNode n, string type) => new()

@@ -88,8 +88,12 @@ public sealed class SingBoxProcess : IDisposable
     /// <summary>Движок запущен не нами: подхвачен после перезапуска демона, его вывод нам недоступен.</summary>
     public bool Attached { get; private set; }
 
-    public void Attach(int pid)
+    private string? _bridgeRoot;
+
+    public void Attach(int pid, string? root = null)
     {
+        _bridgeRoot = root;
+        if (root is not null && !XrayBridge.IsRunning()) XrayBridge.Start(root);
         _drained = new ManualResetEventSlim(true);
         _unix = System.Diagnostics.Process.GetProcessById(pid);
         ProcessId = (uint)pid;
@@ -101,10 +105,15 @@ public sealed class SingBoxProcess : IDisposable
     private ManualResetEventSlim _drained = new(true);
     private int _readersLeft;
 
-    public void Start(string exePath, string configPath, string workingDirectory)
+    public void Start(string exePath, string configPath, string workingDirectory, bool bridge = false)
     {
         lock (_engineLines) _engineLines.Clear();
         LastLog = null;
+        if (bridge)
+        {
+            _bridgeRoot = workingDirectory;
+            XrayBridge.Start(workingDirectory);
+        }
 
         // Пока читатели вывода живы, последние слова движка ещё в пути.
         _drained = new ManualResetEventSlim(false);
@@ -344,6 +353,12 @@ public sealed class SingBoxProcess : IDisposable
     }
 
     public bool Stop(int gracefulTimeoutMs = 5000)
+    {
+        try { return StopEngine(gracefulTimeoutMs); }
+        finally { if (_bridgeRoot is not null) XrayBridge.Stop(); }
+    }
+
+    private bool StopEngine(int gracefulTimeoutMs)
     {
         if (_unix is not null) return StopUnix(gracefulTimeoutMs);
 

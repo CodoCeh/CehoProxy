@@ -41,6 +41,11 @@ public sealed class ProxyNode
 
     public string? Method { get; set; }
     public string? Plugin { get; set; }
+    public string? XhttpMode { get; set; }
+    public string? XhttpExtra { get; set; }
+    public string? SpiderX { get; set; }
+    public string? PinnedCertSha256 { get; set; }
+    public int? BridgePort { get; set; }
     public string? PluginOpts { get; set; }
 
     public int AlterId { get; set; }
