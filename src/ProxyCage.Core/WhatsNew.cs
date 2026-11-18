@@ -87,6 +87,12 @@ public static class WhatsNew
                 "Если в подписке был сервер на WebSocket, защита не включалась с ошибкой «unknown field idle_timeout». Теперь такие серверы работают.",
                 "If a subscription had a WebSocket server, protection did not start with the error \"unknown field idle_timeout\". Such servers work now."),
         }),
+        new("1.2.194", new[]
+        {
+            new Item("Больше видов серверов работает", "More server types work",
+                "Серверы HTTPUpgrade, HTTP/2, AnyTLS, WebSocket с ранними данными и Shadowsocks с плагинами obfs и v2ray-plugin теперь подключаются. Если в подписке только серверы XHTTP, панель объяснит, что такой тип не поддерживается.",
+                "HTTPUpgrade, HTTP/2, AnyTLS, WebSocket with early data and Shadowsocks with obfs and v2ray-plugin servers now connect. If a subscription has only XHTTP servers, the panel explains that this type is not supported."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
