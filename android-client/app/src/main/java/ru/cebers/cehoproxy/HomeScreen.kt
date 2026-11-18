@@ -45,6 +45,7 @@ import ru.cebers.cehoproxy.core.SubscriptionMetadata
 import ru.cebers.cehoproxy.core.SubscriptionRefreshPolicy
 import ru.cebers.cehoproxy.core.SubscriptionRemovalPolicy
 import ru.cebers.cehoproxy.core.SubscriptionSummary
+import ru.cebers.cehoproxy.core.SubscriptionNotices
 import ru.cebers.cehoproxy.core.SubscriptionSummary.TermKind
 import ru.cebers.cehoproxy.core.SubscriptionSummary.TrafficKind
 import ru.cebers.cehoproxy.core.TunnelAppsPolicy
@@ -120,6 +121,14 @@ import ru.cebers.cehoproxy.ui.SlidersGlyph
     val fastestIndex = profile.nodes.withIndex().filter { nodeAllowed(profile, it.value) && measurements.nodes[it.value.routeId]?.latencyMs != null && measurements.nodes[it.value.routeId]?.failed != true }
         .minByOrNull { measurements.nodes[it.value.routeId]?.latencyMs ?: Int.MAX_VALUE }?.index
     if (blocked && !profile.autoRotationEnabled && fastestIndex != null) QuietButton("Подключиться к самому быстрому", { onSelectNode(fastestIndex); onConnect() }, Modifier.fillMaxWidth().padding(top = 8.dp).testTag("home-switch-fastest"), primary = false)
+    SubscriptionNotices.of(profile).forEach { warning ->
+        Surface(color = colors.errorContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("home-subscription-notice")) {
+            Column(Modifier.padding(16.dp)) {
+                Text(warning.title, color = colors.onErrorContainer, style = MaterialTheme.typography.titleSmall)
+                Text(warning.text, color = colors.onErrorContainer, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+    }
     if (notificationsBlocked) Surface(color = colors.errorContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("home-notifications-off")) {
         Column(Modifier.padding(16.dp)) {
             Text("Уведомления выключены", color = colors.onErrorContainer, style = MaterialTheme.typography.titleSmall)
