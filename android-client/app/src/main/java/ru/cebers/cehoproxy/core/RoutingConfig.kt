@@ -410,6 +410,16 @@ object RoutingConfig {
         result.put("tls", tls)
     }
 
+    internal fun putWsPath(transport: JSONObject, path: String) {
+        val cut = path.indexOf('?')
+        if (cut < 0) { transport.put("path", path); return }
+        val parts = path.substring(cut + 1).split('&').filter(String::isNotBlank)
+        val early = parts.firstOrNull { it.startsWith("ed=", ignoreCase = true) }?.substring(3)?.toIntOrNull()
+        val kept = parts.filterNot { it.startsWith("ed=", ignoreCase = true) && it.substring(3).toIntOrNull() != null }
+        transport.put("path", if (kept.isEmpty()) path.substring(0, cut) else path.substring(0, cut) + "?" + kept.joinToString("&"))
+        if (early != null && early > 0) transport.put("max_early_data", early).put("early_data_header_name", "Sec-WebSocket-Protocol")
+    }
+
     private fun appendTransport(result: JSONObject, query: Map<String, String>) {
         val network = (query["type"] ?: query["network"] ?: "").lowercase()
         if (network.isBlank() || network == "tcp" || network == "raw") return
@@ -424,11 +434,12 @@ object RoutingConfig {
         val transport = JSONObject().put("type", transportType)
         when (transportType) {
             "ws" -> {
-                query["path"]?.let { transport.put("path", it) }
+                query["path"]?.let { putWsPath(transport, it) }
                 val host = query["host"]
                 if (!host.isNullOrBlank()) transport.put("headers", JSONObject().put("Host", host))
                 query["ed"]?.toIntOrNull()?.takeIf { it > 0 }?.let { transport.put("max_early_data", it) }
                 query["eh"]?.takeIf(String::isNotBlank)?.let { transport.put("early_data_header_name", it) }
+                if (transport.has("max_early_data") && !transport.has("early_data_header_name")) transport.put("early_data_header_name", "Sec-WebSocket-Protocol")
             }
             "grpc" -> (query["serviceName"] ?: query["service_name"])?.let { transport.put("service_name", it) }
             "http" -> {

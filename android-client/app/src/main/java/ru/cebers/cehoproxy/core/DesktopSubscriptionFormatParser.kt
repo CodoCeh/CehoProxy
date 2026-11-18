@@ -143,7 +143,7 @@ object DesktopSubscriptionFormatParser {
         }
         stream?.optJSONObject("wsSettings")?.let { ws ->
             val transport = JSONObject().put("type", "ws")
-            ws.string("path")?.let { transport.put("path", it) }
+            ws.string("path")?.let { RoutingConfig.putWsPath(transport, it) }
             ws.optJSONObject("headers")?.string("Host")?.let { transport.put("headers", JSONObject().put("Host", it)) }
             outbound.put("transport", transport)
         }
@@ -278,7 +278,7 @@ object DesktopSubscriptionFormatParser {
             "ws", "websocket" -> {
                 val ws = parseInlineMap(map["ws-opts"].orEmpty().removeSurrounding("{", "}")) + map.filterKeys { it.startsWith("ws-opts.") }.mapKeys { it.key.removePrefix("ws-opts.") }
                 val transport = JSONObject().put("type", "ws")
-                (ws["path"] ?: map["ws-path"] ?: map["path"])?.let { transport.put("path", it) }
+                (ws["path"] ?: map["ws-path"] ?: map["path"])?.let { RoutingConfig.putWsPath(transport, it) }
                 (ws.entries.firstOrNull { it.key.equals("headers.host", true) }?.value ?: map["host"])?.let { transport.put("headers", JSONObject().put("Host", it)) }
                 out.put("transport", transport)
             }
