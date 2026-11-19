@@ -102,6 +102,12 @@ public static class WhatsNew
                 "Включение и выключение защиты видно во всех открытых окнах в ту же секунду, даже если нажать в нескольких окнах одновременно.",
                 "Turning protection on or off shows in every open window within a second, even if you press it in several windows at once."),
         }),
+        new("1.2.196", new[]
+        {
+            new Item("Light на Mac снова открывается", "Light on Mac opens again",
+                "Окно CehoProxy Light в строке меню Mac больше не превращается в веб-панель.",
+                "The CehoProxy Light window from the Mac menu bar no longer turns into the web panel."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
