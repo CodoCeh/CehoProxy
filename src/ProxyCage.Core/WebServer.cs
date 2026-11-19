@@ -1919,7 +1919,7 @@ public sealed partial class WebServer
         var light = _lightRequest;
         sb.Append("<!doctype html><html lang=").Append(cfg.Language).Append(light ? " class=light" : "").Append(" translate=no><head><meta charset=utf-8><meta name=google content=notranslate>");
         if (_renderStamp is not null) sb.Append("<meta name=ceho-stamp content=").Append(_renderStamp).Append('>');
-        if (light) sb.Append("<script>if(matchMedia('(display-mode: browser)').matches)location.replace('/web')</script>");
+        if (light) sb.Append("<script>if(matchMedia('(display-mode: browser)').matches&&!/CehoProxyLight/.test(navigator.userAgent))location.replace('/web')</script>");
         sb.Append("<meta name=viewport content=\"width=device-width,initial-scale=1\">");
 
         // Без JavaScript страница с идущей операцией обновляется сама: панель управления

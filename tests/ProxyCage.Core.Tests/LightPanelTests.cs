@@ -98,7 +98,7 @@ public class LightPanelTests : IDisposable
     {
         var light = await _skin.GetStringAsync($"http://127.0.0.1:{_panelPort}/");
         var panel = await _http.GetStringAsync($"http://127.0.0.1:{_panelPort}/");
-        Assert.Contains("matchMedia('(display-mode: browser)').matches)location.replace('/web')", light);
+        Assert.Contains("matchMedia('(display-mode: browser)').matches&&!/CehoProxyLight/.test(navigator.userAgent))location.replace('/web')", light);
         Assert.DoesNotContain("location.replace('/web')", panel);
 
         using var handler = new HttpClientHandler { AllowAutoRedirect = false };

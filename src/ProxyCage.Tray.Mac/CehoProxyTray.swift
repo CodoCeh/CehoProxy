@@ -248,7 +248,11 @@ final class PanelLink {
 final class LightWindow: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSWindowDelegate {
     private static var visibleCount = 0
 
-    private let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+    private let web: WKWebView = {
+        let configuration = WKWebViewConfiguration()
+        configuration.applicationNameForUserAgent = "CehoProxyLight"
+        return WKWebView(frame: .zero, configuration: configuration)
+    }()
     private let window: NSWindow
     private var loaded: URL?
     private var counted = false
