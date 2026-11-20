@@ -625,7 +625,7 @@ internal sealed class TrayItem : IDisposable
             case IdPanel:
                 if (_link.Url is { } url) Os.OpenInBrowser(url);
                 break;
-            case IdQuit: _stop.Cancel(); break;
+            case IdQuit: _ = Task.Run(QuitAsync); break;
         }
     }
 
@@ -663,6 +663,34 @@ internal sealed class TrayItem : IDisposable
             Changed();
         }
         finally { Interlocked.Exchange(ref _asking, 0); }
+    }
+
+    private async Task QuitAsync()
+    {
+        if (_link.Url is null) { _stop.Cancel(); return; }
+        var title = Strings.T(_lang, "tray_quit_title");
+        var text = Strings.T(_lang, "tray_quit_text");
+        (string File, string[] Args)? dialog =
+            Os.FindOnPath("zenity") is not null
+                ? ("zenity", new[] { "--question", "--title=CehoProxy", "--text=" + title + "\n\n" + text,
+                    "--ok-label=" + Strings.T(_lang, "tray_quit_yes"), "--cancel-label=" + Strings.T(_lang, "btn_cancel") })
+            : Os.FindOnPath("kdialog") is not null
+                ? ("kdialog", new[] { "--title", "CehoProxy", "--yesno", title + "\n\n" + text })
+            : null;
+        if (dialog is not { } found) { _stop.Cancel(); return; }
+        var start = new ProcessStartInfo(found.File) { UseShellExecute = false };
+        foreach (var arg in found.Args) start.ArgumentList.Add(arg);
+        try
+        {
+            using var process = Process.Start(start);
+            if (process is null) return;
+            await process.WaitForExitAsync();
+            if (process.ExitCode != 0) return;
+        }
+        catch { return; }
+
+        if (await _link.ReleaseAsync()) _stop.Cancel();
+        else Notify(Strings.T(_lang, "tray_quit_failed"));
     }
 
     private async Task<string?> AskPasswordAsync()

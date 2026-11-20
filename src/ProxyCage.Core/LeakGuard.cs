@@ -16,6 +16,21 @@ public static class LeakGuard
 
     public static bool IsActive(string root) => File.Exists(Path.Combine(root, StateFile));
 
+    private static string ReleasedMarker(string root) => Path.Combine(root, "released");
+
+    public static bool IsReleased(string root) => File.Exists(ReleasedMarker(root));
+
+    public static void Release(string root)
+    {
+        try { File.WriteAllText(ReleasedMarker(root), DateTime.UtcNow.ToString("o")); } catch { }
+        Remove(root);
+    }
+
+    public static void ClearRelease(string root)
+    {
+        try { File.Delete(ReleasedMarker(root)); } catch { }
+    }
+
     public static void SetTunnelGuard(string root, bool active)
     {
         if (Os.IsWindows) return;
@@ -30,7 +45,7 @@ public static class LeakGuard
 
     public static string? Apply(CehoConfig cfg, string root)
     {
-        if (!Os.IsWindows) return null;
+        if (!Os.IsWindows || IsReleased(root)) return null;
 
         var programs = Programs(cfg);
         var local = OutsideTun(cfg.TunAddress);

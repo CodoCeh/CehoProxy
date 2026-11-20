@@ -59,6 +59,8 @@ public sealed class PanelLink : IDisposable
 
     public Task<bool> TurnOffAsync() => ControlAsync("/control/stop");
 
+    public Task<bool> ReleaseAsync() => ControlAsync("/control/release");
+
     private async Task<bool> ControlAsync(string path)
     {
         if (Url is not { } url) return false;

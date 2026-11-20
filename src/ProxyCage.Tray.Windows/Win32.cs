@@ -7,6 +7,13 @@ namespace ProxyCage.Tray.Windows;
 internal static class Win32
 {
     public const int WM_DESTROY = 0x0002;
+    public const uint MB_YESNO = 0x04;
+    public const uint MB_ICONQUESTION = 0x20;
+    public const int IDYES = 6;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+
     public const int WM_COMMAND = 0x0111;
     public const int WM_LBUTTONDBLCLK = 0x0203;
     public const int WM_RBUTTONUP = 0x0205;

@@ -2027,6 +2027,7 @@ if (cmd is "daemon" or "web")
     var waitingForSetup = false;
     DaemonControl.ClearKeepEngine(Ceho.Root);
     DaemonControl.ClearStoppedByUser(Ceho.Root);
+    LeakGuard.ClearRelease(Ceho.Root);
     if (!TunCleanup.IsOurEngineRunning(Ceho.RuntimeConfigPath, Ceho.Root)) ForwardingGuard.Restore(Ceho.Root, Log.Info);
     Autostart.EnsureKeepEngineDropIn();
     Autostart.EnsureLaunchdInteractive();
@@ -2062,7 +2063,7 @@ if (cmd is "daemon" or "web")
     async Task StartGuard()
     {
         if (Os.IsWindows || guard is not null) return;
-        if (!withTunnel || shuttingDown || proc is not null)
+        if (!withTunnel || shuttingDown || proc is not null || LeakGuard.IsReleased(Ceho.Root))
         {
             LeakGuard.SetTunnelGuard(Ceho.Root, false);
             return;
@@ -2167,6 +2168,7 @@ if (cmd is "daemon" or "web")
         if (!automatic)
         {
             DaemonControl.ClearStoppedByUser(Ceho.Root);
+            LeakGuard.ClearRelease(Ceho.Root);
             recovery.StartByUser();
             guardRecovery.StartByUser();
         }
@@ -2615,6 +2617,24 @@ if (cmd is "daemon" or "web")
         DaemonControl.ClearStarting(Ceho.Root);
         DaemonControl.MarkStoppedByUser(Ceho.Root);
         var stopError = StopTunnelLocked();
+        Volatile.Write(ref stopRequested, false);
+        return Task.FromResult(stopError);
+    };
+    web.OnRelease = () =>
+    {
+        Volatile.Write(ref stopRequested, true);
+        using var gate = EngineMutex.Acquire(Ceho.Root);
+        wanted = false;
+        recovery.StopByUser();
+        guardRecovery.StopByUser();
+        lastError = null;
+        DaemonControl.ClearStarting(Ceho.Root);
+        DaemonControl.MarkStoppedByUser(Ceho.Root);
+        LeakGuard.Release(Ceho.Root);
+        var stopError = proc is null ? null : StopTunnelLocked();
+        StopGuard();
+        Log.Info("CehoProxy закрыт из значка: туннель и блокировка программ сняты");
+        runtimeChanged();
         Volatile.Write(ref stopRequested, false);
         return Task.FromResult(stopError);
     };

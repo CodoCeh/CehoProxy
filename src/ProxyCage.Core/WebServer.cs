@@ -48,6 +48,8 @@ public sealed partial class WebServer
 
     public Func<IStageReport, Task<string?>>? OnStart { get; set; }
     public Func<Task<string?>>? OnStop { get; set; }
+
+    public Func<Task<string?>>? OnRelease { get; set; }
     /// <summary>Сбросить старые соединения выбранных программ (папки через «|»); возвращает текст для пользователя.</summary>
     public Func<IReadOnlyList<string>, string>? OnFixLeaks { get; set; }
     public Func<IStageReport, Task<string?>>? OnRestart { get; set; }
@@ -1686,6 +1688,22 @@ public sealed partial class WebServer
                 case "/control/stop":
                 {
                     var job = StopJob(cfg);
+                    return (null, false, job.Id);
+                }
+
+                case "/control/release":
+                {
+                    var job = Jobs.Start(JobPower, S("job_stop"), async p =>
+                    {
+                        InvalidateAppObservations();
+                        try
+                        {
+                            p.Phase(S("stage_stopping"));
+                            var err = OnRelease is null ? "no control" : await OnRelease();
+                            if (err is not null) throw new InvalidOperationException(err);
+                            return S("state_released");
+                        } finally { InvalidateAppObservations(); }
+                    }, operationIdentity: "release");
                     return (null, false, job.Id);
                 }
 

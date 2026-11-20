@@ -277,8 +277,31 @@ internal sealed class TrayWindow : IDisposable
             case IdSignIn: SignIn(); break;
             case IdLight: OpenLight(); break;
             case IdPanel: OpenPanel(); break;
-            case IdQuit: Win32.DestroyWindow(_window); break;
+            case IdQuit: Quit(); break;
         }
+    }
+
+    private void Quit()
+    {
+        if (_link.Url is null) { Win32.DestroyWindow(_window); return; }
+        var answer = Win32.MessageBoxW(_window, Strings.T(_lang, "tray_quit_text"),
+            Strings.T(_lang, "tray_quit_title"), Win32.MB_YESNO | Win32.MB_ICONQUESTION);
+        if (answer != Win32.IDYES) return;
+        if (Interlocked.Exchange(ref _working, 1) == 1) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (await _link.ReleaseAsync())
+                {
+                    Win32.PostMessage(_window, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                    return;
+                }
+                _balloon = Strings.T(_lang, "tray_quit_failed");
+                Win32.PostMessage(_window, Win32.WM_REFRESH, IntPtr.Zero, IntPtr.Zero);
+            }
+            finally { Interlocked.Exchange(ref _working, 0); }
+        });
     }
 
     private void SignIn()

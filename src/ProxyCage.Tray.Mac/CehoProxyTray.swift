@@ -37,6 +37,14 @@ let phrases: [String: Phrase] = [
     "tray_panel": Phrase(ru: "Открыть веб-панель", en: "Open the web panel"),
     "tray_light": Phrase(ru: "Открыть CehoProxy Light", en: "Open CehoProxy Light"),
     "tray_quit": Phrase(ru: "Выход", en: "Quit"),
+    "tray_quit_title": Phrase(ru: "Закрыть CehoProxy?", en: "Close CehoProxy?"),
+    "tray_quit_text": Phrase(
+        ru: "Защита выключится, и выбранные программы пойдут в интернет напрямую. Чтобы включить её снова, откройте CehoProxy и нажмите на водоворот.",
+        en: "Protection turns off and the selected apps go online directly. To turn it on again, open CehoProxy and press the vortex."),
+    "tray_quit_yes": Phrase(ru: "Закрыть", en: "Close"),
+    "tray_quit_failed": Phrase(
+        ru: "Закрыть не получилось: служба CehoProxy не ответила. Защита осталась включённой.",
+        en: "Could not close: the CehoProxy service did not answer. Protection is still on."),
     "state_on": Phrase(ru: "Защита включена", en: "Protection is on"),
     "state_starting": Phrase(
         ru: "Защита запускается — туннель ещё поднимается",
@@ -784,7 +792,22 @@ final class Tray: NSObject, NSMenuDelegate {
     }
 
     @objc func quit() {
-        NSApp.terminate(nil)
+        guard link.url != nil else { NSApp.terminate(nil); return }
+        let alert = NSAlert()
+        alert.messageText = say(lang, "tray_quit_title")
+        alert.informativeText = say(lang, "tray_quit_text")
+        alert.addButton(withTitle: say(lang, "tray_quit_yes"))
+        alert.addButton(withTitle: say(lang, "btn_cancel"))
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        link.control("/control/release") { [weak self] done in
+            DispatchQueue.main.async {
+                if done { NSApp.terminate(nil); return }
+                guard let self = self else { return }
+                self.failure = say(self.lang, "tray_quit_failed")
+                self.read()
+            }
+        }
     }
 }
 

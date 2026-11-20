@@ -2018,6 +2018,17 @@ public static class Strings
         ["whatsnew_settings"] = new("Настройки", "Settings"),
         ["open_target_saved"] = new("Сохранено. Ярлык будет открывать: {0}.", "Saved. The shortcut will open: {0}."),
         ["tray_quit"] = new("Выход", "Quit"),
+        ["tray_quit_title"] = new("Закрыть CehoProxy?", "Close CehoProxy?"),
+        ["tray_quit_text"] = new(
+            "Защита выключится, и выбранные программы пойдут в интернет напрямую. Чтобы включить её снова, откройте CehoProxy и нажмите на водоворот.",
+            "Protection turns off and the selected apps go online directly. To turn it on again, open CehoProxy and press the vortex."),
+        ["tray_quit_yes"] = new("Закрыть", "Close"),
+        ["tray_quit_failed"] = new(
+            "Закрыть не получилось: служба CehoProxy не ответила. Защита осталась включённой.",
+            "Could not close: the CehoProxy service did not answer. Protection is still on."),
+        ["state_released"] = new(
+            "CehoProxy закрыт: защита выключена, выбранные программы идут в интернет напрямую.",
+            "CehoProxy is closed: protection is off and the selected apps go online directly."),
         ["tray_no_service"] = new("Служба не запущена", "The service is not running"),
         ["tray_no_service_hint"] = new(
             "Включить защиту может только администратор: {0}chp daemon",
