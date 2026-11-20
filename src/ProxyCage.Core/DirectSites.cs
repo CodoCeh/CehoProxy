@@ -31,6 +31,20 @@ public static class DirectSites
         }
     }
 
+    public static bool IsLanAddress(string? raw)
+    {
+        var text = (raw ?? "").Trim().Trim('"', '\'');
+        if (text.Length == 0) return false;
+        var withScheme = text.Contains("://", StringComparison.Ordinal) ? text : "http://" + text;
+        if (!Uri.TryCreate(withScheme, UriKind.Absolute, out var uri)) return false;
+        if (!IPAddress.TryParse(uri.Host.Trim('[', ']'), out var ip)) return false;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        if (IPAddress.IsLoopback(ip) || ip.IsIPv6LinkLocal || ip.IsIPv6UniqueLocal) return true;
+        var b = ip.GetAddressBytes();
+        return b.Length == 4 && (b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+                                 || (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254));
+    }
+
     public static string? NormalizeCountry(string? raw)
     {
         var text = (raw ?? "").Trim();

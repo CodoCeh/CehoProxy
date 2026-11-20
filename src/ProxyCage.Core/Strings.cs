@@ -767,6 +767,20 @@ public static class Strings
         ["site_added"] = new(
             "Добавлено: {0}. Поддомены тоже идут напрямую.",
             "Added: {0}. Subdomains go direct too."),
+        ["lan_direct_on"] = new(
+            "Локальная сеть напрямую: адреса вроде 192.168.0.1, роутер и принтер открываются без туннеля",
+            "Local network direct: addresses like 192.168.0.1, the router and printers open without the tunnel"),
+        ["lan_direct_off"] = new(
+            "Локальная сеть идёт через туннель: адреса вроде 192.168.0.1 из программ в изоляции не откроются",
+            "The local network goes through the tunnel: addresses like 192.168.0.1 will not open from isolated apps"),
+        ["lan_direct_add"] = new("Пускать напрямую", "Send direct"),
+        ["lan_direct_del"] = new("Пускать через туннель", "Send through the tunnel"),
+        ["site_lan_direct"] = new(
+            "Это адрес локальной сети, он уже открывается напрямую. Добавлять его не нужно.",
+            "This is a local network address and it already opens directly. There is no need to add it."),
+        ["site_lan_tunnel"] = new(
+            "Это адрес локальной сети. Чтобы он открывался, нажмите «Пускать напрямую» в строке «Локальная сеть».",
+            "This is a local network address. To open it, press «Send direct» in the local network line."),
         ["site_bad"] = new(
             "Это не похоже на адрес сайта. Вставьте ссылку, например https://ya.ru",
             "That does not look like a site address. Paste a link, for example https://ya.ru"),

@@ -183,6 +183,8 @@ public sealed class CehoConfig
 
     public bool BlockYoutubeAds { get; set; }
 
+    public bool LanDirect { get; set; } = true;
+
     public bool EngineAutoUpdate { get; set; } = true;
 
     public string? AutoUpdatedVersion { get; set; }

@@ -952,7 +952,10 @@ public sealed partial class WebServer
 
                 case "/sites/add":
                 {
-                    var host = DirectSites.Normalize(f.GetValueOrDefault("site", ""));
+                    var raw = f.GetValueOrDefault("site", "");
+                    if (DirectSites.IsLanAddress(raw))
+                        return (S(cfg.LanDirect ? "site_lan_direct" : "site_lan_tunnel"), !cfg.LanDirect, null);
+                    var host = DirectSites.Normalize(raw);
                     if (host is null) return (S("site_bad"), true, null);
                     if (cfg.DirectSites.Contains(host, StringComparer.OrdinalIgnoreCase))
                         return (S("err_already_added"), true, null);
@@ -1596,6 +1599,16 @@ public sealed partial class WebServer
                     cfg.EngineAutoUpdate = f.ContainsKey("enable");
                     cfg.SaveSubscriptionStatus(_configPath);
                     return (S(cfg.EngineAutoUpdate ? "engine_auto_state_on" : "engine_auto_state_off"), false, null);
+                }
+
+                case "/lan-direct":
+                {
+                    cfg.LanDirect = f.ContainsKey("enable");
+                    Save(cfg);
+                    var job = cfg.Apps.Any(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder))
+                        ? ApplyOrDefer(cfg, restartIfRunning: true)
+                        : null;
+                    return (S(cfg.LanDirect ? "lan_direct_on" : "lan_direct_off", []), false, job);
                 }
 
                 case "/youtube-ads":
@@ -3041,6 +3054,12 @@ public sealed partial class WebServer
         AppendSiteMode(sb, S, CehoConfig.SiteModeOnly, "sites_mode_only", only);
         sb.Append("</div>");
         sb.Append("<p class=lede>").Append(E(S(only ? "sites_lede_only" : "sites_lede_except", []))).Append("</p>");
+        sb.Append("<div class=\"line ").Append(cfg.LanDirect ? "on" : "off").Append("\"><span><span class=dot></span> ")
+          .Append(E(S(cfg.LanDirect ? "lan_direct_on" : "lan_direct_off", []))).Append("</span>")
+          .Append("<form method=post action=/lan-direct><input type=hidden name=tab value=sites>")
+          .Append(cfg.LanDirect ? "" : "<input type=hidden name=enable value=1>")
+          .Append("<button class=ghost>").Append(E(S(cfg.LanDirect ? "lan_direct_del" : "lan_direct_add", [])))
+          .Append("</button></form></div>");
         sb.Append("<form class=\"row app-add\" method=post action=/sites/add><input type=hidden name=tab value=sites>")
           .Append("<label class=sr-only for=direct-site>").Append(E(S("nav_sites", []))).Append("</label>")
           .Append("<input id=direct-site type=text name=site placeholder=\"")

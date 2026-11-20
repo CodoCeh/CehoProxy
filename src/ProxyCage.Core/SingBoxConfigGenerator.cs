@@ -707,6 +707,8 @@ public static class SingBoxConfigGenerator
             ["domain"] = new JsonArray { ExitProbeHost },
             ["outbound"] = ProxyTag,
         });
+        if (cfg.LanDirect)
+            routeRules.Insert(tunHijackIndex + 1, new JsonObject { ["ip_is_private"] = true, ["outbound"] = DirectTag });
 
         if (offline.Count > 0)
         {
