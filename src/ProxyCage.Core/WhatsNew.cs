@@ -108,6 +108,18 @@ public static class WhatsNew
                 "Окно CehoProxy Light в строке меню Mac больше не превращается в веб-панель.",
                 "The CehoProxy Light window from the Mac menu bar no longer turns into the web panel."),
         }),
+        new("1.2.197", new[]
+        {
+            new Item("Приложения не выходят напрямую", "Apps never go out directly",
+                "На Mac приложения из списка CehoProxy остаются без интернета, если отказали серверы, сломалась защита или идёт обновление: напрямую они выйти не могут, пока CehoProxy запущен.",
+                "On Mac, apps from the CehoProxy list stay offline when servers fail, protection breaks, or during an update: they cannot go out directly while CehoProxy is running."),
+            new Item("Выход закрывает всё", "Quit closes everything",
+                "«Выход» в значке закрывает CehoProxy целиком. Защита и блокировка снимаются, и приложения снова идут напрямую.",
+                "Quit in the tray icon closes CehoProxy completely. Protection and the block are lifted, and apps go out directly again."),
+            new Item("Локальная сеть напрямую", "Local network direct",
+                "Во вкладке «Сайты» появился переключатель: адреса вроде 192.168.3.2 открываются напрямую, мимо защиты. Включён по умолчанию.",
+                "A switch appeared in the Sites tab: addresses like 192.168.3.2 open directly, bypassing protection. On by default."),
+        }),
     };
 
     public static bool IsNewer(string candidate, string current) => Updater.IsNewerVersion(candidate, current);
