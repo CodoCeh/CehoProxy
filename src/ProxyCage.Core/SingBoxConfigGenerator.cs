@@ -770,7 +770,7 @@ public static class SingBoxConfigGenerator
         });
     }
 
-    public static string GenerateFailClosed(CehoConfig cfg, string? tunInterfaceName = null)
+    public static string GenerateFailClosed(CehoConfig cfg, string? tunInterfaceName = null, bool autoRoute = true, string? logFile = null)
     {
         var apps = cfg.Apps.Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Folder)).ToList();
         if (apps.Count == 0)
@@ -802,9 +802,11 @@ public static class SingBoxConfigGenerator
             },
         };
 
+        var guardLog = BuildLog(cfg);
+        if (logFile is not null) guardLog["output"] = logFile;
         var config = new JsonObject
         {
-            ["log"] = BuildLog(cfg),
+            ["log"] = guardLog,
             ["dns"] = new JsonObject
             {
                 ["servers"] = DirectDnsServers(CehoConfig.GuardTunAddress),
@@ -813,7 +815,7 @@ public static class SingBoxConfigGenerator
             },
             ["inbounds"] = new JsonArray
             {
-                BuildTun(cfg, tunInterfaceName, GuardTunAddresses(cfg)),
+                BuildTun(cfg, tunInterfaceName, GuardTunAddresses(cfg), autoRoute),
             },
             ["outbounds"] = new JsonArray { new JsonObject { ["type"] = "direct", ["tag"] = DirectTag } },
             ["route"] = new JsonObject
@@ -947,7 +949,7 @@ public static class SingBoxConfigGenerator
         return addresses;
     }
 
-    private static JsonObject BuildTun(CehoConfig cfg, string? tunInterfaceName = null, JsonArray? addresses = null)
+    private static JsonObject BuildTun(CehoConfig cfg, string? tunInterfaceName = null, JsonArray? addresses = null, bool autoRoute = true)
     {
         // strict_route не включаем нигде. Он ставит на всю машину правила брандмауэра, которые
         // запрещают трафику идти мимо туннеля, — от этого ломаются чужие VPN, локальная сеть
@@ -958,7 +960,7 @@ public static class SingBoxConfigGenerator
             ["type"] = "tun",
             ["tag"] = "tun-in",
             ["address"] = addresses ?? TunAddresses(cfg),
-            ["auto_route"] = true,
+            ["auto_route"] = autoRoute,
             // На Windows system-стек стабильнее для длинных TCP (HTTP/2 Cursor); gvisor — macOS/Linux.
             ["stack"] = Os.IsWindows ? "system" : "gvisor",
         };

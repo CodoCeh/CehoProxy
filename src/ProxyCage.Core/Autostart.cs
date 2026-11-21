@@ -207,6 +207,7 @@ public static class Autostart
               <key>KeepAlive</key>
               <dict><key>SuccessfulExit</key><false/></dict>
               <key>ProcessType</key><string>Interactive</string>
+              <key>AbandonProcessGroup</key><true/>
               <key>WorkingDirectory</key><string>{workingDir}</string>
               <key>StandardErrorPath</key><string>{Path.Combine(workingDir, "cehoproxy.log")}</string>
             </dict>
@@ -220,10 +221,17 @@ public static class Autostart
         try
         {
             var text = File.ReadAllText(PlistPath);
-            var fixedText = AddLaunchdProcessType(text);
+            var fixedText = AddLaunchdAbandonGroup(AddLaunchdProcessType(text));
             if (fixedText != text) File.WriteAllText(PlistPath, fixedText);
         }
         catch { }
+    }
+
+    public static string AddLaunchdAbandonGroup(string plist)
+    {
+        if (plist.Contains("<key>AbandonProcessGroup</key>")) return plist;
+        var i = plist.LastIndexOf("</dict>", StringComparison.Ordinal);
+        return i < 0 ? plist : plist.Insert(i, "  <key>AbandonProcessGroup</key><true/>\n");
     }
 
     public static string AddLaunchdProcessType(string plist)

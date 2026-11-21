@@ -2063,7 +2063,7 @@ if (cmd is "daemon" or "web")
     async Task StartGuard()
     {
         if (Os.IsWindows || guard is not null) return;
-        if (!withTunnel || shuttingDown || proc is not null || LeakGuard.IsReleased(Ceho.Root))
+        if (!withTunnel || shuttingDown || (proc is not null && !Os.IsMac) || LeakGuard.IsReleased(Ceho.Root))
         {
             LeakGuard.SetTunnelGuard(Ceho.Root, false);
             return;
@@ -2081,8 +2081,32 @@ if (cmd is "daemon" or "web")
         if (guardRecovery.Pending is not null && !guardRecovery.TryBegin(Environment.TickCount64, out _)) return;
         try
         {
+            if (Os.IsMac && DaemonControl.KeepGuardRequested(Ceho.Root)
+                && TunCleanup.OurEnginePid(guardConfigPath) is { } keptPid)
+            {
+                SingBoxProcess? kept = null;
+                try
+                {
+                    kept = new SingBoxProcess();
+                    kept.Attach(keptPid);
+                    if (kept.IsRunning && GuardRoutes.Learn(CehoConfig.GuardTunAddress, installed: true, Log.Info))
+                    {
+                        guard = kept;
+                        guardRecovery.Started(Environment.TickCount64);
+                        LeakGuard.SetTunnelGuard(Ceho.Root, true);
+                        if (proc is null) GuardRoutes.Engage(Log.Info);
+                        DaemonControl.ClearKeepGuard(Ceho.Root);
+                        Log.Info("сторож подхвачен после перезапуска службы");
+                        return;
+                    }
+                }
+                catch (Exception ex) { Log.Warn($"сторож подхватить не удалось: {ex.Message}"); }
+                kept?.Dispose();
+            }
+            DaemonControl.ClearKeepGuard(Ceho.Root);
             TunCleanup.KillOurProcesses(guardConfigPath, Log.Info);
-            PrivateFile.Write(guardConfigPath, SingBoxConfigGenerator.GenerateFailClosed(c));
+            PrivateFile.Write(guardConfigPath, SingBoxConfigGenerator.GenerateFailClosed(
+                c, null, autoRoute: proc is null, logFile: Path.Combine(Ceho.Root, "guard.log")));
             Auth.RestrictConfigAccess(guardConfigPath);
 
             var p = new SingBoxProcess();
@@ -2097,6 +2121,7 @@ if (cmd is "daemon" or "web")
                 return;
             }
 
+            await GuardRoutes.LearnAsync(CehoConfig.GuardTunAddress, installed: proc is null, Log.Info);
             guard = p;
             guardRecovery.Started(Environment.TickCount64);
             LeakGuard.SetTunnelGuard(Ceho.Root, true);
@@ -2473,7 +2498,8 @@ if (cmd is "daemon" or "web")
         var p = new SingBoxProcess();
         try
         {
-            StopGuard();
+            if (!Os.IsMac) StopGuard();
+            p.Exited += () => EngageGuardAfterExit(p);
             p.Start(Ceho.SingBoxPath, Ceho.RuntimeConfigPath, Ceho.Root, bridge: true);
             Log.Info($"движок запущен, pid {p.ProcessId}");
 
@@ -2497,6 +2523,7 @@ if (cmd is "daemon" or "web")
                 : p.Explain(c.Language);
             Log.Error($"движок не устоял: {reason}");
             p.Dispose();
+            if (Os.IsMac) GuardRoutes.Engage(Log.Info);
             TunCleanup.KillOurProcesses(Ceho.RuntimeConfigPath, Log.Info);
             if (EngineAdapterStuck(reason))
             {
@@ -2514,8 +2541,17 @@ if (cmd is "daemon" or "web")
         catch
         {
             p.Dispose();
+            if (Os.IsMac) GuardRoutes.Engage(Log.Info);
             throw;
         }
+    }
+
+    void EngageGuardAfterExit(SingBoxProcess exited)
+    {
+        if (!Os.IsMac || shuttingDown) return;
+        if (proc is not null && !ReferenceEquals(proc, exited)) return;
+        if (guard is not { IsRunning: true }) return;
+        GuardRoutes.Engage(Log.Info);
     }
 
     string? StopTunnel()
@@ -2538,7 +2574,11 @@ if (cmd is "daemon" or "web")
         runtimeChanged();
         exitCountry = exitIp = null;
         probed = false;
-        if (Os.IsMac) StartGuard().GetAwaiter().GetResult();
+        if (Os.IsMac)
+        {
+            if (guard is { IsRunning: true }) GuardRoutes.Engage(Log.Info);
+            else StartGuard().GetAwaiter().GetResult();
+        }
 
         if (!clean)
         {
@@ -2842,13 +2882,17 @@ if (cmd is "daemon" or "web")
             {
                 report.Stage(Strings.T(c.Language,
                     DaemonControl.CanKeepEngine && proc is { IsRunning: true } ? "upd_keeping_tun" : "upd_stopping_tun"), 80);
+                if (Os.IsMac && guard is { IsRunning: true }) DaemonControl.MarkKeepGuard(Ceho.Root);
                 return TunnelShutdown.PrepareFromRunningDaemonAsync(
                     c, Ceho.Root, Ceho.RuntimeConfigPath, () => { StopTunnel(); },
                     async () => { await StartTunnel(null); }, m => report.Note(m),
                     keepEngine: DaemonControl.CanKeepEngine && proc is { IsRunning: true });
             });
         if (!shut.Ok)
+        {
+            DaemonControl.ClearKeepGuard(Ceho.Root);
             throw new InvalidOperationException(Strings.T(c.Language, shut.ErrorKey ?? "upd_need_reboot"));
+        }
 
         report.Stage(Strings.T(c.Language, "stage_installing"), 90);
         var handoffId = report is JobProgress jobProgress
@@ -3273,6 +3317,15 @@ if (cmd is "daemon" or "web")
                     }
                 }
 
+                if (Os.IsMac && proc is not null && (guard is null || !guard.IsRunning))
+                {
+                    using (EngineMutex.Acquire(Ceho.Root))
+                    {
+                        if (proc is not null && guard is not null && !guard.IsRunning) StopGuard();
+                        if (proc is not null && guard is null) await StartGuard();
+                    }
+                }
+
                 if (proc is null && guard is null && guardRecovery.Pending is not null)
                 {
                     using var gate = EngineMutex.Acquire(Ceho.Root);
@@ -3464,8 +3517,13 @@ if (cmd is "daemon" or "web")
         Log.Info("служба остановлена для обновления: движок оставлен работать");
     else
         StopTunnel();
-    StopGuard();
-    TunCleanup.KillOurProcesses(guardConfigPath, Log.Info);
+    if (Os.IsMac && guard is { IsRunning: true } && DaemonControl.KeepGuardRequested(Ceho.Root))
+        Log.Info("служба остановлена для обновления: сторож оставлен работать");
+    else
+    {
+        StopGuard();
+        TunCleanup.KillOurProcesses(guardConfigPath, Log.Info);
+    }
     web.Stop();
     DaemonControl.ClearRunning(Ceho.Root);
     Console.Error.WriteLine(Strings.T(cfg.Language, "stopped"));

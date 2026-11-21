@@ -90,6 +90,19 @@ public sealed class SingBoxProcess : IDisposable
 
     private string? _bridgeRoot;
 
+    public event Action? Exited;
+
+    private void WatchExit(System.Diagnostics.Process process)
+    {
+        try
+        {
+            process.EnableRaisingEvents = true;
+            process.Exited += (_, _) => Exited?.Invoke();
+            if (process.HasExited) Exited?.Invoke();
+        }
+        catch { }
+    }
+
     public void Attach(int pid, string? root = null)
     {
         _bridgeRoot = root;
@@ -98,6 +111,7 @@ public sealed class SingBoxProcess : IDisposable
         _unix = System.Diagnostics.Process.GetProcessById(pid);
         ProcessId = (uint)pid;
         Attached = true;
+        WatchExit(_unix);
     }
 
     private readonly Queue<string> _engineLines = new();
@@ -320,6 +334,7 @@ public sealed class SingBoxProcess : IDisposable
 
         _unix = p;
         ProcessId = (uint)p.Id;
+        WatchExit(p);
     }
 
     public string? LastLog { get; private set; }

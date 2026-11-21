@@ -195,6 +195,28 @@ public static class DaemonControl
         try { File.WriteAllText(KeepEngineMarker(root), DateTime.UtcNow.ToString("o")); } catch { }
     }
 
+    public static string KeepGuardMarker(string root) => Path.Combine(root, "keep-guard");
+
+    public static void MarkKeepGuard(string root)
+    {
+        try { File.WriteAllText(KeepGuardMarker(root), DateTime.UtcNow.ToString("o")); } catch { }
+    }
+
+    public static void ClearKeepGuard(string root)
+    {
+        try { File.Delete(KeepGuardMarker(root)); } catch { }
+    }
+
+    public static bool KeepGuardRequested(string root, int maxAgeMinutes = 5)
+    {
+        try
+        {
+            var marker = KeepGuardMarker(root);
+            return File.Exists(marker) && DateTime.UtcNow - File.GetLastWriteTimeUtc(marker) < TimeSpan.FromMinutes(maxAgeMinutes);
+        }
+        catch { return false; }
+    }
+
     public static void ClearKeepEngine(string root)
     {
         try { File.Delete(KeepEngineMarker(root)); } catch { }

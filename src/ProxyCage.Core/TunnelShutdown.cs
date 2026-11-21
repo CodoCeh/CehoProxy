@@ -26,6 +26,9 @@ public static class TunnelShutdown
             DaemonControl.MarkKeepEngine(root);
         }
 
+        if (wasRunning && Os.IsMac && TunCleanup.OurEnginePid(TunCleanup.GuardConfigPath(root)) is not null)
+            DaemonControl.MarkKeepGuard(root);
+
         if (wasRunning)
         {
             log?.Invoke("останавливаю службу перед обновлением");
