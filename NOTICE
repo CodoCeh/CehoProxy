@@ -1,0 +1,5 @@
+CehoProxy
+Copyright 2026 CodoCeh (https://codoceh.ru). Все права защищены. См. файл LICENSE.
+
+CehoProxy запускает движок sing-box как отдельную программу и не включает его код в свой.
+Подробности и условия сторонних компонентов — в THIRD-PARTY.md.
